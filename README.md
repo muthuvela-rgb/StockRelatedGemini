@@ -9,10 +9,16 @@ The suite runs on public market data (Yahoo Finance, SEC EDGAR XBRL, StockTwits)
 ## Key Features & Modules
 
 ### 1. ⚡ Put Options Annualized Return Scanner
-- **Quantitative Options Scanning**: Multi-ticker and universe scanning (QQQ Leaders, SPY Leaders, Watchlist, or Custom Tickers) across customizable DTE (0–365 days) and strike percentage bands.
+- **Quantitative Options Scanning**: Multi-ticker and universe scanning (QQQ Leaders, SPY Leaders, Watchlist, or Custom Tickers) across customizable DTE (0–365 days) and strike selection modes.
+- **Flexible Strike Selection Modes**:
+  - **Moneyness Band Mode**: Filter all strikes between configurable spot % boundaries (e.g. 70% to 95%).
+  - **Single Target Strike ($ or %)**: Focus on a specific target dollar strike (e.g. $580, $200) or target % of spot price (e.g. 85% OTM), snapping to the nearest listed strike across all expiration dates with an expiration yield comparison chart.
+  - **Bollinger Lower Band Snapping**: Automatically derive put strikes from the lower 20-day 2-std Bollinger Band.
 - **OCC TIMS Portfolio Margin Stress Test**: Simulates standard Options Clearing Corporation portfolio margin requirements (configurable downside price shock %, minimum floor per share, and price floor %) vs. Cash-Secured (100% strike) collateral.
-- **Interactive Visualizations**: Scatter plots mapping *Moneyness % vs. Annualized Return %* with instant tooltips.
-- **Bollinger Lower Band Strike Snapping**: Option to automatically derive put strikes from the lower 20-day 2-std Bollinger Band.
+- **Interactive Visualizations**:
+  - **Premium ($) vs. Expiration Date Plot**: Dedicated single-stock decay curve plotting option premium ($) against expiration dates and DTE horizons with knee-of-the-curve sweet spot identification and dual-axis annualized return overlay.
+  - **Annualized Return (%) by Expiration**: Expiration bar chart highlighting high-yielding maturity windows.
+  - **Moneyness vs. Annualized Return Scatter**: Broad universe view mapping safety margin % against annualized yield.
 - **CSV Export**: One-click download of screened contracts.
 
 ### 2. 📉 Stock Fall Detector & Deep Context Analyzer

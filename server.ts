@@ -651,6 +651,8 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       maxDays = 365,
       strikeMode = "band", // 'band' | 'single' | 'bollinger'
       singleStrike = null,
+      singleStrikeType = "dollar", // 'dollar' | 'pct'
+      singleStrikePct = 85.0,
       pctLow = 30.0,
       pctHigh = 100.0,
       bollingerPeriod = 20,
@@ -680,14 +682,18 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       if (!currentPrice || currentPrice <= 0) continue;
 
       let targetStrike: number | null = null;
-      if (strikeMode === "single" && singleStrike) {
-        targetStrike = singleStrike;
+      if (strikeMode === "single") {
+        if (singleStrikeType === "pct" && singleStrikePct) {
+          targetStrike = (currentPrice * Number(singleStrikePct)) / 100;
+        } else if (singleStrike !== null && singleStrike !== undefined && !isNaN(Number(singleStrike))) {
+          targetStrike = Number(singleStrike);
+        }
       } else if (strikeMode === "bollinger") {
         const chart = await fetchYahooChart(ticker, "3mo", "1d");
         const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
           (c: any) => c !== null && c !== undefined
         );
-        const b = computeBollinger(closes, bollingerPeriod, bollingerStd);
+        const b = computeBollinger(closes, Number(bollingerPeriod) || 20, Number(bollingerStd) || 2.0);
         if (b) targetStrike = b.lower_band;
       }
 
@@ -1114,6 +1120,143 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
       steepest_slopes: steepestSlopes,
       widest_bins: widestBins,
       gap_markers: gapMarkers,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Premium vs Expiration Date given a Target Strike Price
+app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
+  try {
+    const ticker = ((req.query.ticker as string) || "NVDA").toUpperCase();
+    const optionType = ((req.query.optionType as string) || "put").toLowerCase();
+    const priceType = ((req.query.priceType as string) || "bid").toLowerCase();
+    const months = parseInt(req.query.months as string) || 12;
+    const reqStrike = req.query.strike ? parseFloat(req.query.strike as string) : null;
+    const reqPct = req.query.pctOfPrice ? parseFloat(req.query.pctOfPrice as string) : null;
+    const noFallback = req.query.noFallback === "true";
+
+    const optData = await fetchYahooOptions(ticker);
+    if (!optData) {
+      return res.status(404).json({ error: `No options data found for ${ticker}` });
+    }
+
+    const currentPrice = optData.quote?.regularMarketPrice || null;
+    if (!currentPrice) {
+      return res.status(404).json({ error: `Unable to get current price for ${ticker}` });
+    }
+
+    let targetStrike = reqStrike;
+    if (targetStrike === null && reqPct !== null) {
+      targetStrike = (currentPrice * reqPct) / 100;
+    }
+    if (targetStrike === null) {
+      // Default to 85% of spot price
+      targetStrike = currentPrice * 0.85;
+    }
+
+    const rawExpirations: number[] = optData.expirationDates || [];
+    const today = new Date();
+    const maxDays = months * 30.5;
+
+    const validExpirations: Array<{ timestamp: number; dateStr: string; dte: number }> = [];
+    for (const expTs of rawExpirations) {
+      const expDate = new Date(expTs * 1000);
+      const diffTime = expDate.getTime() - today.getTime();
+      const dte = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (dte >= 0 && dte <= maxDays) {
+        const dateStr = expDate.toISOString().split("T")[0];
+        validExpirations.push({ timestamp: expTs, dateStr, dte });
+      }
+    }
+
+    const points: any[] = [];
+
+    for (const exp of validExpirations) {
+      const chain =
+        exp.timestamp === rawExpirations[0]
+          ? optData
+          : (await fetchYahooOptions(ticker, exp.timestamp)) || optData;
+
+      const contracts = optionType === "call" ? chain.options?.[0]?.calls || [] : chain.options?.[0]?.puts || [];
+      if (contracts.length === 0) continue;
+
+      // Find nearest listed strike to targetStrike
+      const nearest = contracts.reduce((prev: any, curr: any) =>
+        Math.abs(curr.strike - targetStrike!) < Math.abs(prev.strike - targetStrike!) ? curr : prev
+      );
+
+      if (!nearest) continue;
+
+      const bid = nearest.bid || 0;
+      const ask = nearest.ask || 0;
+      const last = nearest.lastPrice || 0;
+
+      let premium = priceType === "ask" ? ask : bid;
+      let usedFallback = false;
+      if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
+        premium = last;
+        usedFallback = true;
+      }
+
+      const dte = Math.max(1, exp.dte);
+      const marginBasis = estimatePortfolioMargin(currentPrice, nearest.strike, premium, 15.0, 0.375, 5.0, 0.0);
+      const annReturnMargin = ((premium / marginBasis) * (365 / dte)) * 100;
+      const annReturnCashSecured = ((premium / nearest.strike) * (365 / dte)) * 100;
+
+      points.push({
+        expiration: exp.dateStr,
+        dte,
+        target_strike: Number(targetStrike.toFixed(2)),
+        snapped_strike: nearest.strike,
+        strike_diff: Number((nearest.strike - targetStrike).toFixed(2)),
+        moneyness_pct: Number(((nearest.strike / currentPrice) * 100).toFixed(2)),
+        premium: Number(premium.toFixed(2)),
+        bid: Number(bid.toFixed(2)),
+        ask: Number(ask.toFixed(2)),
+        last_price: Number(last.toFixed(2)),
+        volume: nearest.volume || 0,
+        open_interest: nearest.openInterest || 0,
+        implied_volatility: nearest.impliedVolatility ? Number((nearest.impliedVolatility * 100).toFixed(2)) : 0,
+        used_fallback: usedFallback,
+        capital_basis_margin: Number(marginBasis.toFixed(2)),
+        annualized_return_margin: Number(annReturnMargin.toFixed(2)),
+        annualized_return_cash_secured: Number(annReturnCashSecured.toFixed(2)),
+      });
+    }
+
+    points.sort((a, b) => a.dte - b.dte);
+
+    // Calculate knee of curve (point of highest slope deceleration)
+    let kneePoint: any = null;
+    if (points.length >= 3) {
+      let maxSlopeDrop = -Infinity;
+      for (let i = 1; i < points.length - 1; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        const next = points[i + 1];
+
+        const slope1 = (curr.premium - prev.premium) / Math.max(1, curr.dte - prev.dte);
+        const slope2 = (next.premium - curr.premium) / Math.max(1, next.dte - curr.dte);
+        const drop = slope1 - slope2;
+
+        if (drop > maxSlopeDrop && slope1 > 0) {
+          maxSlopeDrop = drop;
+          kneePoint = curr;
+        }
+      }
+    }
+
+    res.json({
+      ticker,
+      current_price: currentPrice,
+      target_strike: Number(targetStrike.toFixed(2)),
+      target_strike_pct: Number(((targetStrike / currentPrice) * 100).toFixed(1)),
+      option_type: optionType,
+      price_type: priceType,
+      points,
+      knee_point: kneePoint,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

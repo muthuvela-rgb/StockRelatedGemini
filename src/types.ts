@@ -213,3 +213,34 @@ export interface PremiumCurveAnalysis {
     high_expiration: string;
   }>;
 }
+
+export interface PremiumVsExpirationPoint {
+  expiration: string;
+  dte: number;
+  target_strike: number;
+  snapped_strike: number;
+  strike_diff: number;
+  moneyness_pct: number;
+  premium: number;
+  bid: number;
+  ask: number;
+  last_price: number;
+  volume: number;
+  open_interest: number;
+  implied_volatility: number;
+  used_fallback: boolean;
+  capital_basis_margin: number;
+  annualized_return_margin: number;
+  annualized_return_cash_secured: number;
+}
+
+export interface PremiumVsExpirationAnalysis {
+  ticker: string;
+  current_price: number;
+  target_strike: number;
+  target_strike_pct: number;
+  option_type: "put" | "call";
+  price_type: "bid" | "ask";
+  points: PremiumVsExpirationPoint[];
+  knee_point: PremiumVsExpirationPoint | null;
+}
