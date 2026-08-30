@@ -16,8 +16,8 @@ interface WatchlistManagerProps {
 
 const PRESETS = [
   {
-    name: "Original StockRelated Set",
-    tickers: ["SPCX", "MU", "SNDK", "ALAB", "NVDA", "SKHY", "META", "TSLA", "QQQ"],
+    name: "Tech & Options Leaders",
+    tickers: ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"],
   },
   {
     name: "Semiconductor Powerhouses",

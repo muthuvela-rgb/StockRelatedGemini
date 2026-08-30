@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // --- CONSTANTS & WATCHLIST ---
-const DEFAULT_WATCHLIST = ["SPCX", "MU", "SNDK", "ALAB", "NVDA", "SKHY", "META", "TSLA", "QQQ"];
+const DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"];
 const WATCHLIST_FILE = path.join(process.cwd(), "watchlist.json");
 
 function getWatchlist(): string[] {
@@ -222,11 +222,53 @@ function computeHistoricalVol(closes: number[]) {
 }
 
 // --- YAHOO & FINANCIAL DATA FETCHERS ---
-const HTTP_HEADERS = {
+const HTTP_HEADERS: Record<string, string> = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
 };
+
+let cachedYahooCookie: string | null = null;
+let cachedYahooCrumb: string | null = null;
+let yahooAuthPromise: Promise<{ cookie: string; crumb: string }> | null = null;
+
+async function getYahooAuth(forceRefresh = false): Promise<{ cookie: string; crumb: string }> {
+  if (!forceRefresh && cachedYahooCookie && cachedYahooCrumb) {
+    return { cookie: cachedYahooCookie, crumb: cachedYahooCrumb };
+  }
+
+  if (yahooAuthPromise && !forceRefresh) {
+    return yahooAuthPromise;
+  }
+
+  yahooAuthPromise = (async () => {
+    try {
+      const cookieRes = await fetch("https://fc.yahoo.com", {
+        headers: HTTP_HEADERS,
+      });
+      const cookie = cookieRes.headers.get("set-cookie") || "";
+
+      const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+        headers: {
+          ...HTTP_HEADERS,
+          Cookie: cookie,
+        },
+      });
+      const crumb = await crumbRes.text();
+
+      cachedYahooCookie = cookie;
+      cachedYahooCrumb = crumb;
+      return { cookie, crumb };
+    } catch (err) {
+      console.error("Failed to get Yahoo crumb/cookie:", err);
+      return { cookie: cachedYahooCookie || "", crumb: cachedYahooCrumb || "" };
+    } finally {
+      yahooAuthPromise = null;
+    }
+  })();
+
+  return yahooAuthPromise;
+}
 
 async function fetchYahooChart(ticker: string, range = "1y", interval = "1d") {
   try {
@@ -241,13 +283,27 @@ async function fetchYahooChart(ticker: string, range = "1y", interval = "1d") {
   }
 }
 
-async function fetchYahooOptions(ticker: string, dateTimestamp?: number) {
+async function fetchYahooOptions(ticker: string, dateTimestamp?: number, retry = true): Promise<any> {
   try {
-    let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker)}`;
-    if (dateTimestamp) {
-      url += `?date=${dateTimestamp}`;
+    const { cookie, crumb } = await getYahooAuth();
+    let url = `https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker)}`;
+    const params = new URLSearchParams();
+    if (crumb) params.set("crumb", crumb);
+    if (dateTimestamp) params.set("date", String(dateTimestamp));
+    const qs = params.toString();
+    if (qs) url += `?${qs}`;
+
+    const headers: Record<string, string> = {
+      ...HTTP_HEADERS,
+      Accept: "application/json",
+    };
+    if (cookie) headers["Cookie"] = cookie;
+
+    const res = await fetch(url, { headers });
+    if (res.status === 401 && retry) {
+      await getYahooAuth(true);
+      return fetchYahooOptions(ticker, dateTimestamp, false);
     }
-    const res = await fetch(url, { headers: HTTP_HEADERS });
     if (!res.ok) return null;
     const json = await res.json();
     return json?.optionChain?.result?.[0] || null;
@@ -257,10 +313,23 @@ async function fetchYahooOptions(ticker: string, dateTimestamp?: number) {
   }
 }
 
-async function fetchYahooQuoteSummary(ticker: string) {
+async function fetchYahooQuoteSummary(ticker: string, retry = true): Promise<any> {
   try {
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,summaryDetail,upgradeDowngradeHistory`;
-    const res = await fetch(url, { headers: HTTP_HEADERS });
+    const { cookie, crumb } = await getYahooAuth();
+    let url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,summaryDetail,upgradeDowngradeHistory`;
+    if (crumb) url += `&crumb=${encodeURIComponent(crumb)}`;
+
+    const headers: Record<string, string> = {
+      ...HTTP_HEADERS,
+      Accept: "application/json",
+    };
+    if (cookie) headers["Cookie"] = cookie;
+
+    const res = await fetch(url, { headers });
+    if (res.status === 401 && retry) {
+      await getYahooAuth(true);
+      return fetchYahooQuoteSummary(ticker, false);
+    }
     if (!res.ok) return null;
     const json = await res.json();
     return json?.quoteSummary?.result?.[0] || null;
