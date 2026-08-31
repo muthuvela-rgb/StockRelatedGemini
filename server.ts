@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
@@ -9,6 +10,25 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// --- GOOGLE GENAI CLIENT SETUP ---
+let genAIClient: GoogleGenAI | null = null;
+function getGenAI(): GoogleGenAI {
+  if (!genAIClient) {
+    genAIClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return genAIClient;
+}
+
+// In-memory cache for SEC filing summaries
+const secSummaryCache = new Map<string, any>();
 
 // --- CONSTANTS & WATCHLIST ---
 const DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"];
@@ -1289,6 +1309,181 @@ async function getSecTickerCikMap() {
   }
 }
 
+// --- SEC DOCUMENT FETCHING & GEMINI SUMMARIZATION ---
+async function fetchSecDocumentText(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "muthu.vela@gmail.com StockRelated/1.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+      },
+    });
+
+    if (!res.ok) {
+      return `[SEC.gov returned HTTP ${res.status}: ${res.statusText}]`;
+    }
+
+    const raw = await res.text();
+    if (!raw || raw.trim().length === 0) {
+      return "[Empty document retrieved from SEC.gov]";
+    }
+
+    // Strip HTML scripts, styles, XML headers, tags, and decode common entities
+    let cleaned = raw
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&#\d+;/g, " ")
+      .replace(/\r\n|\r|\n/g, "\n")
+      .replace(/\t/g, " ")
+      .replace(/ +/g, " ")
+      .replace(/\n\s*\n\s*\n+/g, "\n\n")
+      .trim();
+
+    // Limit to 45,000 characters to ensure fast inference while capturing key disclosures
+    if (cleaned.length > 45000) {
+      cleaned = cleaned.slice(0, 45000) + "\n\n[...Truncated for AI analysis...]";
+    }
+
+    return cleaned;
+  } catch (e: any) {
+    console.error("Error fetching SEC document text:", e);
+    return `[Failed to fetch document from SEC: ${e.message}]`;
+  }
+}
+
+async function summarizeSecFilingWithGemini(params: {
+  ticker: string;
+  form: string;
+  date: string;
+  url: string;
+  epsData?: any;
+  revData?: any;
+}) {
+  const cacheKey = `${params.ticker}_${params.form}_${params.date}_${params.url}`;
+  if (secSummaryCache.has(cacheKey)) {
+    return secSummaryCache.get(cacheKey);
+  }
+
+  const docText = await fetchSecDocumentText(params.url);
+  const ai = getGenAI();
+
+  const prompt = `Analyze this official SEC EDGAR ${params.form} filing for ${params.ticker} filed on ${params.date}.
+URL: ${params.url}
+
+Latest XBRL Reported Facts:
+- EPS: ${params.epsData ? `$${params.epsData.value} (${params.epsData.fiscal_period} ${params.epsData.fiscal_year})` : "N/A"}
+- Revenue: ${params.revData ? `$${params.revData.value} (${params.revData.fiscal_period} ${params.revData.fiscal_year})` : "N/A"}
+
+SEC Document Text Content:
+${docText}
+
+Provide an executive, high-density financial and strategic breakdown of this ${params.form} submission. Focus on:
+1. Core message & why this filing matters to equity and options traders.
+2. Financial numbers (Revenue, EPS, guidance changes, operating margins, segment growth).
+3. Material events, major contracts, leadership changes, legal updates, or financing details.
+4. Risk factors and macroeconomic commentary.
+5. Implications for implied volatility, downside put options risk, and sentiment.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.7-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: "You are an elite Wall Street securities analyst and SEC filing forensic specialist. You produce precise, insightful, and actionable breakdowns of 10-K, 10-Q, and 8-K filings with zero fluff.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: {
+              type: Type.STRING,
+              description: "Short descriptive headline of the filing (e.g. Q3 2025 Earnings Release & Record Data Center Revenue)",
+            },
+            summary: {
+              type: Type.STRING,
+              description: "2-3 sentence executive synthesis of the filing's core findings and market significance.",
+            },
+            sentiment: {
+              type: Type.STRING,
+              description: "Overall tone: Bullish, Neutral, Bearish, or Mixed",
+            },
+            key_takeaways: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "3 to 6 high-impact takeaway bullet points with specific figures and facts.",
+            },
+            financial_highlights: {
+              type: Type.OBJECT,
+              properties: {
+                revenue: { type: Type.STRING, description: "Revenue metric or comparison" },
+                net_income_or_eps: { type: Type.STRING, description: "EPS or net income figure" },
+                guidance: { type: Type.STRING, description: "Forward-looking guidance provided" },
+                margins_or_growth: { type: Type.STRING, description: "Operating margins or growth rate" },
+              },
+            },
+            material_events: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Notable corporate developments, mergers, agreements, or debt/capital actions.",
+            },
+            risk_factors: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Key risks highlighted in the filing or macro uncertainties.",
+            },
+            options_implications: {
+              type: Type.STRING,
+              description: "Analysis of market impact, implied volatility crush/expansion, and put-selling margin safety.",
+            },
+          },
+          required: ["title", "summary", "sentiment", "key_takeaways", "options_implications"],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text?.trim() || "{}");
+    const result = {
+      ticker: params.ticker,
+      form: params.form,
+      date: params.date,
+      url: params.url,
+      title: parsed.title || `${params.ticker} ${params.form} Filing (${params.date})`,
+      summary: parsed.summary || "Summary generated from SEC EDGAR disclosure.",
+      sentiment: (parsed.sentiment as any) || "Neutral",
+      key_takeaways: parsed.key_takeaways || [],
+      financial_highlights: parsed.financial_highlights || {},
+      material_events: parsed.material_events || [],
+      risk_factors: parsed.risk_factors || [],
+      options_implications: parsed.options_implications || "",
+      generated_at: new Date().toISOString(),
+    };
+
+    secSummaryCache.set(cacheKey, result);
+    return result;
+  } catch (err: any) {
+    console.error(`Gemini summarization error for ${params.ticker} ${params.form}:`, err);
+    return {
+      ticker: params.ticker,
+      form: params.form,
+      date: params.date,
+      url: params.url,
+      title: `${params.ticker} ${params.form} Filing Analysis`,
+      summary: `Failed to generate AI summary: ${err.message}`,
+      sentiment: "Neutral",
+      key_takeaways: ["Error during model generation. Please try again."],
+      options_implications: "N/A",
+      generated_at: new Date().toISOString(),
+    };
+  }
+}
+
 app.get("/api/sec-earnings", async (req: Request, res: Response) => {
   try {
     const tickersParam = req.query.tickers as string;
@@ -1343,15 +1538,22 @@ app.get("/api/sec-earnings", async (req: Request, res: Response) => {
           const dates: string[] = recent.filingDate || [];
           const accns: string[] = recent.accessionNumber || [];
           const primaryDocs: string[] = recent.primaryDocument || [];
+          const primaryDocDescs: string[] = recent.primaryDocDescription || [];
 
-          for (let i = 0; i < forms.length && filingsList.length < 5; i++) {
+          for (let i = 0; i < forms.length && filingsList.length < 8; i++) {
             if (["10-K", "10-Q", "8-K"].includes(forms[i])) {
               const accnNoDash = accns[i].replace(/-/g, "");
               const url = `https://www.sec.gov/Archives/edgar/data/${cik}/${accnNoDash}/${primaryDocs[i]}`;
+              const cacheKey = `${ticker}_${forms[i]}_${dates[i]}_${url}`;
+              
               filingsList.push({
                 form: forms[i],
                 date: dates[i],
                 url,
+                accession_number: accns[i],
+                primary_doc: primaryDocs[i],
+                description: primaryDocDescs[i] || `${forms[i]} Disclosure`,
+                ai_summary: secSummaryCache.get(cacheKey) || null,
               });
             }
           }
@@ -1437,6 +1639,68 @@ app.get("/api/sec-earnings", async (req: Request, res: Response) => {
     res.json({ results });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Single Filing Summarization with Gemini
+app.post("/api/sec-summarize-filing", async (req: Request, res: Response) => {
+  try {
+    const { ticker, form, date, url, epsData, revData } = req.body;
+    if (!ticker || !form || !url) {
+      return res.status(400).json({ error: "Missing ticker, form, or url" });
+    }
+
+    const summary = await summarizeSecFilingWithGemini({
+      ticker,
+      form,
+      date: date || new Date().toISOString().split("T")[0],
+      url,
+      epsData,
+      revData,
+    });
+
+    res.json({ success: true, summary });
+  } catch (e: any) {
+    console.error("Error in /api/sec-summarize-filing:", e);
+    res.status(500).json({ error: e.message || "Failed to summarize filing" });
+  }
+});
+
+// Batch Summarize Filings for given items
+app.post("/api/sec-summarize-batch", async (req: Request, res: Response) => {
+  try {
+    const { filings } = req.body; // Array of { ticker, form, date, url, epsData, revData }
+    if (!Array.isArray(filings) || filings.length === 0) {
+      return res.status(400).json({ error: "filings array is required" });
+    }
+
+    // Limit to max 12 filings per batch to maintain fast response
+    const targetFilings = filings.slice(0, 12);
+    const summaries: any[] = [];
+
+    // Process with controlled concurrency (up to 3 parallel requests)
+    const chunkSize = 3;
+    for (let i = 0; i < targetFilings.length; i += chunkSize) {
+      const chunk = targetFilings.slice(i, i + chunkSize);
+      const chunkResults = await Promise.all(
+        chunk.map((f) =>
+          summarizeSecFilingWithGemini({
+            ticker: f.ticker,
+            form: f.form,
+            date: f.date,
+            url: f.url,
+            epsData: f.epsData,
+            revData: f.revData,
+          })
+        )
+      );
+      summaries.push(...chunkResults);
+    }
+
+    res.json({ success: true, count: summaries.length, summaries });
+  } catch (e: any) {
+    console.error("Error in /api/sec-summarize-batch:", e);
+    res.status(500).json({ error: e.message || "Failed to batch summarize filings" });
   }
 });
 

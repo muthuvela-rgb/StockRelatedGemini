@@ -120,12 +120,37 @@ export interface OptionChainResponse {
   puts: OptionGreeks[];
 }
 
+export interface SecFilingSummary {
+  ticker: string;
+  form: string;
+  date: string;
+  url: string;
+  title: string;
+  summary: string;
+  sentiment: "Bullish" | "Neutral" | "Bearish" | "Mixed";
+  key_takeaways: string[];
+  financial_highlights?: {
+    revenue?: string;
+    net_income_or_eps?: string;
+    guidance?: string;
+    margins_or_growth?: string;
+  };
+  material_events?: string[];
+  risk_factors?: string[];
+  options_implications?: string;
+  generated_at: string;
+}
+
 export interface SecFiling {
   ticker: string;
   cik: number | string;
   filing_form: string;
   filing_date: string;
   filing_url: string;
+  accession_number?: string;
+  primary_doc?: string;
+  description?: string;
+  ai_summary?: SecFilingSummary | null;
   latest_eps_tag?: string;
   latest_eps_value?: number | null;
   latest_eps_period_end?: string;
@@ -161,6 +186,10 @@ export interface SecCompanyReport {
     form: string;
     date: string;
     url: string;
+    accession_number?: string;
+    primary_doc?: string;
+    description?: string;
+    ai_summary?: SecFilingSummary | null;
   }>;
 }
 
