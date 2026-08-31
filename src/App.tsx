@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Header, ActiveTab } from "./components/Header";
+import { PutRecommendationsViewer } from "./components/PutRecommendationsViewer";
 import { PutScanner } from "./components/PutScanner";
 import { FallDetector } from "./components/FallDetector";
 import { TechnicalsScreener } from "./components/TechnicalsScreener";
@@ -48,6 +49,9 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {activeTab === "put-recommendations" && (
+          <PutRecommendationsViewer watchlist={watchlist} />
+        )}
         {activeTab === "options-scanner" && (
           <PutScanner watchlist={watchlist} />
         )}
@@ -90,3 +94,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+

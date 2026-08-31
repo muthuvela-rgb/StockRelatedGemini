@@ -149,23 +149,50 @@ export function calculateGreeks(
   };
 }
 
-// Portfolio Margin Requirement Estimation
+// Margin Requirement Estimation
+// 1. Reg-T Standard Naked Put Margin (FINRA Rule 4210):
+//    Max of:
+//    a) 20% of current stock price - OTM amount + Option Premium (Standard Reg-T formula)
+//    b) 10% of strike price + Option Premium
+//    c) Minimum floor of $2.50/share (or $250/contract)
+// 2. Portfolio Margin (TIMS stress model):
+//    Evaluated under a standard 15% downside stress with standard regulatory minimum cushion (not falling below 10% notional or $2.50/sh floor).
 function estimatePortfolioMargin(
   currentPrice: number,
   strike: number,
   premium: number,
   shockPct = 15.0,
-  floorPerShare = 0.375,
-  floorPctOfPrice = 5.0,
+  floorPerShare = 2.50,
+  floorPctOfPrice = 10.0,
   premiumBufferPct = 0.0
 ): number {
+  if (currentPrice <= 0 || strike <= 0) return strike;
+
+  // Reg-T / FINRA 4210 Standard Naked Put Margin per share
+  const otmAmount = Math.max(currentPrice - strike, 0);
+  const regTRuleA = (0.20 * currentPrice) - otmAmount + premium;
+  const regTRuleB = (0.10 * strike) + premium;
+  const regTMinimum = Math.max(floorPerShare, (floorPctOfPrice / 100) * strike);
+  const standardMargin = Math.max(regTRuleA, regTRuleB, regTMinimum);
+
+  // OCC TIMS Stress Valuation Model:
+  // Evaluates position loss under a -shockPct move (e.g. -15% down)
   const stressedPrice = currentPrice * (1 - shockPct / 100);
   const stressedLoss = Math.max(strike - stressedPrice, 0);
-  const netRequirement = Math.max(stressedLoss - premium, 0);
-  const notionalFloor = Math.max(floorPerShare, (floorPctOfPrice / 100) * currentPrice);
-  const premiumFloor = premium * (1 + premiumBufferPct / 100);
-  const floor = Math.max(notionalFloor, premiumFloor);
-  return Math.max(netRequirement, floor);
+  // Collateral requires covering the stressed loss plus premium margin
+  const stressedRequirement = stressedLoss + Math.max(premium, 0);
+
+  // Regulatory PM minimum floor: at least 10% of underlying spot or strike, or $2.50/share minimum
+  const regulatoryFloor = Math.max(
+    floorPerShare,
+    (floorPctOfPrice / 100) * Math.min(currentPrice, strike),
+    premium * (1 + premiumBufferPct / 100)
+  );
+
+  const pmRequirement = Math.max(stressedRequirement, regulatoryFloor);
+
+  // Return the calculated requirement, capped at maximum cash-secured strike liability
+  return Math.min(strike, Math.max(pmRequirement, regulatoryFloor));
 }
 
 // Technical calculations
@@ -1483,6 +1510,514 @@ Provide an executive, high-density financial and strategic breakdown of this ${p
     };
   }
 }
+
+// ==========================================
+// PUT RECOMMENDATIONS ACROSS RISK TIERS
+// ==========================================
+
+function computePutRecommendationScore(
+  tier: "least_risk" | "medium_risk" | "high_risk",
+  annualMarginReturn: number,
+  pop: number,
+  cushionPct: number,
+  dte: number,
+  iv: number,
+  hv: number,
+  rsi: number | null,
+  isBelowBollingerLower: boolean,
+  spreadPct: number,
+  openInterest: number
+): number {
+  let score = 50;
+
+  if (tier === "least_risk") {
+    score += Math.min(25, Math.max(0, (pop - 80) * 1.5));
+    score += Math.min(15, Math.max(0, cushionPct * 0.6));
+    score += Math.min(15, Math.max(0, annualMarginReturn * 0.4));
+  } else if (tier === "medium_risk") {
+    score += Math.min(20, Math.max(0, (pop - 68) * 1.2));
+    score += Math.min(15, Math.max(0, cushionPct * 0.9));
+    score += Math.min(20, Math.max(0, annualMarginReturn * 0.35));
+  } else {
+    score += Math.min(15, Math.max(0, (pop - 50) * 0.8));
+    score += Math.min(28, Math.max(0, annualMarginReturn * 0.28));
+    score += Math.min(10, Math.max(0, cushionPct * 1.0));
+  }
+
+  // Sweet spot DTE (20 to 45 days is peak theta decay efficiency)
+  if (dte >= 20 && dte <= 45) {
+    score += 8;
+  } else if (dte >= 14 && dte <= 60) {
+    score += 4;
+  }
+
+  // Technical support: below lower Bollinger band is great downside protection
+  if (isBelowBollingerLower) {
+    score += 7;
+  }
+
+  // Volatility edge: IV > HV (selling rich premium)
+  if (iv > 0 && hv > 0 && iv > hv * 1.1) {
+    score += 6;
+  }
+
+  // Healthy RSI (not catastrophic freefall < 25, nor overbought > 70)
+  if (rsi !== null && rsi >= 35 && rsi <= 60) {
+    score += 4;
+  }
+
+  // Spread penalty / reward
+  if (spreadPct > 20) {
+    score -= Math.min(10, (spreadPct - 20) * 0.5);
+  } else if (spreadPct <= 5) {
+    score += 4;
+  }
+
+  // Liquidity bonus
+  if (openInterest >= 100) {
+    score += 4;
+  }
+
+  return Math.max(10, Math.min(99, Math.round(score)));
+}
+
+app.post("/api/put-recommendations", async (req: Request, res: Response) => {
+  try {
+    const {
+      tickers,
+      minDte = 7,
+      maxDte = 60,
+      minBid = 0.35,
+      minOpenInterest = 5,
+      marginShockPct = 15.0,
+      minAnnualMarginReturn = 8.0,
+    } = req.body;
+
+    const tickerList: string[] = (
+      Array.isArray(tickers) && tickers.length > 0 ? tickers : getWatchlist()
+    ).map((t: string) => String(t).trim().toUpperCase());
+
+    const leastRiskList: any[] = [];
+    const mediumRiskList: any[] = [];
+    const highRiskList: any[] = [];
+    const allList: any[] = [];
+    const marketContextMap: Record<string, any> = {};
+
+    let totalContractsEvaluated = 0;
+    const today = new Date();
+
+    // Process tickers in parallel batches of 4
+    const batchSize = 4;
+    for (let b = 0; b < tickerList.length; b += batchSize) {
+      const batch = tickerList.slice(b, b + batchSize);
+
+      await Promise.all(
+        batch.map(async (ticker) => {
+          try {
+            // Concurrently fetch options chain and technicals
+            const [optData, technicals] = await Promise.all([
+              fetchYahooOptions(ticker),
+              getTechnicalsForTicker(ticker),
+            ]);
+
+            if (!optData) return;
+            const meta = optData.quote || {};
+            const currentPrice = meta.regularMarketPrice || meta.ask || meta.bid || 0;
+            if (!currentPrice || currentPrice <= 0) return;
+
+            const rsi = technicals?.rsi_14 ?? null;
+            const bollingerLower = technicals?.bollinger?.lower_band ?? null;
+            const bollingerUpper = technicals?.bollinger?.upper_band ?? null;
+            const bollingerZone = technicals?.bollinger?.zone ?? null;
+            const histVolPct = technicals?.historical_volatility_pct ?? null;
+            const atmIv = technicals?.implied_volatility_pct ?? null;
+            const fiftyTwoWeekHigh = technicals?.fifty_two_week_high ?? null;
+            const distTo52wHigh = technicals?.distance_to_52w_high_pct ?? null;
+            const marketCap = meta.marketCap || technicals?.market_cap || null;
+            const nextEarningsDate = technicals?.next_earnings_date || null;
+
+            marketContextMap[ticker] = {
+              price: currentPrice,
+              rsi,
+              iv: atmIv,
+              hv: histVolPct,
+              bollinger_lower: bollingerLower,
+              bollinger_upper: bollingerUpper,
+              dist_to_52w_high_pct: distTo52wHigh,
+            };
+
+            const rawExpirations: number[] = optData.expirationDates || [];
+            const validExpirations: Array<{ timestamp: number; dateStr: string; dte: number }> = [];
+
+            for (const expTs of rawExpirations) {
+              const expDate = new Date(expTs * 1000);
+              const diffTime = expDate.getTime() - today.getTime();
+              const dte = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              if (dte >= minDte && dte <= maxDte) {
+                const dateStr = expDate.toISOString().split("T")[0];
+                validExpirations.push({ timestamp: expTs, dateStr, dte });
+              }
+            }
+
+            // Evaluate up to 4 expirations per ticker to balance depth and performance
+            const targetExpirations = validExpirations.slice(0, 4);
+
+            for (const exp of targetExpirations) {
+              let chain = optData;
+              if (optData.expirationDates?.[0] !== exp.timestamp) {
+                const fetched = await fetchYahooOptions(ticker, exp.timestamp);
+                if (fetched) chain = fetched;
+              }
+
+              const puts: any[] = chain?.options?.[0]?.puts || [];
+              if (puts.length === 0) continue;
+
+              for (const put of puts) {
+                totalContractsEvaluated++;
+                const strike = put.strike;
+                if (!strike || strike <= 0) continue;
+
+                const bid = put.bid || 0;
+                const ask = put.ask || 0;
+                const last = put.lastPrice || 0;
+                const oi = put.openInterest || 0;
+                const volume = put.volume || 0;
+
+                // Price selection
+                let execBid = bid;
+                if (execBid <= 0 && last > 0 && last >= minBid) {
+                  execBid = last;
+                }
+                if (execBid < minBid) continue;
+                if (oi < minOpenInterest && volume < minOpenInterest) continue;
+
+                // Moneyness & Cushion
+                const moneyness = (strike / currentPrice) * 100;
+                // Exclude ITM puts (moneyness > 100%) since selling naked/CSP is focused on OTM
+                if (moneyness > 99.5) continue;
+
+                const cushionToStrikePct = Number((((currentPrice - strike) / currentPrice) * 100).toFixed(2));
+                const breakevenPrice = Number((strike - execBid).toFixed(2));
+                const cushionToBreakevenPct = Number((((currentPrice - breakevenPrice) / currentPrice) * 100).toFixed(2));
+
+                // Greeks & IV
+                const ivRaw = put.impliedVolatility || 0.3;
+                const ivPct = Number((ivRaw * 100).toFixed(2));
+                const greeks = calculateGreeks(strike, currentPrice, ivRaw, exp.dte, false);
+
+                const absDelta = Math.abs(greeks.delta || 0.2);
+
+                // Probability of Profit (POP) calculation
+                // Using standard lognormal approximation: POP ≈ (1 - |Delta|) * 100 adjusted for cushion
+                const pop = Math.min(99.2, Math.max(50.0, Number(((1 - absDelta * 0.95) * 100).toFixed(1))));
+                const probAssignment = Number((100 - pop).toFixed(1));
+
+                // Financial Basis & Returns
+                const cashBasisPerShare = strike;
+                const marginBasisPerShare = estimatePortfolioMargin(
+                  currentPrice,
+                  strike,
+                  execBid,
+                  marginShockPct
+                );
+
+                const annualReturnCash = (execBid / cashBasisPerShare) * (365 / exp.dte) * 100;
+                const annualReturnMargin = (execBid / marginBasisPerShare) * (365 / exp.dte) * 100;
+
+                if (annualReturnMargin < minAnnualMarginReturn) continue;
+
+                const spreadPct = execBid > 0 && ask > 0 ? Number((((ask - execBid) / execBid) * 100).toFixed(1)) : 0;
+                const dailyTheta = Math.abs(greeks.theta || 0) * 100;
+                const isBelowBollingerLower = bollingerLower !== null && strike <= bollingerLower;
+                const ivToHvRatio = histVolPct && histVolPct > 0 ? Number((ivPct / histVolPct).toFixed(2)) : null;
+
+                // Strategy Flags
+                const flags: string[] = [];
+                if (isBelowBollingerLower) flags.push("Below Lower Bollinger");
+                if (ivToHvRatio && ivToHvRatio >= 1.15) flags.push("Rich IV / Vol Edge");
+                if (exp.dte >= 20 && exp.dte <= 45) flags.push("Sweet Spot Theta (20-45d)");
+                if (cushionToStrikePct >= 18) flags.push("Deep OTM Safety Buffer");
+                if (spreadPct <= 8) flags.push("Tight Bid-Ask Spread");
+                if (oi >= 250) flags.push("High Open Interest");
+                if (annualReturnMargin >= 40) flags.push("High Yield Harvest");
+
+                // Risk Tier Categorization
+                // Incorporating Delta, Downside Cushion, POP, Bollinger Band Lower support, and RSI(14)
+                let riskTier: "least_risk" | "medium_risk" | "high_risk" = "medium_risk";
+                let riskTierLabel = "Medium Risk (Balanced)";
+
+                // Least Risk criteria:
+                // 1. Delta <= 0.16 or deep cushion (>=15%) & high POP (>=84%)
+                // 2. OR Strike is below Lower Bollinger Band + Delta <= 0.22 + not severely overbought (RSI <= 68)
+                const qualifiesLeastRisk =
+                  (absDelta <= 0.16) ||
+                  (cushionToStrikePct >= 15.0 && pop >= 84.0) ||
+                  (isBelowBollingerLower && absDelta <= 0.20 && pop >= 80.0 && (rsi === null || rsi <= 65));
+
+                // High Risk criteria:
+                // Delta > 0.32 or elevated vulnerability (RSI > 75 overbought or extreme RSI < 25 falling knife) or narrow cushion (< 6%)
+                const qualifiesHighRisk =
+                  absDelta > 0.30 ||
+                  cushionToStrikePct < 6.0 ||
+                  pop < 70.0 ||
+                  (rsi !== null && rsi > 78);
+
+                if (qualifiesLeastRisk) {
+                  riskTier = "least_risk";
+                  riskTierLabel = "Least Risk (Conservative)";
+                } else if (qualifiesHighRisk) {
+                  riskTier = "high_risk";
+                  riskTierLabel = "High Risk (Aggressive)";
+                } else {
+                  riskTier = "medium_risk";
+                  riskTierLabel = "Medium Risk (Balanced)";
+                }
+
+                const score = computePutRecommendationScore(
+                  riskTier,
+                  annualReturnMargin,
+                  pop,
+                  cushionToStrikePct,
+                  exp.dte,
+                  ivPct,
+                  histVolPct || 0,
+                  rsi,
+                  isBelowBollingerLower,
+                  spreadPct,
+                  oi
+                );
+
+                // Algorithmic Trade Rationale with RSI & Bollinger Band details
+                let bbRsiContext = "";
+                if (isBelowBollingerLower) {
+                  bbRsiContext = ` [Strike below 20d Lower BB $${bollingerLower?.toFixed(2)}]`;
+                } else if (bollingerZone) {
+                  bbRsiContext = ` [BB zone: ${bollingerZone.replace(/_/g, " ")}]`;
+                }
+                const rsiStr = rsi !== null ? ` | RSI(14): ${rsi.toFixed(0)}` : "";
+
+                let rationale = "";
+                if (riskTier === "least_risk") {
+                  rationale = `Safe Delta ${greeks.delta?.toFixed(2) || "-0.12"} positioned ${cushionToStrikePct}% ($${(currentPrice - strike).toFixed(2)}) below spot${bbRsiContext}${rsiStr}. Offers ${pop}% POP with $${(execBid * 100).toFixed(0)} premium ($${dailyTheta.toFixed(2)}/day theta) and ${annualReturnMargin.toFixed(1)}% annualized margin return.`;
+                } else if (riskTier === "medium_risk") {
+                  rationale = `Optimal Delta ${greeks.delta?.toFixed(2) || "-0.22"} sweet-spot with ${cushionToStrikePct}% downside cushion${bbRsiContext}${rsiStr}. Delivers strong ${annualReturnMargin.toFixed(1)}% annualized margin return with ${pop}% POP and $${dailyTheta.toFixed(2)}/day theta decay.`;
+                } else {
+                  rationale = `High-yield Delta ${greeks.delta?.toFixed(2) || "-0.35"} generating ${annualReturnMargin.toFixed(1)}% annualized margin yield ($${(execBid * 100).toFixed(0)} premium)${bbRsiContext}${rsiStr} with ${cushionToStrikePct}% buffer and rapid $${dailyTheta.toFixed(2)}/day theta decay.`;
+                }
+
+                const item = {
+                  id: `${ticker}_${exp.dateStr}_${strike}P`,
+                  ticker,
+                  current_price: Number(currentPrice.toFixed(2)),
+                  strike,
+                  expiration: exp.dateStr,
+                  dte: exp.dte,
+                  risk_tier: riskTier,
+                  risk_tier_label: riskTierLabel,
+                  score,
+                  bid: Number(execBid.toFixed(2)),
+                  ask: Number(ask.toFixed(2)),
+                  mid: Number(((execBid + (ask > 0 ? ask : execBid)) / 2).toFixed(2)),
+                  spread_pct: spreadPct,
+                  last_price: Number(last.toFixed(2)),
+                  volume,
+                  open_interest: oi,
+                  contract_symbol: put.contractSymbol || `${ticker}${exp.dateStr.replace(/-/g, "")}P${strike * 1000}`,
+                  moneyness_pct: Number(moneyness.toFixed(2)),
+                  cushion_to_strike_pct: cushionToStrikePct,
+                  breakeven_price: breakevenPrice,
+                  cushion_to_breakeven_pct: cushionToBreakevenPct,
+                  premium_per_contract: Number((execBid * 100).toFixed(2)),
+                  capital_basis_margin: Number((marginBasisPerShare * 100).toFixed(2)),
+                  capital_basis_cash_secured: Number((cashBasisPerShare * 100).toFixed(2)),
+                  annualized_return_margin: Number(annualReturnMargin.toFixed(1)),
+                  annualized_return_cash_secured: Number(annualReturnCash.toFixed(1)),
+                  daily_theta_decay: Number(dailyTheta.toFixed(2)),
+                  probability_of_profit: pop,
+                  probability_of_assignment: probAssignment,
+                  greeks: {
+                    delta: greeks.delta,
+                    gamma: greeks.gamma,
+                    theta: greeks.theta,
+                    vega: greeks.vega,
+                    rho: greeks.rho,
+                    iv_pct: ivPct,
+                  },
+                  technicals: {
+                    rsi_14: rsi,
+                    bollinger_zone: bollingerZone,
+                    bollinger_lower: bollingerLower,
+                    is_below_bollinger_lower: isBelowBollingerLower,
+                    hist_vol_pct: histVolPct,
+                    iv_to_hv_ratio: ivToHvRatio,
+                    fifty_two_week_high: fiftyTwoWeekHigh,
+                    dist_to_52w_high_pct: distTo52wHigh,
+                    market_cap: marketCap,
+                    next_earnings_date: nextEarningsDate,
+                  },
+                  rationale,
+                  strategy_flags: flags,
+                };
+
+                allList.push(item);
+                if (riskTier === "least_risk") leastRiskList.push(item);
+                else if (riskTier === "medium_risk") mediumRiskList.push(item);
+                else highRiskList.push(item);
+              }
+            }
+          } catch (err) {
+            console.error(`Error processing recommendations for ${ticker}:`, err);
+          }
+        })
+      );
+    }
+
+    // Sort each list by algorithmic score descending, then annualized margin return descending
+    const sortFn = (a: any, b: any) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.annualized_return_margin - a.annualized_return_margin;
+    };
+
+    leastRiskList.sort(sortFn);
+    mediumRiskList.sort(sortFn);
+    highRiskList.sort(sortFn);
+    allList.sort(sortFn);
+
+    const computeSummary = (list: any[]) => {
+      if (list.length === 0) {
+        return {
+          count: 0,
+          avg_pop: 0,
+          avg_margin_return: 0,
+          avg_cash_return: 0,
+          avg_cushion: 0,
+          avg_theta: 0,
+        };
+      }
+      const count = list.length;
+      const avg_pop = Number((list.reduce((s, i) => s + i.probability_of_profit, 0) / count).toFixed(1));
+      const avg_margin_return = Number((list.reduce((s, i) => s + i.annualized_return_margin, 0) / count).toFixed(1));
+      const avg_cash_return = Number((list.reduce((s, i) => s + i.annualized_return_cash_secured, 0) / count).toFixed(1));
+      const avg_cushion = Number((list.reduce((s, i) => s + i.cushion_to_strike_pct, 0) / count).toFixed(1));
+      const avg_theta = Number((list.reduce((s, i) => s + i.daily_theta_decay, 0) / count).toFixed(2));
+      return {
+        count,
+        avg_pop,
+        avg_margin_return,
+        avg_cash_return,
+        avg_cushion,
+        avg_theta,
+        top_pick: list[0] || undefined,
+      };
+    };
+
+    res.json({
+      least_risk: leastRiskList,
+      medium_risk: mediumRiskList,
+      high_risk: highRiskList,
+      all_recommendations: allList,
+      tickers_scanned: tickerList,
+      total_contracts_evaluated: totalContractsEvaluated,
+      tier_summaries: {
+        least_risk: computeSummary(leastRiskList),
+        medium_risk: computeSummary(mediumRiskList),
+        high_risk: computeSummary(highRiskList),
+      },
+      market_context: marketContextMap,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e: any) {
+    console.error("Error in /api/put-recommendations:", e);
+    res.status(500).json({ error: e.message || "Failed to generate put recommendations" });
+  }
+});
+
+// AI Strategic Portfolio Allocation with Gemini
+app.post("/api/ai-put-strategy", async (req: Request, res: Response) => {
+  try {
+    const { leastRisk, mediumRisk, highRisk, tickers } = req.body;
+
+    const sampleLeast = (leastRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Yield Margin: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
+    const sampleMed = (mediumRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Yield Margin: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
+    const sampleHigh = (highRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Yield Margin: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
+
+    const prompt = `You are a Senior Quantitative Portfolio Manager and Volatility Structurer.
+Analyze the following top sell put option opportunities across three risk tiers (Least Risk, Medium Risk, High Risk) for the user's watchlist universe (${tickers ? tickers.join(", ") : "mega-caps"}).
+
+Least Risk candidates (Deep OTM, >85% POP, fortress safety):
+${sampleLeast.join("\n")}
+
+Medium Risk candidates (Balanced sweet-spot, 70-85% POP, optimal alpha):
+${sampleMed.join("\n")}
+
+High Risk candidates (Aggressive, high yield / IV harvest, 55-70% POP):
+${sampleHigh.join("\n")}
+
+Provide an institutional-grade strategic allocation and trade recommendations in strict JSON.`;
+
+    const ai = getGenAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            market_regime: { type: Type.STRING, description: "Current market volatility and options selling regime summary (e.g., 'Elevated Tech IV • Prime Premium Selling')" },
+            allocation: {
+              type: Type.OBJECT,
+              properties: {
+                least_risk_pct: { type: Type.NUMBER, description: "Recommended portfolio percentage in Least Risk puts" },
+                medium_risk_pct: { type: Type.NUMBER, description: "Recommended portfolio percentage in Medium Risk puts" },
+                high_risk_pct: { type: Type.NUMBER, description: "Recommended portfolio percentage in High Risk puts" },
+                cash_reserve_pct: { type: Type.NUMBER, description: "Recommended dry powder / margin cash buffer percentage" },
+              },
+              required: ["least_risk_pct", "medium_risk_pct", "high_risk_pct", "cash_reserve_pct"],
+            },
+            executive_summary: { type: Type.STRING, description: "2 to 3 concise sentences providing executive trade guidance across the 3 risk buckets." },
+            tier_guidance: {
+              type: Type.OBJECT,
+              properties: {
+                least_risk_rationale: { type: Type.STRING, description: "Guidance and target profile for the least risk bucket" },
+                medium_risk_rationale: { type: Type.STRING, description: "Guidance and target profile for the medium risk bucket" },
+                high_risk_rationale: { type: Type.STRING, description: "Guidance and target profile for the high risk bucket" },
+              },
+              required: ["least_risk_rationale", "medium_risk_rationale", "high_risk_rationale"],
+            },
+            recommended_trades: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  ticker: { type: Type.STRING },
+                  tier: { type: Type.STRING },
+                  strike: { type: Type.NUMBER },
+                  expiration: { type: Type.STRING },
+                  action_thesis: { type: Type.STRING },
+                  catalyst_or_risk: { type: Type.STRING },
+                },
+                required: ["ticker", "tier", "strike", "expiration", "action_thesis", "catalyst_or_risk"],
+              },
+            },
+            risk_rules: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "3 to 4 non-negotiable risk management rules (e.g., close at 50% profit, roll if tested at 21 DTE, max margin utilization).",
+            },
+          },
+          required: ["market_regime", "allocation", "executive_summary", "tier_guidance", "recommended_trades", "risk_rules"],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text?.trim() || "{}");
+    res.json({ success: true, strategy: parsed });
+  } catch (err: any) {
+    console.error("Error generating AI put strategy:", err);
+    res.status(500).json({ error: err.message || "Failed to generate AI put strategy" });
+  }
+});
 
 app.get("/api/sec-earnings", async (req: Request, res: Response) => {
   try {

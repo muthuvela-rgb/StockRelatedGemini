@@ -8,10 +8,12 @@ import {
   Clock,
   BookmarkCheck,
   Search,
-  Sparkles
+  Sparkles,
+  ShieldCheck
 } from "lucide-react";
 
 export type ActiveTab =
+  | "put-recommendations"
   | "options-scanner"
   | "fall-detector"
   | "technicals"
@@ -41,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "premium-curves" as ActiveTab, label: "Premium Curves", icon: Search },
     { id: "sec-earnings" as ActiveTab, label: "SEC Earnings", icon: FileSpreadsheet },
     { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount },
+    { id: "put-recommendations" as ActiveTab, label: "Put Recommendations", icon: ShieldCheck, badge: "3 Risk Tiers" },
   ];
 
   return (

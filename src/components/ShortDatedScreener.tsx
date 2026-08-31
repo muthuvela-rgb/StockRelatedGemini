@@ -46,7 +46,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
           strikeMode: "band",
           pctLow: 40,
           pctHigh: maxMoneyness,
-          noMargin: false,
+          noMargin: true,
           marginShockPct: 15.0,
         }),
       });

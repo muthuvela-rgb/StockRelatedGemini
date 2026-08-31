@@ -273,3 +273,122 @@ export interface PremiumVsExpirationAnalysis {
   points: PremiumVsExpirationPoint[];
   knee_point: PremiumVsExpirationPoint | null;
 }
+
+export type RiskTier = "least_risk" | "medium_risk" | "high_risk";
+
+export interface RecommendedPut {
+  id: string;
+  ticker: string;
+  current_price: number;
+  strike: number;
+  expiration: string;
+  dte: number;
+  risk_tier: RiskTier;
+  risk_tier_label: string;
+  score: number;
+  bid: number;
+  ask: number;
+  mid: number;
+  spread_pct: number;
+  last_price: number;
+  volume: number;
+  open_interest: number;
+  contract_symbol: string;
+  moneyness_pct: number;
+  cushion_to_strike_pct: number;
+  breakeven_price: number;
+  cushion_to_breakeven_pct: number;
+  premium_per_contract: number;
+  capital_basis_margin: number;
+  capital_basis_cash_secured: number;
+  annualized_return_margin: number;
+  annualized_return_cash_secured: number;
+  daily_theta_decay: number;
+  probability_of_profit: number;
+  probability_of_assignment: number;
+  greeks: {
+    delta: number | null;
+    gamma: number | null;
+    theta: number | null;
+    vega: number | null;
+    rho: number | null;
+    iv_pct: number;
+  };
+  technicals: {
+    rsi_14: number | null;
+    bollinger_zone: string | null;
+    bollinger_lower: number | null;
+    is_below_bollinger_lower: boolean;
+    hist_vol_pct: number | null;
+    iv_to_hv_ratio: number | null;
+    fifty_two_week_high: number | null;
+    dist_to_52w_high_pct: number | null;
+    market_cap?: number | null;
+    next_earnings_date?: string | null;
+  };
+  rationale: string;
+  strategy_flags: string[];
+}
+
+export interface RiskTierSummary {
+  count: number;
+  avg_pop: number;
+  avg_margin_return: number;
+  avg_cash_return: number;
+  avg_cushion: number;
+  avg_theta: number;
+  top_pick?: RecommendedPut;
+}
+
+export interface PutRecommendationsResponse {
+  least_risk: RecommendedPut[];
+  medium_risk: RecommendedPut[];
+  high_risk: RecommendedPut[];
+  all_recommendations: RecommendedPut[];
+  tickers_scanned: string[];
+  total_contracts_evaluated: number;
+  tier_summaries: {
+    least_risk: RiskTierSummary;
+    medium_risk: RiskTierSummary;
+    high_risk: RiskTierSummary;
+  };
+  market_context: Record<
+    string,
+    {
+      price: number;
+      rsi: number | null;
+      iv: number | null;
+      hv: number | null;
+      bollinger_lower: number | null;
+      bollinger_upper: number | null;
+      dist_to_52w_high_pct: number | null;
+    }
+  >;
+  timestamp: string;
+}
+
+export interface AiPortfolioStrategy {
+  market_regime: string;
+  allocation: {
+    least_risk_pct: number;
+    medium_risk_pct: number;
+    high_risk_pct: number;
+    cash_reserve_pct: number;
+  };
+  executive_summary: string;
+  tier_guidance: {
+    least_risk_rationale: string;
+    medium_risk_rationale: string;
+    high_risk_rationale: string;
+  };
+  recommended_trades: Array<{
+    ticker: string;
+    tier: string;
+    strike: number;
+    expiration: string;
+    action_thesis: string;
+    catalyst_or_risk: string;
+  }>;
+  risk_rules: string[];
+}
+

@@ -59,7 +59,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [bollingerPeriod, setBollingerPeriod] = useState(20);
   const [bollingerStd, setBollingerStd] = useState(2.0);
 
-  const [capitalBasisType, setCapitalBasisType] = useState<"portfolio_margin" | "cash_secured">("portfolio_margin");
+  const [capitalBasisType, setCapitalBasisType] = useState<"portfolio_margin" | "cash_secured">("cash_secured");
   const [shockPct, setShockPct] = useState(15.0);
   const [noFallback, setNoFallback] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
