@@ -203,38 +203,63 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       ? filteredRecords.reduce((a, b) => a + b.annualized_return_pct, 0) / filteredRecords.length
       : 0;
 
-  // Single Stock Analysis & Plot Data
+  // Single Stock vs Multi-Stock Analysis & Plot Data
   const uniqueTickers = Array.from(new Set(filteredRecords.map((r) => r.ticker)));
   const isSingleStock = uniqueTickers.length === 1;
   const [selectedStockForPlot, setSelectedStockForPlot] = useState<string>("");
-  const activeStockTicker = isSingleStock ? uniqueTickers[0] : (selectedStockForPlot || uniqueTickers[0] || "");
-  const [chartViewMode, setChartViewMode] = useState<"premium_vs_exp" | "return_vs_exp" | "scatter">("premium_vs_exp");
+  const activeStockTicker = isSingleStock ? uniqueTickers[0] : (selectedStockForPlot || "ALL");
+  const isViewingSingleStock = activeStockTicker !== "ALL" && activeStockTicker !== "";
+  const [singleStockExpFilter, setSingleStockExpFilter] = useState<string>("ALL");
+
   const [showSecondaryReturnLine, setShowSecondaryReturnLine] = useState(true);
 
-  // Filter single stock records chronologically by expiration
-  const singleStockRecords = filteredRecords
-    .filter((r) => r.ticker === activeStockTicker)
-    .sort((a, b) => a.days_to_expiration - b.days_to_expiration);
+  // Filter single stock records
+  const targetTicker = isViewingSingleStock ? activeStockTicker : (uniqueTickers[0] || "");
+  const singleStockRecordsAll = filteredRecords.filter((r) => r.ticker === targetTicker);
+  const singleStockExpirations = Array.from(new Set(singleStockRecordsAll.map((r) => r.expiration))).sort();
 
-  // Compute Knee Point (point of maximum curvature / rate of decay change)
-  let kneeIdx = -1;
-  if (singleStockRecords.length >= 3) {
-    let maxCurvature = -Infinity;
-    for (let i = 1; i < singleStockRecords.length - 1; i++) {
-      const prev = singleStockRecords[i - 1];
-      const curr = singleStockRecords[i];
-      const next = singleStockRecords[i + 1];
-      const s1 = (curr.bid - prev.bid) / Math.max(1, curr.days_to_expiration - prev.days_to_expiration);
-      const s2 = (next.bid - curr.bid) / Math.max(1, next.days_to_expiration - curr.days_to_expiration);
-      const curvature = s1 - s2;
-      if (curvature > maxCurvature) {
-        maxCurvature = curvature;
-        kneeIdx = i;
-      }
-    }
-  }
+  const singleStockFilteredRecords = singleStockExpFilter === "ALL"
+    ? singleStockRecordsAll
+    : singleStockRecordsAll.filter((r) => r.expiration === singleStockExpFilter);
 
-  const singleStockExpData = singleStockRecords.map((r, idx) => ({
+  // Single stock strike-sorted dataset (X-Axis: Strike Price $)
+  const singleStockStrikeData = [...singleStockFilteredRecords]
+    .sort((a, b) => a.strike - b.strike)
+    .map((r) => ({
+      ticker: r.ticker,
+      strike: r.strike,
+      premium: r.bid,
+      ask: r.ask,
+      lastPrice: r.last_price,
+      spot: r.current_price,
+      moneyness: r.moneyness_pct,
+      dte: r.days_to_expiration,
+      expiration: r.expiration,
+      returnPct: r.annualized_return_pct,
+      returnCashSecured: r.annualized_return_pct_cash_secured,
+      capitalBasis: r.capital_basis,
+      iv: r.implied_volatility,
+      usedFallback: r.bid_used_fallback,
+    }));
+
+  // Multi-stock dataset (X-Axis: % Moneyness, Y1: Premium $, Y2: Cash Secured Return %)
+  const multiStockMoneynessData = filteredRecords.map((r) => ({
+    ticker: r.ticker,
+    moneyness: Number(r.moneyness_pct.toFixed(2)),
+    premium: r.bid,
+    ask: r.ask,
+    returnCashSecured: Number(r.annualized_return_pct_cash_secured.toFixed(1)),
+    returnMargin: Number(r.annualized_return_pct.toFixed(1)),
+    strike: r.strike,
+    spot: r.current_price,
+    dte: r.days_to_expiration,
+    expiration: r.expiration,
+    iv: r.implied_volatility,
+  }));
+
+  // Single stock chronological expiration dataset
+  const singleStockExpRecords = [...singleStockRecordsAll].sort((a, b) => a.days_to_expiration - b.days_to_expiration);
+  const singleStockExpData = singleStockExpRecords.map((r) => ({
     ticker: r.ticker,
     expiration: r.expiration,
     label: `${r.expiration} (${r.days_to_expiration}d)`,
@@ -242,7 +267,6 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     dte: r.days_to_expiration,
     premium: r.bid,
     ask: r.ask,
-    lastPrice: r.last_price,
     strike: r.strike,
     spot: r.current_price,
     moneyness: r.moneyness_pct,
@@ -250,32 +274,6 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     returnCashSecured: r.annualized_return_pct_cash_secured,
     capitalBasis: r.capital_basis,
     iv: r.implied_volatility,
-    usedFallback: r.bid_used_fallback,
-    isKnee: idx === kneeIdx,
-  }));
-
-  const kneeRecord = kneeIdx >= 0 ? singleStockExpData[kneeIdx] : null;
-
-  // Chart data
-  const scatterData = filteredRecords.slice(0, 150).map((r) => ({
-    ticker: r.ticker,
-    moneyness: r.moneyness_pct,
-    returnPct: r.annualized_return_pct,
-    strike: r.strike,
-    dte: r.days_to_expiration,
-    bid: r.bid,
-  }));
-
-  // Expiration bar chart data
-  const expirationBarData = singleStockRecords.slice(0, 30).map((r) => ({
-    label: `${r.expiration.slice(5)} ($${r.strike})`,
-    expiration: r.expiration,
-    ticker: r.ticker,
-    strike: r.strike,
-    dte: r.days_to_expiration,
-    returnPct: r.annualized_return_pct,
-    returnCashSecured: r.annualized_return_pct_cash_secured,
-    premium: r.bid,
   }));
 
   const handleSort = (field: keyof PutOptionRecord) => {
@@ -724,139 +722,115 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
-                    {chartViewMode === "premium_vs_exp" && <TrendingUp className="w-4 h-4 text-cyan-400" />}
-                    {chartViewMode === "return_vs_exp" && <Calendar className="w-4 h-4 text-blue-400" />}
-                    {chartViewMode === "scatter" && <Target className="w-4 h-4 text-emerald-400" />}
-                    {chartViewMode === "premium_vs_exp"
-                      ? `${activeStockTicker} • Option Premium ($) vs Expiration Date`
-                      : chartViewMode === "return_vs_exp"
-                      ? `${activeStockTicker} • Annualized Return (%) by Expiration`
-                      : "Universe • Moneyness (%) vs Annualized Return (%)"}
+                    {isViewingSingleStock ? (
+                      <>
+                        <TrendingUp className="w-4 h-4 text-cyan-400" />
+                        <span>{targetTicker} • Option Premium ($) vs Strike Price ($)</span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-bold">
+                          Single Stock Mode
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Target className="w-4 h-4 text-emerald-400" />
+                        <span>Universe • Option Premium ($) & Annualized Cash Return (%) vs % Moneyness</span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">
+                          Multi-Stock Mode ({uniqueTickers.length} Tickers)
+                        </span>
+                      </>
+                    )}
                   </h3>
-                  {activeStockTicker && (
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono font-bold">
-                      {activeStockTicker}
-                    </span>
-                  )}
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  {chartViewMode === "premium_vs_exp"
-                    ? `Visualizing options time decay & premium growth across expiration dates for ${activeStockTicker}`
-                    : chartViewMode === "return_vs_exp"
-                    ? `Comparing annualized yield across expiration horizons for ${activeStockTicker}`
-                    : "Moneyness % safety margin vs. annualized yield across all scanned contracts"}
+                  {isViewingSingleStock
+                    ? `Plotting Option Premium ($) against Strike Price ($) across available option contracts for ${targetTicker}`
+                    : "Plotting % Moneyness (X-Axis) vs Option Premium ($) (Left Y-Axis) and Cash-Secured Annualized Return % (Right Y-Axis)"}
                 </p>
               </div>
 
-              {/* Controls: Stock Selector & Mode Buttons */}
+              {/* Controls: Stock Selector & Expiration Filter */}
               <div className="flex flex-wrap items-center gap-2.5">
-                {/* Stock Selector (if multi-stock) */}
+                {/* Stock Selector (if multi-stock universe) */}
                 {uniqueTickers.length > 1 && (
                   <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-                    <span className="text-slate-400">Stock:</span>
+                    <span className="text-slate-400">View:</span>
                     <select
                       value={activeStockTicker}
-                      onChange={(e) => setSelectedStockForPlot(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedStockForPlot(e.target.value);
+                        setSingleStockExpFilter("ALL");
+                      }}
                       className="bg-transparent text-white font-bold outline-none cursor-pointer"
                     >
+                      <option value="ALL" className="bg-slate-900 text-white">
+                        🌐 All Stocks (% Moneyness vs Premium & Cash Yield)
+                      </option>
                       {uniqueTickers.map((t) => (
                         <option key={t} value={t} className="bg-slate-900 text-white">
-                          {t}
+                          📈 {t} (Strike Price vs Premium)
                         </option>
                       ))}
                     </select>
                   </div>
                 )}
 
-                {/* Mode Switcher Buttons */}
-                <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-xs font-semibold">
-                  <button
-                    id="chart-mode-premium-btn"
-                    onClick={() => setChartViewMode("premium_vs_exp")}
-                    className={`px-3 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
-                      chartViewMode === "premium_vs_exp"
-                        ? "bg-cyan-600 text-white shadow"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    <TrendingUp className="w-3 h-3" />
-                    Premium vs Expiration
-                  </button>
+                {/* Expiration Filter for Single Stock */}
+                {isViewingSingleStock && singleStockExpirations.length > 1 && (
+                  <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+                    <span className="text-slate-400">Expiration:</span>
+                    <select
+                      value={singleStockExpFilter}
+                      onChange={(e) => setSingleStockExpFilter(e.target.value)}
+                      className="bg-transparent text-white font-semibold outline-none cursor-pointer"
+                    >
+                      <option value="ALL" className="bg-slate-900 text-white">
+                        All Expirations ({singleStockRecordsAll.length} puts)
+                      </option>
+                      {singleStockExpirations.map((exp) => (
+                        <option key={exp} value={exp} className="bg-slate-900 text-white">
+                          {exp}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-                  <button
-                    id="chart-mode-return-btn"
-                    onClick={() => setChartViewMode("return_vs_exp")}
-                    className={`px-3 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
-                      chartViewMode === "return_vs_exp"
-                        ? "bg-blue-600 text-white shadow"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    <BarChart2 className="w-3 h-3" />
-                    Return % by Expiration
-                  </button>
-
-                  <button
-                    id="chart-mode-scatter-btn"
-                    onClick={() => setChartViewMode("scatter")}
-                    className={`px-3 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
-                      chartViewMode === "scatter"
-                        ? "bg-emerald-600 text-white shadow"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    <Target className="w-3 h-3" />
-                    Moneyness Scatter
-                  </button>
-                </div>
+                {/* Return Overlay Checkbox */}
+                <label className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showSecondaryReturnLine}
+                    onChange={(e) => setShowSecondaryReturnLine(e.target.checked)}
+                    className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                  />
+                  <span>Show Cash Yield % Axis</span>
+                </label>
               </div>
             </div>
 
-            {/* CHART 1: PREMIUM ($) VS EXPIRATION DATE (Underlying script output plot) */}
-            {chartViewMode === "premium_vs_exp" && (
+            {/* SINGLE STOCK PLOT: X-AXIS = STRIKE PRICE ($), Y-AXIS = OPTION PREMIUM ($) & CASH SECURED RETURN (%) */}
+            {isViewingSingleStock ? (
               <div>
-                {/* Secondary Toggles & Knee Tag */}
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-3 text-xs">
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1.5 text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={showSecondaryReturnLine}
-                        onChange={(e) => setShowSecondaryReturnLine(e.target.checked)}
-                        className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
-                      />
-                      <span>Overlay Annualized Return % (Right Y-Axis)</span>
-                    </label>
-                  </div>
-
-                  {kneeRecord && (
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-[11px]">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>
-                        Decay Sweet Spot: <strong>{kneeRecord.expiration} ({kneeRecord.dte}d)</strong> @ ${kneeRecord.premium.toFixed(2)} ({kneeRecord.returnPct.toFixed(1)}% yield)
-                      </span>
-                    </div>
-                  )}
-                </div>
-
                 <div className="h-72 sm:h-84 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={singleStockExpData} margin={{ top: 15, right: 30, bottom: 25, left: 10 }}>
+                    <ComposedChart data={singleStockStrikeData} margin={{ top: 15, right: 30, bottom: 25, left: 10 }}>
                       <defs>
-                        <linearGradient id="premiumFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
+                        <linearGradient id="singleStockPremiumFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35} />
                           <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      
+                      {/* X-Axis: Strike Price ($) */}
                       <XAxis
-                        dataKey="shortLabel"
+                        dataKey="strike"
                         stroke="#64748b"
                         fontSize={11}
-                        angle={-20}
-                        textAnchor="end"
-                        height={40}
+                        tickFormatter={(v) => `$${v}`}
+                        label={{ value: "Strike Price ($)", position: "insideBottom", offset: -15, fill: "#94a3b8", fontSize: 11 }}
                       />
+                      
                       {/* Left Y-Axis: Option Premium ($) */}
                       <YAxis
                         yAxisId="left"
@@ -866,7 +840,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         domain={[0, "auto"]}
                         label={{ value: "Option Premium ($)", angle: -90, position: "insideLeft", fill: "#06b6d4", fontSize: 11 }}
                       />
-                      {/* Right Y-Axis: Annualized Return (%) */}
+
+                      {/* Right Y-Axis: Cash-Secured Annualized Return (%) */}
                       {showSecondaryReturnLine && (
                         <YAxis
                           yAxisId="right"
@@ -875,15 +850,16 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           fontSize={11}
                           unit="%"
                           domain={[0, "auto"]}
-                          label={{ value: "Annualized Return (%)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
+                          label={{ value: "Cash-Secured Return (%)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
                         />
                       )}
+
                       <RechartsTooltip
                         content={({ active, payload }) => {
                           if (active && payload && payload.length) {
                             const d = payload[0].payload;
                             return (
-                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[240px]">
+                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[250px]">
                                 <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
                                   <span className="font-bold text-cyan-400 text-sm">
                                     {d.ticker} ${d.strike} Put
@@ -895,38 +871,33 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
 
                                 <div className="space-y-1 font-mono text-[11px]">
                                   <div className="flex justify-between">
-                                    <span className="text-slate-400">Bid Premium:</span>
-                                    <span className="text-cyan-300 font-bold text-xs">${d.premium.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Ask Premium:</span>
-                                    <span className="text-slate-300">${d.ask.toFixed(2)}</span>
+                                    <span className="text-slate-400">Strike Price:</span>
+                                    <span className="text-white font-bold">${d.strike.toFixed(2)}</span>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-slate-400">Spot Price / Moneyness:</span>
                                     <span className="text-slate-300">${d.spot.toFixed(2)} ({d.moneyness.toFixed(1)}%)</span>
                                   </div>
                                   <div className="flex justify-between pt-1 border-t border-slate-800/80">
+                                    <span className="text-cyan-400 font-semibold">Bid Premium:</span>
+                                    <span className="text-cyan-300 font-bold text-xs">${d.premium.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Ask Premium:</span>
+                                    <span className="text-slate-300">${d.ask.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
+                                    <span className="text-emerald-400 font-semibold">Cash-Secured Yield:</span>
+                                    <span className="text-emerald-400 font-bold text-xs">{d.returnCashSecured.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="flex justify-between">
                                     <span className="text-slate-400">Port Margin Yield:</span>
-                                    <span className="text-emerald-400 font-bold">{d.returnPct.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Cash Secured Yield:</span>
-                                    <span className="text-slate-300">{d.returnCashSecured.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">OCC Margin Collateral:</span>
-                                    <span className="text-slate-300">${d.capitalBasis.toFixed(2)}</span>
+                                    <span className="text-slate-300">{d.returnPct.toFixed(1)}%</span>
                                   </div>
                                   {d.iv && (
                                     <div className="flex justify-between">
-                                      <span className="text-slate-400">Implied Volatility:</span>
+                                      <span className="text-slate-400">Implied Vol (IV):</span>
                                       <span className="text-amber-400">{d.iv.toFixed(1)}%</span>
-                                    </div>
-                                  )}
-                                  {d.isKnee && (
-                                    <div className="mt-2 pt-1 text-center bg-amber-500/20 text-amber-300 rounded py-0.5 font-bold font-sans text-[10px]">
-                                      ★ Optimal Curve Knee / Decay Sweet Spot
                                     </div>
                                   )}
                                 </div>
@@ -936,9 +907,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           return null;
                         }}
                       />
-                      <Legend wrapperStyle={{ paddingTop: "8px", fontSize: "0.75rem" }} />
+                      <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
                       
-                      {/* Premium Area Curve */}
+                      {/* Premium Area / Line against Strike Price */}
                       <Area
                         yAxisId="left"
                         type="monotone"
@@ -946,12 +917,11 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         name="Bid Premium ($)"
                         stroke="#06b6d4"
                         strokeWidth={2.5}
-                        fill="url(#premiumFill)"
-                        dot={{ r: 3, fill: "#06b6d4" }}
+                        fill="url(#singleStockPremiumFill)"
+                        dot={{ r: 3.5, fill: "#06b6d4" }}
                         activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2 }}
                       />
 
-                      {/* Ask Price Line */}
                       <Line
                         yAxisId="left"
                         type="monotone"
@@ -963,172 +933,227 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         dot={false}
                       />
 
-                      {/* Annualized Return % Line */}
+                      {/* Cash-Secured Annualized Return % Line */}
                       {showSecondaryReturnLine && (
                         <Line
                           yAxisId="right"
                           type="monotone"
-                          dataKey={capitalBasisType === "portfolio_margin" ? "returnPct" : "returnCashSecured"}
-                          name="Annualized Return %"
+                          dataKey="returnCashSecured"
+                          name="Cash-Secured Annualized Return (%)"
                           stroke="#10b981"
                           strokeWidth={2}
-                          dot={{ r: 2.5, fill: "#10b981" }}
+                          dot={{ r: 3, fill: "#10b981" }}
                         />
                       )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
 
-                {/* Analytical Footnote Callouts */}
-                {singleStockExpData.length > 0 && (
+                {/* Analytical Footnote Callouts for Single Stock */}
+                {singleStockStrikeData.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 uppercase block">Underlying & Strike</span>
+                      <span className="text-[10px] text-slate-500 uppercase block">Underlying Spot</span>
                       <span className="font-bold text-white font-mono">
-                        {activeStockTicker} ${singleStockExpData[0]?.strike.toFixed(2)}
+                        {targetTicker} ${singleStockStrikeData[0]?.spot.toFixed(2)}
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        Spot: ${singleStockExpData[0]?.spot.toFixed(2)}
+                        {singleStockStrikeData.length} Strikes plotted
                       </span>
                     </div>
 
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 uppercase block">Premium Range</span>
+                      <span className="text-[10px] text-slate-500 uppercase block">Strike Range</span>
                       <span className="font-bold text-cyan-400 font-mono">
-                        ${Math.min(...singleStockExpData.map(d => d.premium)).toFixed(2)} – ${Math.max(...singleStockExpData.map(d => d.premium)).toFixed(2)}
+                        ${Math.min(...singleStockStrikeData.map(d => d.strike)).toFixed(2)} – ${Math.max(...singleStockStrikeData.map(d => d.strike)).toFixed(2)}
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        Across {singleStockExpData.length} Expirations
+                        X-Axis Strike Price ($)
                       </span>
                     </div>
 
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 uppercase block">Max Annualized Return</span>
+                      <span className="text-[10px] text-slate-500 uppercase block">Max Cash Secured Yield</span>
                       <span className="font-bold text-emerald-400 font-mono">
-                        {Math.max(...singleStockExpData.map(d => d.returnPct)).toFixed(1)}%
+                        {Math.max(...singleStockStrikeData.map(d => d.returnCashSecured)).toFixed(1)}%
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        {capitalBasisType === "portfolio_margin" ? "OCC TIMS Margin" : "Cash Secured"}
+                        Annualized Cash Return
                       </span>
                     </div>
 
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 uppercase block">Time Horizon</span>
+                      <span className="text-[10px] text-slate-500 uppercase block">Expiration Scope</span>
                       <span className="font-bold text-slate-200 font-mono">
-                        {singleStockExpData[0]?.dte}d – {singleStockExpData[singleStockExpData.length - 1]?.dte}d
+                        {singleStockExpFilter === "ALL" ? "All Expirations" : singleStockExpFilter}
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        {singleStockExpData[0]?.expiration} to {singleStockExpData[singleStockExpData.length - 1]?.expiration}
+                        {singleStockExpirations.length} total expirations
                       </span>
                     </div>
                   </div>
                 )}
               </div>
-            )}
+            ) : (
+              /* MULTI-STOCK PLOT: X-AXIS = % MONEYNESS, LEFT Y-AXIS = OPTION PREMIUM ($), RIGHT Y-AXIS = CASH-SECURED ANNUALIZED RETURN (%) */
+              <div>
+                <div className="h-72 sm:h-84 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={multiStockMoneynessData} margin={{ top: 15, right: 30, bottom: 25, left: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                      
+                      {/* X-Axis: % Moneyness */}
+                      <XAxis
+                        dataKey="moneyness"
+                        type="number"
+                        stroke="#64748b"
+                        fontSize={11}
+                        domain={["auto", "auto"]}
+                        unit="%"
+                        label={{ value: "% Moneyness (Strike / Spot Price × 100)", position: "insideBottom", offset: -15, fill: "#94a3b8", fontSize: 11 }}
+                      />
+                      
+                      {/* Left Y-Axis: Option Premium ($) */}
+                      <YAxis
+                        yAxisId="left"
+                        stroke="#06b6d4"
+                        fontSize={11}
+                        unit="$"
+                        domain={[0, "auto"]}
+                        label={{ value: "Option Premium ($)", angle: -90, position: "insideLeft", fill: "#06b6d4", fontSize: 11 }}
+                      />
 
-            {/* CHART 2: ANNUALIZED RETURN (%) BY EXPIRATION DATE */}
-            {chartViewMode === "return_vs_exp" && (
-              <div className="h-72 sm:h-84 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={expirationBarData} margin={{ top: 15, right: 20, bottom: 30, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis
-                      dataKey="label"
-                      stroke="#64748b"
-                      fontSize={10}
-                      angle={-25}
-                      textAnchor="end"
-                      height={45}
-                    />
-                    <YAxis
-                      stroke="#64748b"
-                      fontSize={11}
-                      unit="%"
-                    />
-                    <RechartsTooltip
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const d = payload[0].payload;
-                          return (
-                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl text-xs text-slate-200">
-                              <p className="font-bold text-blue-400 text-sm">
-                                {d.ticker} ${d.strike} Put ({d.expiration})
-                              </p>
-                              <p className="mt-1">DTE: <span className="text-white font-mono">{d.dte} days</span></p>
-                              <p>Bid Premium: <span className="text-emerald-400 font-mono font-bold">${d.premium}</span></p>
-                              <p>Port Margin Return: <span className="text-blue-400 font-mono font-bold">{d.returnPct.toFixed(1)}%</span></p>
-                              <p>Cash Secured Return: <span className="text-slate-300 font-mono">{d.returnCashSecured.toFixed(1)}%</span></p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar
-                      dataKey={capitalBasisType === "portfolio_margin" ? "returnPct" : "returnCashSecured"}
-                      name="Annualized Return %"
-                      fill="#3b82f6"
-                      radius={[4, 4, 0, 0]}
-                    >
-                      {expirationBarData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={entry.returnPct >= 30 ? "#10b981" : "#3b82f6"}
+                      {/* Right Y-Axis: Annualized Return % (Cash-Secured Put Options) */}
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#10b981"
+                        fontSize={11}
+                        unit="%"
+                        domain={[0, "auto"]}
+                        label={{ value: "Cash-Secured Return (%)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
+                      />
+
+                      <RechartsTooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const d = payload[0].payload;
+                            return (
+                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[260px]">
+                                <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
+                                  <span className="font-bold text-emerald-400 text-sm">
+                                    {d.ticker} ${d.strike} Put
+                                  </span>
+                                  <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                                    {d.expiration} ({d.dte}d)
+                                  </span>
+                                </div>
+
+                                <div className="space-y-1 font-mono text-[11px]">
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">% Moneyness:</span>
+                                    <span className="text-white font-bold">{d.moneyness.toFixed(1)}% of Spot</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Spot & Strike:</span>
+                                    <span className="text-slate-300">${d.spot.toFixed(2)} / ${d.strike.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
+                                    <span className="text-cyan-400 font-semibold">Option Premium (Bid):</span>
+                                    <span className="text-cyan-300 font-bold text-xs">${d.premium.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Ask Premium:</span>
+                                    <span className="text-slate-300">${d.ask.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
+                                    <span className="text-emerald-400 font-semibold">Cash-Secured Ann. Return:</span>
+                                    <span className="text-emerald-400 font-bold text-xs">{d.returnCashSecured.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Port Margin Ann. Return:</span>
+                                    <span className="text-slate-300">{d.returnMargin.toFixed(1)}%</span>
+                                  </div>
+                                  {d.iv && (
+                                    <div className="flex justify-between">
+                                      <span className="text-slate-400">Implied Vol (IV):</span>
+                                      <span className="text-amber-400">{d.iv.toFixed(1)}%</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
+
+                      {/* Scatter points for Option Premium ($) on Left Y-Axis */}
+                      <Scatter
+                        yAxisId="left"
+                        dataKey="premium"
+                        name="Option Premium ($)"
+                        fill="#06b6d4"
+                      />
+
+                      {/* Scatter points for Cash-Secured Annualized Return (%) on Right Y-Axis */}
+                      {showSecondaryReturnLine && (
+                        <Scatter
+                          yAxisId="right"
+                          dataKey="returnCashSecured"
+                          name="Cash-Secured Annualized Return (%)"
+                          fill="#10b981"
                         />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
 
-            {/* CHART 3: MONEYNESS (%) VS ANNUALIZED RETURN SCATTER */}
-            {chartViewMode === "scatter" && (
-              <div className="h-72 sm:h-84 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 15, right: 20, bottom: 20, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis
-                      type="number"
-                      dataKey="moneyness"
-                      name="Moneyness"
-                      unit="%"
-                      stroke="#64748b"
-                      fontSize={11}
-                      domain={["auto", "auto"]}
-                    />
-                    <YAxis
-                      type="number"
-                      dataKey="returnPct"
-                      name="Annual Return"
-                      unit="%"
-                      stroke="#64748b"
-                      fontSize={11}
-                    />
-                    <ZAxis range={[50, 200]} />
-                    <RechartsTooltip
-                      cursor={{ strokeDasharray: "3 3" }}
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const d = payload[0].payload;
-                          return (
-                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl text-xs text-slate-200">
-                              <p className="font-bold text-blue-400 text-sm">
-                                {d.ticker} ${d.strike} Put
-                              </p>
-                              <p className="mt-1">Moneyness: <span className="text-white font-mono">{d.moneyness.toFixed(1)}%</span></p>
-                              <p>Annualized Return: <span className="text-emerald-400 font-mono font-bold">{d.returnPct.toFixed(1)}%</span></p>
-                              <p>Bid Premium: <span className="text-white font-mono">${d.bid}</span></p>
-                              <p>DTE: <span className="text-white font-mono">{d.dte} days</span></p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Scatter name="Puts" data={scatterData} fill="#3b82f6" />
-                  </ScatterChart>
-                </ResponsiveContainer>
+                {/* Analytical Footnote Callouts for Multi-Stock */}
+                {multiStockMoneynessData.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                      <span className="text-[10px] text-slate-500 uppercase block">Scanned Universe</span>
+                      <span className="font-bold text-white font-mono">
+                        {uniqueTickers.length} Tickers
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        {multiStockMoneynessData.length} Total Contracts
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                      <span className="text-[10px] text-slate-500 uppercase block">Moneyness Range</span>
+                      <span className="font-bold text-cyan-400 font-mono">
+                        {Math.min(...multiStockMoneynessData.map(d => d.moneyness)).toFixed(1)}% – {Math.max(...multiStockMoneynessData.map(d => d.moneyness)).toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        X-Axis % of Spot Price
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                      <span className="text-[10px] text-slate-500 uppercase block">Top Cash-Secured Yield</span>
+                      <span className="font-bold text-emerald-400 font-mono">
+                        {Math.max(...multiStockMoneynessData.map(d => d.returnCashSecured)).toFixed(1)}%
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Right Y-Axis Yield %
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                      <span className="text-[10px] text-slate-500 uppercase block">Premium Range</span>
+                      <span className="font-bold text-slate-200 font-mono">
+                        ${Math.min(...multiStockMoneynessData.map(d => d.premium)).toFixed(2)} – ${Math.max(...multiStockMoneynessData.map(d => d.premium)).toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Left Y-Axis Premium ($)
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
