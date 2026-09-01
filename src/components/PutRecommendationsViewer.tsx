@@ -58,7 +58,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [minAnnualReturn, setMinAnnualReturn] = useState<number>(8);
   const [minBid, setMinBid] = useState<number>(0.35);
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
-  const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("annual_cash");
+  const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("score");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
@@ -205,7 +205,13 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
     // Sort
     list.sort((a, b) => {
-      if (sortBy === "score") return b.score - a.score;
+      if (sortBy === "score") {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.cushion_to_strike_pct !== a.cushion_to_strike_pct) {
+          return b.cushion_to_strike_pct - a.cushion_to_strike_pct;
+        }
+        return b.annualized_return_cash_secured - a.annualized_return_cash_secured;
+      }
       if (sortBy === "annual_margin") return b.annualized_return_margin - a.annualized_return_margin;
       if (sortBy === "annual_cash") return b.annualized_return_cash_secured - a.annualized_return_cash_secured;
       if (sortBy === "cushion") return b.cushion_to_strike_pct - a.cushion_to_strike_pct;
@@ -392,8 +398,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               onChange={(e: any) => setSortBy(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
-              <option value="annual_cash">Annualized Cash Yield % (Cash Secured - Default)</option>
-              <option value="score">Composite Score (0-100 High-to-Low)</option>
+              <option value="score">Composite Score (Tie-Break: Downside Buffer - Default)</option>
+              <option value="annual_cash">Annualized Cash Yield % (Cash Secured)</option>
               <option value="annual_margin">Annualized Margin Yield % (Portfolio Margin)</option>
               <option value="cushion">Downside Cushion % (Safest Strike)</option>
               <option value="pop">Probability of Profit (POP %)</option>
@@ -866,7 +872,28 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
                   {/* Strategy Badges */}
                   <div className="flex flex-wrap gap-1.5 mb-3">
-                    {item.strategy_flags.map((flag, idx) => (
+                    {item.earnings_context && item.earnings_context.next_earnings_date && (
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-md border font-medium flex items-center gap-1 ${
+                          item.earnings_context.expires_before_earnings
+                            ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                            : item.earnings_context.spans_earnings
+                            ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                            : "bg-slate-800/90 text-slate-300 border-slate-700/80"
+                        }`}
+                        title={item.earnings_context.label}
+                      >
+                        <span>📅</span>
+                        <span>
+                          {item.earnings_context.expires_before_earnings
+                            ? `Expires Pre-Earnings (${item.earnings_context.next_earnings_date})`
+                            : item.earnings_context.spans_earnings
+                            ? `Spans Earnings (${item.earnings_context.next_earnings_date})`
+                            : `Earnings: ${item.earnings_context.next_earnings_date}`}
+                        </span>
+                      </span>
+                    )}
+                    {item.strategy_flags.filter(f => !f.toLowerCase().includes("earnings")).map((flag, idx) => (
                       <span
                         key={idx}
                         className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800/90 text-slate-300 border border-slate-700/80 font-medium"
@@ -977,7 +1004,23 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       </td>
                       <td className="py-3 px-3">
                         <div className="text-slate-200">{item.expiration}</div>
-                        <div className="text-[10px] text-slate-400 font-sans">{item.dte} DTE</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-slate-400 font-sans">{item.dte} DTE</span>
+                          {item.earnings_context && item.earnings_context.next_earnings_date && (
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-mono border ${
+                                item.earnings_context.expires_before_earnings
+                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                                  : item.earnings_context.spans_earnings
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                                  : "bg-slate-800 text-slate-400 border-slate-700"
+                              }`}
+                              title={item.earnings_context.label}
+                            >
+                              {item.earnings_context.expires_before_earnings ? "Pre-ER" : item.earnings_context.spans_earnings ? "Spans-ER" : "ER"}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-3">
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${tierBadgeColor}`}>

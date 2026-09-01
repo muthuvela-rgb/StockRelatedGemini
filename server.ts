@@ -363,7 +363,7 @@ async function fetchYahooOptions(ticker: string, dateTimestamp?: number, retry =
 async function fetchYahooQuoteSummary(ticker: string, retry = true): Promise<any> {
   try {
     const { cookie, crumb } = await getYahooAuth();
-    let url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,summaryDetail,upgradeDowngradeHistory`;
+    let url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,summaryDetail,upgradeDowngradeHistory,calendarEvents`;
     if (crumb) url += `&crumb=${encodeURIComponent(crumb)}`;
 
     const headers: Record<string, string> = {
@@ -514,7 +514,31 @@ async function getTechnicalsForTicker(ticker: string) {
     historical_volatility_pct: histVol.volPct,
     historical_volatility_dollar_yr: histVol.volDollarYr,
     fibonacci,
-    next_earnings_date: quoteSummary?.summaryDetail?.earningsDate?.[0]?.fmt || null,
+    next_earnings_date: (() => {
+      const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+      if (Array.isArray(cal) && cal.length > 0) {
+        if (cal[0]?.fmt) return cal[0].fmt;
+        if (cal[0]?.raw) return new Date(cal[0].raw * 1000).toISOString().split("T")[0];
+        if (typeof cal[0] === "string") return cal[0];
+      }
+      const sum = quoteSummary?.summaryDetail?.earningsDate;
+      if (Array.isArray(sum) && sum.length > 0) {
+        if (sum[0]?.fmt) return sum[0].fmt;
+        if (sum[0]?.raw) return new Date(sum[0].raw * 1000).toISOString().split("T")[0];
+      }
+      return null;
+    })(),
+    next_earnings_timestamp: (() => {
+      const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+      if (Array.isArray(cal) && cal.length > 0 && cal[0]?.raw) {
+        return cal[0].raw * 1000;
+      }
+      const sum = quoteSummary?.summaryDetail?.earningsDate;
+      if (Array.isArray(sum) && sum.length > 0 && sum[0]?.raw) {
+        return sum[0].raw * 1000;
+      }
+      return null;
+    })(),
   };
 }
 
@@ -1649,6 +1673,14 @@ Provide an executive, high-density financial and strategic breakdown of this ${p
 // PUT RECOMMENDATIONS ACROSS RISK TIERS
 // ==========================================
 
+interface EarningsTimingInfo {
+  nextEarningsDate: string | null;
+  daysToEarnings: number | null;
+  spansEarnings: boolean;
+  expiresBeforeEarnings: boolean;
+  earningsPassedRecently: boolean;
+}
+
 function computePutRecommendationScore(
   tier: "least_risk" | "medium_risk" | "high_risk",
   annualMarginReturn: number,
@@ -1660,8 +1692,14 @@ function computePutRecommendationScore(
   rsi: number | null,
   isBelowBollingerLower: boolean,
   spreadPct: number,
-  openInterest: number
-): number {
+  openInterest: number,
+  earningsInfo?: EarningsTimingInfo | null
+): {
+  score: number;
+  earningsScoreAdj: number;
+  earningsNote: string;
+  earningsFlag: string | null;
+} {
   let score = 50;
 
   if (tier === "least_risk") {
@@ -1712,7 +1750,63 @@ function computePutRecommendationScore(
     score += 4;
   }
 
-  return Math.max(10, Math.min(99, Math.round(score)));
+  // EARNINGS DATE SCORING INTEGRATION:
+  let earningsScoreAdj = 0;
+  let earningsNote = "";
+  let earningsFlag: string | null = null;
+
+  if (earningsInfo?.expiresBeforeEarnings && earningsInfo.nextEarningsDate) {
+    // Option expires cleanly BEFORE earnings date -> 0 binary event risk!
+    if (tier === "least_risk") {
+      earningsScoreAdj = 8;
+    } else if (tier === "medium_risk") {
+      earningsScoreAdj = 6;
+    } else {
+      earningsScoreAdj = 4;
+    }
+    const daysBefore = (earningsInfo.daysToEarnings || 0) - dte;
+    earningsNote = `Expires ${daysBefore > 0 ? `${daysBefore}d ` : ""}before earnings on ${earningsInfo.nextEarningsDate} (Zero Event Risk)`;
+    earningsFlag = `Expires Before Earnings (${earningsInfo.nextEarningsDate})`;
+  } else if (earningsInfo?.spansEarnings && earningsInfo.nextEarningsDate) {
+    // Option spans ACROSS upcoming earnings announcement -> Event risk!
+    if (tier === "least_risk") {
+      // Conservative sellers should avoid spanning earnings or receive clear score penalty
+      earningsScoreAdj = cushionPct >= 18 ? -6 : cushionPct >= 12 ? -9 : -13;
+      earningsNote = `Spans earnings on ${earningsInfo.nextEarningsDate} (${earningsInfo.daysToEarnings}d away). Higher event risk for conservative tier.`;
+      earningsFlag = `⚠️ Spans Earnings (${earningsInfo.nextEarningsDate})`;
+    } else if (tier === "medium_risk") {
+      // If IV is elevated and cushion is reasonable, moderate penalty
+      if (iv > 0 && hv > 0 && iv > hv * 1.2 && cushionPct >= 12) {
+        earningsScoreAdj = -3;
+        earningsNote = `Spans earnings (${earningsInfo.nextEarningsDate}) with elevated IV (${iv.toFixed(0)}%).`;
+        earningsFlag = `Spans Earnings (${earningsInfo.nextEarningsDate})`;
+      } else {
+        earningsScoreAdj = cushionPct >= 15 ? -5 : -8;
+        earningsNote = `Spans earnings on ${earningsInfo.nextEarningsDate} (${earningsInfo.daysToEarnings}d away).`;
+        earningsFlag = `⚠️ Spans Earnings (${earningsInfo.nextEarningsDate})`;
+      }
+    } else {
+      // High Risk / Aggressive: High IV harvest into earnings can be favorable
+      if (iv >= 35 || (hv > 0 && iv > hv * 1.15)) {
+        earningsScoreAdj = 5;
+        earningsNote = `Pre-earnings high IV (${iv.toFixed(0)}%) volatility capture into ${earningsInfo.nextEarningsDate}.`;
+        earningsFlag = `Earnings IV Harvest (${earningsInfo.nextEarningsDate})`;
+      } else {
+        earningsScoreAdj = -4;
+        earningsNote = `Spans earnings on ${earningsInfo.nextEarningsDate}.`;
+        earningsFlag = `⚠️ Spans Earnings (${earningsInfo.nextEarningsDate})`;
+      }
+    }
+  } else if (earningsInfo?.earningsPassedRecently && earningsInfo.nextEarningsDate) {
+    earningsScoreAdj = 5;
+    earningsNote = `Post-earnings clear runway (${earningsInfo.nextEarningsDate}).`;
+    earningsFlag = `Post-Earnings Runway`;
+  }
+
+  score += earningsScoreAdj;
+
+  const finalScore = Math.max(10, Math.min(99, Math.round(score)));
+  return { score: finalScore, earningsScoreAdj, earningsNote, earningsFlag };
 }
 
 app.post("/api/put-recommendations", async (req: Request, res: Response) => {
@@ -1769,6 +1863,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
             const distTo52wHigh = technicals?.distance_to_52w_high_pct ?? null;
             const marketCap = meta.marketCap || technicals?.market_cap || null;
             const nextEarningsDate = technicals?.next_earnings_date || null;
+            const nextEarningsTimestamp = technicals?.next_earnings_timestamp || null;
 
             marketContextMap[ticker] = {
               price: currentPrice,
@@ -1805,6 +1900,29 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
 
               const puts: any[] = chain?.options?.[0]?.puts || [];
               if (puts.length === 0) continue;
+
+              // Calculate earnings timing for this expiration
+              let earningsInfo: EarningsTimingInfo | null = null;
+              if (nextEarningsDate) {
+                let earningsTime = nextEarningsTimestamp;
+                if (!earningsTime) {
+                  earningsTime = new Date(nextEarningsDate).getTime();
+                }
+                if (!isNaN(earningsTime)) {
+                  const diffDays = Math.round((earningsTime - today.getTime()) / (1000 * 60 * 60 * 24));
+                  const spans = diffDays > 0 && diffDays <= exp.dte;
+                  const expiresBefore = diffDays > exp.dte;
+                  const passedRecently = diffDays <= 0 && diffDays >= -30;
+
+                  earningsInfo = {
+                    nextEarningsDate,
+                    daysToEarnings: diffDays,
+                    spansEarnings: spans,
+                    expiresBeforeEarnings: expiresBefore,
+                    earningsPassedRecently: passedRecently,
+                  };
+                }
+              }
 
               for (const put of puts) {
                 totalContractsEvaluated++;
@@ -1907,7 +2025,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   riskTierLabel = "Medium Risk (Balanced)";
                 }
 
-                const score = computePutRecommendationScore(
+                const scoreResult = computePutRecommendationScore(
                   riskTier,
                   annualReturnMargin,
                   pop,
@@ -1918,8 +2036,13 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   rsi,
                   isBelowBollingerLower,
                   spreadPct,
-                  oi
+                  oi,
+                  earningsInfo
                 );
+
+                if (scoreResult.earningsFlag) {
+                  flags.push(scoreResult.earningsFlag);
+                }
 
                 // Algorithmic Trade Rationale with RSI & Bollinger Band details
                 let bbRsiContext = "";
@@ -1939,6 +2062,10 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   rationale = `High-yield Delta ${greeks.delta?.toFixed(2) || "-0.35"} generating ${annualReturnMargin.toFixed(1)}% annualized margin yield ($${(execBid * 100).toFixed(0)} premium)${bbRsiContext}${rsiStr} with ${cushionToStrikePct}% buffer and rapid $${dailyTheta.toFixed(2)}/day theta decay.`;
                 }
 
+                if (scoreResult.earningsNote) {
+                  rationale += ` • Earnings Timing: ${scoreResult.earningsNote}`;
+                }
+
                 const item = {
                   id: `${ticker}_${exp.dateStr}_${strike}P`,
                   ticker,
@@ -1948,7 +2075,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   dte: exp.dte,
                   risk_tier: riskTier,
                   risk_tier_label: riskTierLabel,
-                  score,
+                  score: scoreResult.score,
                   bid: Number(execBid.toFixed(2)),
                   ask: Number(ask.toFixed(2)),
                   mid: Number(((execBid + (ask > 0 ? ask : execBid)) / 2).toFixed(2)),
@@ -1989,6 +2116,15 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                     market_cap: marketCap,
                     next_earnings_date: nextEarningsDate,
                   },
+                  earnings_context: earningsInfo ? {
+                    next_earnings_date: earningsInfo.nextEarningsDate,
+                    days_to_earnings: earningsInfo.daysToEarnings,
+                    spans_earnings: earningsInfo.spansEarnings,
+                    expires_before_earnings: earningsInfo.expiresBeforeEarnings,
+                    earnings_passed_recently: earningsInfo.earningsPassedRecently,
+                    score_impact: scoreResult.earningsScoreAdj,
+                    label: scoreResult.earningsNote,
+                  } : undefined,
                   rationale,
                   strategy_flags: flags,
                 };
@@ -2006,10 +2142,13 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
       );
     }
 
-    // Sort each list by algorithmic score descending, then annualized margin return descending
+    // Default sort of put recommendations in decreasing order of score, then downside cushion buffer descending, then annualized cash return descending
     const sortFn = (a: any, b: any) => {
       if (b.score !== a.score) return b.score - a.score;
-      return b.annualized_return_margin - a.annualized_return_margin;
+      if (b.cushion_to_strike_pct !== a.cushion_to_strike_pct) {
+        return b.cushion_to_strike_pct - a.cushion_to_strike_pct;
+      }
+      return b.annualized_return_cash_secured - a.annualized_return_cash_secured;
     };
 
     leastRiskList.sort(sortFn);

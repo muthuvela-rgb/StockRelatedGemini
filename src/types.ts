@@ -406,6 +406,15 @@ export interface RecommendedPut {
   };
   rationale: string;
   strategy_flags: string[];
+  earnings_context?: {
+    next_earnings_date: string | null;
+    days_to_earnings: number | null;
+    spans_earnings: boolean;
+    expires_before_earnings: boolean;
+    earnings_passed_recently?: boolean;
+    score_impact: number;
+    label: string;
+  };
   rsi_14?: number | null;
   bollinger?: {
     sma: number;
