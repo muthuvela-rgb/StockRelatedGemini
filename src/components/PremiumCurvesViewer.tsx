@@ -32,6 +32,7 @@ import {
 } from "recharts";
 import { PremiumCurveAnalysis, PremiumVsExpirationAnalysis } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
+import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 
 const EXPIRATION_COLORS = [
   "#3b82f6", // blue
@@ -538,6 +539,13 @@ export const PremiumCurvesViewer: React.FC = () => {
                                 <span>Optimal Knee of the Curve / Decay Sweet Spot</span>
                               </div>
                             )}
+
+                            {/* Bollinger Bands and RSI Technical Indicators */}
+                            <BollingerRsiTooltipBadge
+                              rsi={d.rsi_14 || expAnalysis?.rsi_14}
+                              bollinger={d.bollinger || expAnalysis?.bollinger}
+                              strikePosition={d.strike_bollinger_position}
+                            />
                           </div>
                         </div>
                       );
@@ -721,6 +729,29 @@ export const PremiumCurvesViewer: React.FC = () => {
                               +${(Number(payload[payload.length - 1].value) - Number(payload[0].value)).toFixed(2)}
                             </span>
                           </div>
+                        )}
+
+                        {/* Bollinger Bands and RSI Technical Indicators */}
+                        {analysis && (
+                          <BollingerRsiTooltipBadge
+                            rsi={analysis.rsi_14}
+                            bollinger={analysis.bollinger}
+                            strikePosition={
+                              (payload[0]?.dataKey ? detailsByExp[String(payload[0].dataKey)]?.strike_bollinger_position : undefined) ||
+                              (analysis.bollinger
+                                ? {
+                                    zone: strike < analysis.bollinger.lower_band ? "below_lower" : strike >= analysis.bollinger.upper_band ? "above_upper" : "within_bands",
+                                    zone_label: strike < analysis.bollinger.lower_band ? "Below Lower Band" : strike >= analysis.bollinger.upper_band ? "Above Upper Band" : "Within Bands",
+                                    is_below_lower: strike < analysis.bollinger.lower_band,
+                                    diff_from_lower: Number((strike - analysis.bollinger.lower_band).toFixed(2)),
+                                    pct_from_lower: Number(((strike - analysis.bollinger.lower_band) / analysis.bollinger.lower_band * 100).toFixed(1)),
+                                    lower_band: analysis.bollinger.lower_band,
+                                    sma: analysis.bollinger.sma,
+                                    upper_band: analysis.bollinger.upper_band,
+                                  }
+                                : undefined)
+                            }
+                          />
                         )}
                       </div>
                     );

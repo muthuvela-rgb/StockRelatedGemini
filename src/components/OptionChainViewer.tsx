@@ -6,10 +6,13 @@ import {
   TrendingUp,
   Sliders,
   DollarSign,
-  AlertCircle
+  AlertCircle,
+  Activity,
+  ShieldCheck
 } from "lucide-react";
 import { OptionChainResponse, OptionGreeks } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
+import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 
 interface OptionChainViewerProps {
   watchlist: string[];
@@ -151,16 +154,27 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
         </div>
       )}
 
-      {/* Spot Price Banner */}
+      {/* Spot Price & Technicals Banner */}
       {chainData && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl px-5 py-3 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-4">
-            <span className="font-bold text-white text-sm">{chainData.ticker} Spot Price:</span>
-            <span className="text-lg font-mono font-bold text-blue-400">${chainData.current_price.toFixed(2)}</span>
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-4">
+              <span className="font-bold text-white text-sm">{chainData.ticker} Spot Price:</span>
+              <span className="text-lg font-mono font-bold text-blue-400">${chainData.current_price.toFixed(2)}</span>
+            </div>
+            <div className="text-slate-400 font-mono">
+              Selected: <span className="text-slate-200 font-semibold">{chainData.selected_expiration}</span> ({chainData.days_to_expiration} days to exp)
+            </div>
           </div>
-          <div className="text-slate-400 font-mono">
-            Selected: <span className="text-slate-200">{chainData.selected_expiration}</span> ({chainData.days_to_expiration} days to exp)
-          </div>
+
+          {(chainData.rsi_14 !== undefined || chainData.bollinger) && (
+            <div className="pt-2 border-t border-slate-800/80">
+              <BollingerRsiTooltipBadge
+                rsi={chainData.rsi_14}
+                bollinger={chainData.bollinger}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -195,15 +209,27 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
                     chainData?.current_price &&
                     Math.abs(r.strike - chainData.current_price) < (chainData.current_price * 0.01);
 
+                  const isBelowLowerBand =
+                    chainData?.bollinger && r.strike < chainData.bollinger.lower_band;
+
                   return (
                     <tr
                       key={i}
                       className={`hover:bg-slate-800/50 transition-colors ${
-                        r.inTheMoney ? "bg-blue-950/20" : ""
+                        isBelowLowerBand
+                          ? "bg-emerald-950/20"
+                          : r.inTheMoney
+                          ? "bg-blue-950/20"
+                          : ""
                       } ${isAtm ? "border-y-2 border-amber-500/60" : ""}`}
                     >
                       <td className="px-4 py-2.5 font-bold text-white flex items-center gap-2">
                         <span>${r.strike.toFixed(2)}</span>
+                        {isBelowLowerBand && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-sans font-bold border border-emerald-500/40" title={`Below 20-Day 2.0σ Lower Bollinger Band ($${chainData.bollinger?.lower_band.toFixed(2)})`}>
+                            &lt;BB Lower
+                          </span>
+                        )}
                         {r.inTheMoney && (
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 font-sans">
                             ITM

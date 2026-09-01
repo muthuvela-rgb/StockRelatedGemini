@@ -18,6 +18,24 @@ export interface PutOptionRecord {
   bid_used_fallback: boolean;
   ask_used_fallback: boolean;
   market_cap?: number;
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b: number;
+    zone: string;
+  } | null;
+  strike_bollinger_position?: {
+    zone: string;
+    zone_label: string;
+    is_below_lower: boolean;
+    diff_from_lower: number;
+    pct_from_lower: number;
+    lower_band: number;
+    sma: number;
+    upper_band: number;
+  } | null;
 }
 
 export interface TechnicalsData {
@@ -118,6 +136,14 @@ export interface OptionChainResponse {
   days_to_expiration: number;
   calls: OptionGreeks[];
   puts: OptionGreeks[];
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
 }
 
 export interface SecFilingSummary {
@@ -204,6 +230,24 @@ export interface PremiumCurvePoint {
   openInterest: number;
   used_fallback: boolean;
   premium_to_strike: number;
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
+  strike_bollinger_position?: {
+    zone: string;
+    zone_label: string;
+    is_below_lower: boolean;
+    diff_from_lower: number;
+    pct_from_lower: number;
+    lower_band: number;
+    sma: number;
+    upper_band: number;
+  } | null;
 }
 
 export interface PremiumCurveAnalysis {
@@ -212,6 +256,14 @@ export interface PremiumCurveAnalysis {
   expirations: string[];
   records: PremiumCurvePoint[];
   highest_ratio_point: PremiumCurvePoint | null;
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
   steepest_slopes: Array<{
     expiration: string;
     strike_a: number;
@@ -261,6 +313,24 @@ export interface PremiumVsExpirationPoint {
   capital_basis_margin: number;
   annualized_return_margin: number;
   annualized_return_cash_secured: number;
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
+  strike_bollinger_position?: {
+    zone: string;
+    zone_label: string;
+    is_below_lower: boolean;
+    diff_from_lower: number;
+    pct_from_lower: number;
+    lower_band: number;
+    sma: number;
+    upper_band: number;
+  } | null;
 }
 
 export interface PremiumVsExpirationAnalysis {
@@ -270,6 +340,14 @@ export interface PremiumVsExpirationAnalysis {
   target_strike_pct: number;
   option_type: "put" | "call";
   price_type: "bid" | "ask";
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
   points: PremiumVsExpirationPoint[];
   knee_point: PremiumVsExpirationPoint | null;
 }
@@ -328,6 +406,24 @@ export interface RecommendedPut {
   };
   rationale: string;
   strategy_flags: string[];
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
+  strike_bollinger_position?: {
+    zone: string;
+    zone_label: string;
+    is_below_lower: boolean;
+    diff_from_lower: number;
+    pct_from_lower: number;
+    lower_band: number;
+    sma: number;
+    upper_band: number;
+  } | null;
 }
 
 export interface RiskTierSummary {

@@ -38,6 +38,10 @@ import {
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { StatCard } from "./StatCard";
+import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import { MultiPlotViewMenu, STOCK_COLORS } from "./MultiPlotViewMenu";
+import { MultiStockOverlaidChart } from "./MultiStockOverlaidChart";
+import { SingleStockPlotCard } from "./SingleStockPlotCard";
 
 interface PutScannerProps {
   watchlist: string[];
@@ -203,26 +207,68 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       ? filteredRecords.reduce((a, b) => a + b.annualized_return_pct, 0) / filteredRecords.length
       : 0;
 
-  // Single Stock vs Multi-Stock Analysis & Plot Data
+  // Single Stock vs Multi-Stock Analysis & Multi-Plot State
   const uniqueTickers = Array.from(new Set(filteredRecords.map((r) => r.ticker)));
   const isSingleStock = uniqueTickers.length === 1;
-  const [selectedStockForPlot, setSelectedStockForPlot] = useState<string>("");
-  const activeStockTicker = isSingleStock ? uniqueTickers[0] : (selectedStockForPlot || "ALL");
-  const isViewingSingleStock = activeStockTicker !== "ALL" && activeStockTicker !== "";
-  const [singleStockExpFilter, setSingleStockExpFilter] = useState<string>("ALL");
 
+  // Multi-Plot Selection from View Menu: array of selected tickers, e.g. ["ALL"], or ["NVDA", "AAPL"]
+  const [selectedTickersForPlot, setSelectedTickersForPlot] = useState<string[]>(["ALL"]);
+  const [plotLayout, setPlotLayout] = useState<"overlaid" | "grid">("overlaid");
+  
+  // Single Stock specific filters
+  const [singleStockStrikeFilter, setSingleStockStrikeFilter] = useState<string>("ALL");
+  const [singleStockExpFilter, setSingleStockExpFilter] = useState<string>("ALL");
   const [showSecondaryReturnLine, setShowSecondaryReturnLine] = useState(true);
 
-  // Filter single stock records
-  const targetTicker = isViewingSingleStock ? activeStockTicker : (uniqueTickers[0] || "");
-  const singleStockRecordsAll = filteredRecords.filter((r) => r.ticker === targetTicker);
+  // Active view determination
+  const isAllTickersSelected = selectedTickersForPlot.includes("ALL");
+  const activeSelectedTickers = isAllTickersSelected ? uniqueTickers : selectedTickersForPlot;
+  const isViewingSingleStock = !isAllTickersSelected && selectedTickersForPlot.length === 1;
+  const targetSingleTicker = isViewingSingleStock ? selectedTickersForPlot[0] : (uniqueTickers[0] || "");
+
+  // Check if a single strike price is selected (globally via strikeMode === 'single' or in single stock filter)
+  const isGlobalSingleStrike = strikeMode === "single";
+  const isSingleStrikeSelected = isGlobalSingleStrike || singleStockStrikeFilter !== "ALL";
+
+  // Filter single stock records for target ticker
+  const singleStockRecordsAll = filteredRecords.filter((r) => r.ticker === targetSingleTicker);
   const singleStockExpirations = Array.from(new Set(singleStockRecordsAll.map((r) => r.expiration))).sort();
+  const singleStockStrikes = Array.from(new Set(singleStockRecordsAll.map((r) => r.strike))).sort((a, b) => a - b);
 
-  const singleStockFilteredRecords = singleStockExpFilter === "ALL"
-    ? singleStockRecordsAll
-    : singleStockRecordsAll.filter((r) => r.expiration === singleStockExpFilter);
+  // Single stock records filtered by strike & expiration
+  let singleStockFilteredRecords = singleStockRecordsAll;
+  if (singleStockStrikeFilter !== "ALL") {
+    singleStockFilteredRecords = singleStockFilteredRecords.filter((r) => r.strike === Number(singleStockStrikeFilter));
+  }
+  if (singleStockExpFilter !== "ALL" && !isSingleStrikeSelected) {
+    singleStockFilteredRecords = singleStockFilteredRecords.filter((r) => r.expiration === singleStockExpFilter);
+  }
 
-  // Single stock strike-sorted dataset (X-Axis: Strike Price $)
+  // Single stock dataset when X-Axis is Expiration Date (Single Strike Selected)
+  const singleStockExpData = [...singleStockFilteredRecords]
+    .sort((a, b) => a.days_to_expiration - b.days_to_expiration)
+    .map((r) => ({
+      ticker: r.ticker,
+      expiration: r.expiration,
+      label: `${r.expiration} (${r.days_to_expiration}d)`,
+      shortLabel: `${r.expiration.slice(5)} (${r.days_to_expiration}d)`,
+      dte: r.days_to_expiration,
+      strike: r.strike,
+      premium: r.bid,
+      ask: r.ask,
+      lastPrice: r.last_price,
+      spot: r.current_price,
+      moneyness: r.moneyness_pct,
+      returnPct: r.annualized_return_pct,
+      returnCashSecured: r.annualized_return_pct_cash_secured,
+      capitalBasis: r.capital_basis,
+      iv: r.implied_volatility,
+      rsi_14: r.rsi_14,
+      bollinger: r.bollinger,
+      strike_bollinger_position: r.strike_bollinger_position,
+    }));
+
+  // Single stock dataset when X-Axis is Strike Price $ (Band Mode with All Strikes)
   const singleStockStrikeData = [...singleStockFilteredRecords]
     .sort((a, b) => a.strike - b.strike)
     .map((r) => ({
@@ -240,6 +286,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       capitalBasis: r.capital_basis,
       iv: r.implied_volatility,
       usedFallback: r.bid_used_fallback,
+      rsi_14: r.rsi_14,
+      bollinger: r.bollinger,
+      strike_bollinger_position: r.strike_bollinger_position,
     }));
 
   // Multi-stock dataset (X-Axis: % Moneyness, Y1: Premium $, Y2: Cash Secured Return %)
@@ -255,25 +304,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     dte: r.days_to_expiration,
     expiration: r.expiration,
     iv: r.implied_volatility,
-  }));
-
-  // Single stock chronological expiration dataset
-  const singleStockExpRecords = [...singleStockRecordsAll].sort((a, b) => a.days_to_expiration - b.days_to_expiration);
-  const singleStockExpData = singleStockExpRecords.map((r) => ({
-    ticker: r.ticker,
-    expiration: r.expiration,
-    label: `${r.expiration} (${r.days_to_expiration}d)`,
-    shortLabel: `${r.expiration.slice(5)} (${r.days_to_expiration}d)`,
-    dte: r.days_to_expiration,
-    premium: r.bid,
-    ask: r.ask,
-    strike: r.strike,
-    spot: r.current_price,
-    moneyness: r.moneyness_pct,
-    returnPct: r.annualized_return_pct,
-    returnCashSecured: r.annualized_return_pct_cash_secured,
-    capitalBasis: r.capital_basis,
-    iv: r.implied_volatility,
+    rsi_14: r.rsi_14,
+    bollinger: r.bollinger,
+    strike_bollinger_position: r.strike_bollinger_position,
   }));
 
   const handleSort = (field: keyof PutOptionRecord) => {
@@ -720,22 +753,40 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             {/* Chart Toolbar Header */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-800/80">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
                     {isViewingSingleStock ? (
                       <>
                         <TrendingUp className="w-4 h-4 text-cyan-400" />
-                        <span>{targetTicker} • Option Premium ($) vs Strike Price ($)</span>
+                        <span>
+                          {targetSingleTicker} • {isSingleStrikeSelected ? "Option Premium ($) vs Expiration Date" : "Option Premium ($) vs Strike Price ($)"}
+                        </span>
                         <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-bold">
-                          Single Stock Mode
+                          {isSingleStrikeSelected ? "Single Strike • Expiration Term" : "Single Stock Mode"}
                         </span>
                       </>
-                    ) : (
+                    ) : plotLayout === "grid" ? (
+                      <>
+                        <Layers className="w-4 h-4 text-cyan-400" />
+                        <span>Multi-Plot Grid • Option Premium ($) ({activeSelectedTickers.length} Stocks)</span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-bold">
+                          Grid Layout
+                        </span>
+                      </>
+                    ) : (isAllTickersSelected && !isGlobalSingleStrike) ? (
                       <>
                         <Target className="w-4 h-4 text-emerald-400" />
                         <span>Universe • Option Premium ($) & Annualized Cash Return (%) vs % Moneyness</span>
                         <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">
-                          Multi-Stock Mode ({uniqueTickers.length} Tickers)
+                          Multi-Stock Universe ({uniqueTickers.length} Tickers)
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <TrendingUp className="w-4 h-4 text-cyan-400" />
+                        <span>Multi-Stock Comparison • Option Premium ($) vs Expiration Date</span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-bold">
+                          {activeSelectedTickers.length} Stocks Overlaid
                         </span>
                       </>
                     )}
@@ -743,39 +794,60 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
                   {isViewingSingleStock
-                    ? `Plotting Option Premium ($) against Strike Price ($) across available option contracts for ${targetTicker}`
-                    : "Plotting % Moneyness (X-Axis) vs Option Premium ($) (Left Y-Axis) and Cash-Secured Annualized Return % (Right Y-Axis)"}
+                    ? isSingleStrikeSelected
+                      ? `Plotting Option Premium ($) (Y-Axis) across Expiration Dates (X-Axis) for ${targetSingleTicker} ${
+                          singleStockStrikeFilter !== "ALL" ? `$${singleStockStrikeFilter} strike` : "selected strike"
+                        }`
+                      : `Plotting Option Premium ($) against Strike Price ($) across available option contracts for ${targetSingleTicker}`
+                    : plotLayout === "grid"
+                    ? `Showing separate dedicated plot cards for ${activeSelectedTickers.length} selected stocks`
+                    : (isAllTickersSelected && !isGlobalSingleStrike)
+                    ? "Plotting % Moneyness (X-Axis) vs Option Premium ($) (Left Y-Axis) and Cash-Secured Annualized Return % (Right Y-Axis)"
+                    : `Plotting Option Premium ($) across Expiration Dates for all ${activeSelectedTickers.length} selected stocks`}
                 </p>
               </div>
 
-              {/* Controls: Stock Selector & Expiration Filter */}
+              {/* Toolbar Controls: MultiPlotViewMenu + Filters */}
               <div className="flex flex-wrap items-center gap-2.5">
-                {/* Stock Selector (if multi-stock universe) */}
-                {uniqueTickers.length > 1 && (
+                {/* View Pull Down Menu with Multi-Select and Plot Layout */}
+                {uniqueTickers.length > 0 && (
+                  <MultiPlotViewMenu
+                    uniqueTickers={uniqueTickers}
+                    selectedTickers={selectedTickersForPlot}
+                    onSelectTickers={(tickers) => {
+                      setSelectedTickersForPlot(tickers);
+                      setSingleStockExpFilter("ALL");
+                    }}
+                    plotLayout={plotLayout}
+                    onSelectPlotLayout={setPlotLayout}
+                    records={filteredRecords}
+                    isSingleStrike={isSingleStrikeSelected}
+                  />
+                )}
+
+                {/* Strike Filter for Single Stock View (if multiple strikes exist and not global single strike) */}
+                {isViewingSingleStock && singleStockStrikes.length > 1 && !isGlobalSingleStrike && (
                   <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-                    <span className="text-slate-400">View:</span>
+                    <span className="text-slate-400">Strike:</span>
                     <select
-                      value={activeStockTicker}
-                      onChange={(e) => {
-                        setSelectedStockForPlot(e.target.value);
-                        setSingleStockExpFilter("ALL");
-                      }}
-                      className="bg-transparent text-white font-bold outline-none cursor-pointer"
+                      value={singleStockStrikeFilter}
+                      onChange={(e) => setSingleStockStrikeFilter(e.target.value)}
+                      className="bg-transparent text-white font-semibold outline-none cursor-pointer"
                     >
                       <option value="ALL" className="bg-slate-900 text-white">
-                        🌐 All Stocks (% Moneyness vs Premium & Cash Yield)
+                        All Strikes ({singleStockStrikes.length})
                       </option>
-                      {uniqueTickers.map((t) => (
-                        <option key={t} value={t} className="bg-slate-900 text-white">
-                          📈 {t} (Strike Price vs Premium)
+                      {singleStockStrikes.map((s) => (
+                        <option key={s} value={s} className="bg-slate-900 text-white">
+                          ${s.toFixed(2)} (Plots Expiration Date)
                         </option>
                       ))}
                     </select>
                   </div>
                 )}
 
-                {/* Expiration Filter for Single Stock */}
-                {isViewingSingleStock && singleStockExpirations.length > 1 && (
+                {/* Expiration Filter for Single Stock (when viewing strike curve) */}
+                {isViewingSingleStock && !isSingleStrikeSelected && singleStockExpirations.length > 1 && (
                   <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
                     <span className="text-slate-400">Expiration:</span>
                     <select
@@ -808,12 +880,40 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               </div>
             </div>
 
-            {/* SINGLE STOCK PLOT: X-AXIS = STRIKE PRICE ($), Y-AXIS = OPTION PREMIUM ($) & CASH SECURED RETURN (%) */}
-            {isViewingSingleStock ? (
+            {/* CHART RENDERERS */}
+            {/* VIEW MODE 1: MULTI-PLOT GRID CARDS (When 2+ or ALL tickers selected and layout is grid) */}
+            {(selectedTickersForPlot.length > 1 || isAllTickersSelected) && plotLayout === "grid" ? (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                {activeSelectedTickers.map((t, idx) => (
+                  <SingleStockPlotCard
+                    key={t}
+                    ticker={t}
+                    records={filteredRecords}
+                    isSingleStrikeGlobal={isGlobalSingleStrike}
+                    showSecondaryReturnLine={showSecondaryReturnLine}
+                    colorIndex={idx}
+                  />
+                ))}
+              </div>
+            ) : (selectedTickersForPlot.length > 1 || (isAllTickersSelected && isGlobalSingleStrike)) && plotLayout === "overlaid" ? (
+              /* VIEW MODE 2: MULTI-STOCK OVERLAID COMPARISON PLOT (X-Axis: Expiration Date, Y-Axis: Option Premium $) */
+              <MultiStockOverlaidChart
+                records={filteredRecords}
+                selectedTickers={selectedTickersForPlot}
+                uniqueTickers={uniqueTickers}
+                isSingleStrike={isSingleStrikeSelected}
+                showSecondaryReturnLine={showSecondaryReturnLine}
+              />
+            ) : isViewingSingleStock ? (
+              /* VIEW MODE 3: SINGLE STOCK PLOT */
+              /* When a single strike is selected, X-Axis is Expiration Date and Y-Axis is Option Premium ($) */
               <div>
                 <div className="h-72 sm:h-84 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={singleStockStrikeData} margin={{ top: 15, right: 30, bottom: 25, left: 10 }}>
+                    <ComposedChart
+                      data={isSingleStrikeSelected ? singleStockExpData : singleStockStrikeData}
+                      margin={{ top: 15, right: 30, bottom: 25, left: 10 }}
+                    >
                       <defs>
                         <linearGradient id="singleStockPremiumFill" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.35} />
@@ -822,14 +922,36 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                       
-                      {/* X-Axis: Strike Price ($) */}
-                      <XAxis
-                        dataKey="strike"
-                        stroke="#64748b"
-                        fontSize={11}
-                        tickFormatter={(v) => `$${v}`}
-                        label={{ value: "Strike Price ($)", position: "insideBottom", offset: -15, fill: "#94a3b8", fontSize: 11 }}
-                      />
+                      {/* Dynamic X-Axis: Expiration Date (when single strike selected) OR Strike Price ($) */}
+                      {isSingleStrikeSelected ? (
+                        <XAxis
+                          dataKey="expiration"
+                          stroke="#64748b"
+                          fontSize={11}
+                          tickFormatter={(v) => v}
+                          label={{
+                            value: "Expiration Date (Chronological Term Structure)",
+                            position: "insideBottom",
+                            offset: -15,
+                            fill: "#94a3b8",
+                            fontSize: 11,
+                          }}
+                        />
+                      ) : (
+                        <XAxis
+                          dataKey="strike"
+                          stroke="#64748b"
+                          fontSize={11}
+                          tickFormatter={(v) => `$${v}`}
+                          label={{
+                            value: "Strike Price ($)",
+                            position: "insideBottom",
+                            offset: -15,
+                            fill: "#94a3b8",
+                            fontSize: 11,
+                          }}
+                        />
+                      )}
                       
                       {/* Left Y-Axis: Option Premium ($) */}
                       <YAxis
@@ -859,7 +981,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           if (active && payload && payload.length) {
                             const d = payload[0].payload;
                             return (
-                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[250px]">
+                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[260px] max-w-[320px]">
                                 <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
                                   <span className="font-bold text-cyan-400 text-sm">
                                     {d.ticker} ${d.strike} Put
@@ -901,6 +1023,13 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Bollinger Bands and RSI Technical Indicators */}
+                                <BollingerRsiTooltipBadge
+                                  rsi={d.rsi_14}
+                                  bollinger={d.bollinger}
+                                  strikePosition={d.strike_bollinger_position}
+                                />
                               </div>
                             );
                           }
@@ -909,7 +1038,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       />
                       <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
                       
-                      {/* Premium Area / Line against Strike Price */}
+                      {/* Premium Area / Line */}
                       <Area
                         yAxisId="left"
                         type="monotone"
@@ -950,32 +1079,36 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                 </div>
 
                 {/* Analytical Footnote Callouts for Single Stock */}
-                {singleStockStrikeData.length > 0 && (
+                {singleStockFilteredRecords.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
                       <span className="text-[10px] text-slate-500 uppercase block">Underlying Spot</span>
                       <span className="font-bold text-white font-mono">
-                        {targetTicker} ${singleStockStrikeData[0]?.spot.toFixed(2)}
+                        {targetSingleTicker} ${singleStockFilteredRecords[0]?.current_price.toFixed(2)}
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        {singleStockStrikeData.length} Strikes plotted
+                        {isSingleStrikeSelected ? `$${singleStockFilteredRecords[0]?.strike} Strike Selected` : `${singleStockStrikes.length} Strikes`}
                       </span>
                     </div>
 
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 uppercase block">Strike Range</span>
+                      <span className="text-[10px] text-slate-500 uppercase block">
+                        {isSingleStrikeSelected ? "Expiration Range" : "Strike Range"}
+                      </span>
                       <span className="font-bold text-cyan-400 font-mono">
-                        ${Math.min(...singleStockStrikeData.map(d => d.strike)).toFixed(2)} – ${Math.max(...singleStockStrikeData.map(d => d.strike)).toFixed(2)}
+                        {isSingleStrikeSelected
+                          ? `${singleStockExpData[0]?.expiration} – ${singleStockExpData[singleStockExpData.length - 1]?.expiration}`
+                          : `$${Math.min(...singleStockStrikeData.map(d => d.strike)).toFixed(2)} – $${Math.max(...singleStockStrikeData.map(d => d.strike)).toFixed(2)}`}
                       </span>
                       <span className="text-[10px] text-slate-400 block">
-                        X-Axis Strike Price ($)
+                        {isSingleStrikeSelected ? "X-Axis: Expiration Date" : "X-Axis: Strike Price ($)"}
                       </span>
                     </div>
 
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
                       <span className="text-[10px] text-slate-500 uppercase block">Max Cash Secured Yield</span>
                       <span className="font-bold text-emerald-400 font-mono">
-                        {Math.max(...singleStockStrikeData.map(d => d.returnCashSecured)).toFixed(1)}%
+                        {Math.max(...singleStockFilteredRecords.map(d => d.annualized_return_pct_cash_secured)).toFixed(1)}%
                       </span>
                       <span className="text-[10px] text-slate-400 block">
                         Annualized Cash Return
@@ -983,9 +1116,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                     </div>
 
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 uppercase block">Expiration Scope</span>
+                      <span className="text-[10px] text-slate-500 uppercase block">Contracts Plotted</span>
                       <span className="font-bold text-slate-200 font-mono">
-                        {singleStockExpFilter === "ALL" ? "All Expirations" : singleStockExpFilter}
+                        {singleStockFilteredRecords.length} contracts
                       </span>
                       <span className="text-[10px] text-slate-400 block">
                         {singleStockExpirations.length} total expirations
@@ -995,7 +1128,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                 )}
               </div>
             ) : (
-              /* MULTI-STOCK PLOT: X-AXIS = % MONEYNESS, LEFT Y-AXIS = OPTION PREMIUM ($), RIGHT Y-AXIS = CASH-SECURED ANNUALIZED RETURN (%) */
+              /* VIEW MODE 4: MULTI-STOCK UNIVERSE PLOT (X-AXIS = % MONEYNESS, LEFT Y-AXIS = OPTION PREMIUM ($), RIGHT Y-AXIS = CASH-SECURED RETURN (%)) */
               <div>
                 <div className="h-72 sm:h-84 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1039,7 +1172,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           if (active && payload && payload.length) {
                             const d = payload[0].payload;
                             return (
-                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[260px]">
+                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[260px] max-w-[320px]">
                                 <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
                                   <span className="font-bold text-emerald-400 text-sm">
                                     {d.ticker} ${d.strike} Put
@@ -1081,6 +1214,13 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Bollinger Bands and RSI Technical Indicators */}
+                                <BollingerRsiTooltipBadge
+                                  rsi={d.rsi_14}
+                                  bollinger={d.bollinger}
+                                  strikePosition={d.strike_bollinger_position}
+                                />
                               </div>
                             );
                           }

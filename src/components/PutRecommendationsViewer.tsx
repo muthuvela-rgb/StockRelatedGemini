@@ -44,6 +44,7 @@ import {
   AiPortfolioStrategy
 } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 
 interface PutRecommendationsViewerProps {
   watchlist: string[];
@@ -1151,14 +1152,22 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                         if (!active || !payload || !payload.length) return null;
                         const d: any = payload[0].payload;
                         return (
-                          <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-xl text-xs font-mono text-slate-200">
+                          <div className="bg-slate-900 border border-slate-700 p-3.5 rounded-xl shadow-xl text-xs font-mono text-slate-200 min-w-[240px]">
                             <div className="text-slate-400">Stock Price: ${d.price.toFixed(2)}</div>
                             <div className={`font-bold mt-1 text-sm ${d.pnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                               P&L: {d.pnl >= 0 ? `+$${d.pnl.toFixed(2)}` : `-$${Math.abs(d.pnl).toFixed(2)}`}
                             </div>
-                            {d.isSpot && <div className="text-cyan-400 text-[10px] mt-1">★ Current Spot Price</div>}
-                            {d.isStrike && <div className="text-amber-400 text-[10px] mt-1">★ Strike Price</div>}
-                            {d.isBreakeven && <div className="text-rose-400 text-[10px] mt-1">★ Breakeven Level</div>}
+                            {d.isSpot && <div className="text-cyan-400 text-[10px] mt-1 font-sans font-semibold">★ Current Spot Price</div>}
+                            {d.isStrike && <div className="text-amber-400 text-[10px] mt-1 font-sans font-semibold">★ Strike Price (${selectedTrade.strike.toFixed(2)})</div>}
+                            {d.isBreakeven && <div className="text-rose-400 text-[10px] mt-1 font-sans font-semibold">★ Breakeven Level (${selectedTrade.breakeven_price.toFixed(2)})</div>}
+
+                            <div className="mt-2 pt-2 border-t border-slate-800">
+                              <BollingerRsiTooltipBadge
+                                rsi={selectedTrade.rsi_14}
+                                bollinger={selectedTrade.bollinger}
+                                strikePosition={selectedTrade.strike_bollinger_position}
+                              />
+                            </div>
                           </div>
                         );
                       }}

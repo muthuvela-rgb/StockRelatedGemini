@@ -728,6 +728,14 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       const currentPrice = meta.regularMarketPrice || meta.ask || meta.bid || 0;
       if (!currentPrice || currentPrice <= 0) continue;
 
+      // Compute underlying stock RSI(14) and 20-period Bollinger Bands
+      const chart = await fetchYahooChart(ticker, "3mo", "1d");
+      const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+        (c: any) => c !== null && c !== undefined
+      );
+      const rsi = computeRsi(closes, 14);
+      const bollinger = computeBollinger(closes, Number(bollingerPeriod) || 20, Number(bollingerStd) || 2.0);
+
       let targetStrike: number | null = null;
       if (strikeMode === "single") {
         if (singleStrikeType === "pct" && singleStrikePct) {
@@ -736,12 +744,7 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
           targetStrike = Number(singleStrike);
         }
       } else if (strikeMode === "bollinger") {
-        const chart = await fetchYahooChart(ticker, "3mo", "1d");
-        const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
-          (c: any) => c !== null && c !== undefined
-        );
-        const b = computeBollinger(closes, Number(bollingerPeriod) || 20, Number(bollingerStd) || 2.0);
-        if (b) targetStrike = b.lower_band;
+        if (bollinger) targetStrike = bollinger.lower_band;
       }
 
       const rawExpirations: number[] = optData.expirationDates || [];
@@ -818,6 +821,36 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
           const chosenCapitalBasis = noMargin ? capitalBasisCashSecured : capitalBasisPM;
           const chosenAnnualReturn = noMargin ? annualReturnCash : annualReturnPM;
 
+          let strikeBbPos: any = null;
+          if (bollinger) {
+            const isBelow = strike < bollinger.lower_band;
+            const diff = Number((strike - bollinger.lower_band).toFixed(2));
+            const pctFromLower = Number(((strike - bollinger.lower_band) / bollinger.lower_band * 100).toFixed(1));
+            let zoneLabel = "Below Lower Band";
+            let zoneKey = "below_lower";
+            if (strike >= bollinger.upper_band) {
+              zoneLabel = "Above Upper Band";
+              zoneKey = "above_upper";
+            } else if (strike >= bollinger.sma) {
+              zoneLabel = "Between Mid & Upper Band";
+              zoneKey = "upper_half";
+            } else if (strike >= bollinger.lower_band) {
+              zoneLabel = "Between Lower & Mid Band";
+              zoneKey = "lower_half";
+            }
+
+            strikeBbPos = {
+              zone: zoneKey,
+              zone_label: zoneLabel,
+              is_below_lower: isBelow,
+              diff_from_lower: diff,
+              pct_from_lower: pctFromLower,
+              lower_band: bollinger.lower_band,
+              sma: bollinger.sma,
+              upper_band: bollinger.upper_band,
+            };
+          }
+
           allRecords.push({
             ticker,
             expiration: exp.dateStr,
@@ -838,6 +871,9 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
             bid_used_fallback: bidFallback,
             ask_used_fallback: askFallback,
             market_cap: meta.marketCap || undefined,
+            rsi_14: rsi,
+            bollinger: bollinger,
+            strike_bollinger_position: strikeBbPos,
           });
         }
       }
@@ -846,6 +882,8 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
         ticker,
         current_price: currentPrice,
         market_cap: meta.marketCap,
+        rsi_14: rsi,
+        bollinger: bollinger,
       });
     }
 
@@ -932,6 +970,14 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
       };
     });
 
+    // Technicals for underlying stock
+    const chart = await fetchYahooChart(ticker, "3mo", "1d");
+    const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+      (c: any) => c !== null && c !== undefined
+    );
+    const rsi = computeRsi(closes, 14);
+    const bollinger = computeBollinger(closes, 20, 2.0);
+
     res.json({
       ticker,
       current_price: currentPrice,
@@ -940,6 +986,8 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
       days_to_expiration: dte,
       calls,
       puts,
+      rsi_14: rsi,
+      bollinger,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -966,6 +1014,14 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const currentPrice = optData.quote?.regularMarketPrice || null;
     const rawExpirations: number[] = optData.expirationDates || [];
     const expDateStrs = rawExpirations.map((ts) => new Date(ts * 1000).toISOString().split("T")[0]);
+
+    // Calculate RSI and Bollinger Bands for ticker
+    const chart = await fetchYahooChart(ticker, "3mo", "1d");
+    const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+      (c: any) => c !== null && c !== undefined
+    );
+    const rsi = computeRsi(closes, 14);
+    const bollinger = computeBollinger(closes, 20, 2.0);
 
     let chosenExpStrs: string[] = [];
     if (requestedExp) {
@@ -1014,6 +1070,36 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
           usedFallback = true;
         }
 
+        let strikeBbPos: any = null;
+        if (bollinger) {
+          const isBelow = strike < bollinger.lower_band;
+          const diff = Number((strike - bollinger.lower_band).toFixed(2));
+          const pctFromLower = Number(((strike - bollinger.lower_band) / bollinger.lower_band * 100).toFixed(1));
+          let zoneLabel = "Below Lower Band";
+          let zoneKey = "below_lower";
+          if (strike >= bollinger.upper_band) {
+            zoneLabel = "Above Upper Band";
+            zoneKey = "above_upper";
+          } else if (strike >= bollinger.sma) {
+            zoneLabel = "Between Mid & Upper Band";
+            zoneKey = "upper_half";
+          } else if (strike >= bollinger.lower_band) {
+            zoneLabel = "Between Lower & Mid Band";
+            zoneKey = "lower_half";
+          }
+
+          strikeBbPos = {
+            zone: zoneKey,
+            zone_label: zoneLabel,
+            is_below_lower: isBelow,
+            diff_from_lower: diff,
+            pct_from_lower: pctFromLower,
+            lower_band: bollinger.lower_band,
+            sma: bollinger.sma,
+            upper_band: bollinger.upper_band,
+          };
+        }
+
         records.push({
           expiration: expStr,
           strike,
@@ -1025,6 +1111,9 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
           openInterest: row.openInterest || 0,
           used_fallback: usedFallback,
           premium_to_strike: Number((premium / strike).toFixed(4)),
+          rsi_14: rsi,
+          bollinger: bollinger,
+          strike_bollinger_position: strikeBbPos,
         });
       }
     }
@@ -1167,6 +1256,8 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
       steepest_slopes: steepestSlopes,
       widest_bins: widestBins,
       gap_markers: gapMarkers,
+      rsi_14: rsi,
+      bollinger: bollinger,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1193,6 +1284,14 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
     if (!currentPrice) {
       return res.status(404).json({ error: `Unable to get current price for ${ticker}` });
     }
+
+    // Compute RSI & Bollinger for underlying stock
+    const chart = await fetchYahooChart(ticker, "3mo", "1d");
+    const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+      (c: any) => c !== null && c !== undefined
+    );
+    const rsi = computeRsi(closes, 14);
+    const bollinger = computeBollinger(closes, 20, 2.0);
 
     let targetStrike = reqStrike;
     if (targetStrike === null && reqPct !== null) {
@@ -1252,6 +1351,36 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       const annReturnMargin = ((premium / marginBasis) * (365 / dte)) * 100;
       const annReturnCashSecured = ((premium / nearest.strike) * (365 / dte)) * 100;
 
+      let strikeBbPos: any = null;
+      if (bollinger) {
+        const isBelow = nearest.strike < bollinger.lower_band;
+        const diff = Number((nearest.strike - bollinger.lower_band).toFixed(2));
+        const pctFromLower = Number(((nearest.strike - bollinger.lower_band) / bollinger.lower_band * 100).toFixed(1));
+        let zoneLabel = "Below Lower Band";
+        let zoneKey = "below_lower";
+        if (nearest.strike >= bollinger.upper_band) {
+          zoneLabel = "Above Upper Band";
+          zoneKey = "above_upper";
+        } else if (nearest.strike >= bollinger.sma) {
+          zoneLabel = "Between Mid & Upper Band";
+          zoneKey = "upper_half";
+        } else if (nearest.strike >= bollinger.lower_band) {
+          zoneLabel = "Between Lower & Mid Band";
+          zoneKey = "lower_half";
+        }
+
+        strikeBbPos = {
+          zone: zoneKey,
+          zone_label: zoneLabel,
+          is_below_lower: isBelow,
+          diff_from_lower: diff,
+          pct_from_lower: pctFromLower,
+          lower_band: bollinger.lower_band,
+          sma: bollinger.sma,
+          upper_band: bollinger.upper_band,
+        };
+      }
+
       points.push({
         expiration: exp.dateStr,
         dte,
@@ -1270,6 +1399,9 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
         capital_basis_margin: Number(marginBasis.toFixed(2)),
         annualized_return_margin: Number(annReturnMargin.toFixed(2)),
         annualized_return_cash_secured: Number(annReturnCashSecured.toFixed(2)),
+        rsi_14: rsi,
+        bollinger: bollinger,
+        strike_bollinger_position: strikeBbPos,
       });
     }
 
@@ -1304,6 +1436,8 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       price_type: priceType,
       points,
       knee_point: kneePoint,
+      rsi_14: rsi,
+      bollinger: bollinger,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
