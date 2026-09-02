@@ -33,6 +33,7 @@ import {
 import { PremiumCurveAnalysis, PremiumVsExpirationAnalysis } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import { ChartPointInspector } from "./ChartPointInspector";
 
 const EXPIRATION_COLORS = [
   "#3b82f6", // blue
@@ -63,6 +64,8 @@ export const PremiumCurvesViewer: React.FC = () => {
   const [targetStrikePct, setTargetStrikePct] = useState<number>(85);
   const [expAnalysis, setExpAnalysis] = useState<PremiumVsExpirationAnalysis | null>(null);
   const [showSecondaryReturnLine, setShowSecondaryReturnLine] = useState(true);
+  const [inspectedCurvePoint, setInspectedCurvePoint] = useState<any | null>(null);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
 
   const fetchCurves = async () => {
     setLoading(true);
@@ -161,6 +164,18 @@ export const PremiumCurvesViewer: React.FC = () => {
 
   const formattedExpPoints = expPoints.map((p) => ({
     ...p,
+    ticker: expAnalysis?.ticker,
+    strike: p.snapped_strike || p.target_strike,
+    spot: expAnalysis?.current_price,
+    moneyness: expAnalysis?.current_price ? (((p.snapped_strike || p.target_strike) / expAnalysis.current_price) * 100) : 100,
+    returnCashSecured: p.annualized_return_cash_secured,
+    returnMargin: p.annualized_return_margin,
+    returnPct: p.annualized_return_cash_secured,
+    rsi_14: p.rsi_14 || expAnalysis?.rsi_14,
+    bollinger: p.bollinger || expAnalysis?.bollinger,
+    fibonacci: p.fibonacci || expAnalysis?.fibonacci,
+    fifty_two_week_high: expAnalysis?.fifty_two_week_high,
+    fifty_two_week_low: expAnalysis?.fifty_two_week_low,
     shortLabel: `${p.expiration.slice(5)} (${p.dte}d)`,
     isKnee: kneePoint && p.expiration === kneePoint.expiration,
   }));
@@ -383,9 +398,19 @@ export const PremiumCurvesViewer: React.FC = () => {
             )}
           </div>
 
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span className="flex items-center gap-1.5 text-cyan-400">
+              <Sparkles className="w-3.5 h-3.5" />
+              Click any individual dot on the curves to inspect full contract specifications & technical indicators
+            </span>
+          </div>
+
           <div className="h-80 sm:h-96 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={formattedExpPoints} margin={{ top: 15, right: 30, left: 10, bottom: 25 }}>
+              <ComposedChart
+                data={formattedExpPoints}
+                margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
+              >
                 <defs>
                   <linearGradient id="expPremiumFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
@@ -418,146 +443,6 @@ export const PremiumCurvesViewer: React.FC = () => {
                   domain={[0, "auto"]}
                   label={{ value: "Annualized Return (%)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
                 />
-                <RechartsTooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const d: any = payload[0].payload;
-                      const spot = expAnalysis?.current_price || null;
-                      const isPut = optionType === "put";
-                      const strikeDiff = d.strike_diff !== undefined ? d.strike_diff : Math.abs(d.snapped_strike - d.target_strike);
-                      const isOTM = spot ? (isPut ? d.snapped_strike < spot : d.snapped_strike > spot) : false;
-                      const isITM = spot ? (isPut ? d.snapped_strike > spot : d.snapped_strike < spot) : false;
-                      const otmPct = spot ? Math.abs((1 - d.snapped_strike / spot) * 100) : 0;
-                      const formattedDate = formatExpDateDetail(d.expiration);
-                      const spread = (d.ask || 0) - (d.bid || 0);
-                      const spreadPct = d.bid > 0 ? (spread / d.bid) * 100 : 0;
-
-                      return (
-                        <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-4 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[310px] max-w-[380px] pointer-events-none z-50">
-                          {/* Header: Strike & Expiration */}
-                          <div className="border-b border-slate-800 pb-2.5 mb-2.5">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-white font-mono">
-                                  ${d.snapped_strike.toFixed(2)} Strike
-                                </span>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                                  {expAnalysis.ticker} {optionType.toUpperCase()}
-                                </span>
-                              </div>
-                              <span className="text-cyan-400 font-mono font-bold text-xs">
-                                {d.expiration}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400 font-sans">
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3 text-slate-500" /> {formattedDate}
-                              </span>
-                              <span className="font-mono font-bold text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">
-                                {d.dte} DTE
-                              </span>
-                            </div>
-
-                            {strikeDiff > 0.01 && (
-                              <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                                Target: ${d.target_strike.toFixed(2)} → Snapped to listed ${d.snapped_strike.toFixed(2)} (Δ ${strikeDiff.toFixed(2)})
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Pricing & Quotes */}
-                          <div className="space-y-1.5 font-mono text-[11px]">
-                            <div className="bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80 space-y-1">
-                              <div className="flex justify-between items-center">
-                                <span className="text-slate-400">Bid Premium (Selected):</span>
-                                <span className="text-cyan-300 font-bold text-sm">${d.bid.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Ask Premium:</span>
-                                <span className="text-slate-300">${d.ask.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Bid-Ask Spread:</span>
-                                <span className="text-slate-300">${spread.toFixed(2)} ({spreadPct.toFixed(1)}%)</span>
-                              </div>
-                              {d.last_price > 0 && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Last Traded Price:</span>
-                                  <span className="text-slate-300">${d.last_price.toFixed(2)}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Moneyness & Distance */}
-                            <div className="bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80 space-y-1 text-[10px]">
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Spot Moneyness:</span>
-                                <span className="text-slate-200 font-semibold">{d.moneyness_pct.toFixed(1)}% of spot</span>
-                              </div>
-                              {spot && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Moneyness Status:</span>
-                                  <span className={isOTM ? "text-cyan-400 font-semibold" : isITM ? "text-rose-400 font-semibold" : "text-amber-400 font-semibold"}>
-                                    {isOTM ? `${otmPct.toFixed(1)}% OTM (Buffer: $${Math.abs(spot - d.snapped_strike).toFixed(2)})` : isITM ? `${otmPct.toFixed(1)}% ITM` : "At The Money"}
-                                  </span>
-                                </div>
-                              )}
-                              {d.implied_volatility > 0 && (
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Implied Volatility (IV):</span>
-                                  <span className="text-purple-300 font-semibold">{(d.implied_volatility * 100).toFixed(1)}%</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Volume / Open Int:</span>
-                                <span className="text-slate-300">{(d.volume || 0).toLocaleString()} / {(d.open_interest || 0).toLocaleString()}</span>
-                              </div>
-                            </div>
-
-                            {/* Annualized Returns & Collateral */}
-                            <div className="bg-slate-950/70 rounded-lg p-2.5 border border-slate-800/80 space-y-1 text-[10px]">
-                              <div className="flex justify-between items-center">
-                                <span className="text-slate-400">Portfolio Margin Return:</span>
-                                <span className="text-emerald-400 font-bold text-xs">{d.annualized_return_margin.toFixed(1)}% / yr</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Cash-Secured Return:</span>
-                                <span className="text-emerald-300/80">{d.annualized_return_cash_secured.toFixed(1)}% / yr</span>
-                              </div>
-                              {d.capital_basis_margin > 0 && (
-                                <div className="flex justify-between text-[10px] text-slate-500 pt-0.5 border-t border-slate-800/50">
-                                  <span>Est. Margin Collateral:</span>
-                                  <span>{formatCurrency(d.capital_basis_margin)} / contract</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {d.isKnee && (
-                              <div className="mt-2 text-center bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg p-1.5 font-bold font-sans text-[11px] flex items-center justify-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                <span>Optimal Knee of the Curve / Decay Sweet Spot</span>
-                              </div>
-                            )}
-
-                            {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
-                            <BollingerRsiTooltipBadge
-                              strike={d.snapped_strike || d.target_strike}
-                              spot={spot}
-                              rsi={d.rsi_14 || expAnalysis?.rsi_14}
-                              bollinger={d.bollinger || expAnalysis?.bollinger}
-                              fibonacci={d.fibonacci || expAnalysis?.fibonacci}
-                              fiftyTwoWeekHigh={expAnalysis?.fifty_two_week_high}
-                              fiftyTwoWeekLow={expAnalysis?.fifty_two_week_low}
-                              strikePosition={d.strike_bollinger_position}
-                            />
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
                 <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
                 <Area
                   yAxisId="left"
@@ -567,8 +452,41 @@ export const PremiumCurvesViewer: React.FC = () => {
                   stroke="#06b6d4"
                   strokeWidth={2.5}
                   fill="url(#expPremiumFill)"
-                  dot={{ r: 3.5, fill: "#06b6d4" }}
-                  activeDot={{ r: 6 }}
+                  dot={((props: any): any => {
+                    const { cx, cy, payload } = props;
+                    if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                    const pointId = `exp-prem-${payload.expiration}`;
+                    const isSelected = selectedPointId === pointId;
+                    return (
+                      <g
+                        key={pointId}
+                        className="cursor-pointer group"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPointId(pointId);
+                          setInspectedCurvePoint({
+                            ...payload,
+                            themeColor: "#06b6d4",
+                          });
+                        }}
+                      >
+                        <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                        {isSelected && (
+                          <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                        )}
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={isSelected ? 6 : 4}
+                          fill={isSelected ? "#ffffff" : "#06b6d4"}
+                          stroke={isSelected ? "#06b6d4" : "#0f172a"}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                        />
+                      </g>
+                    );
+                  }) as any}
+                  activeDot={false}
                 />
                 <Line
                   yAxisId="right"
@@ -577,11 +495,54 @@ export const PremiumCurvesViewer: React.FC = () => {
                   name="Annualized Return Margin %"
                   stroke="#10b981"
                   strokeWidth={2}
-                  dot={{ r: 2.5, fill: "#10b981" }}
+                  dot={((props: any): any => {
+                    const { cx, cy, payload } = props;
+                    if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                    const pointId = `exp-ret-${payload.expiration}`;
+                    const isSelected = selectedPointId === pointId;
+                    return (
+                      <g
+                        key={pointId}
+                        className="cursor-pointer group"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPointId(pointId);
+                          setInspectedCurvePoint({
+                            ...payload,
+                            themeColor: "#10b981",
+                          });
+                        }}
+                      >
+                        <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                        {isSelected && (
+                          <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                        )}
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={isSelected ? 6 : 4}
+                          fill={isSelected ? "#ffffff" : "#10b981"}
+                          stroke={isSelected ? "#10b981" : "#0f172a"}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                        />
+                      </g>
+                    );
+                  }) as any}
+                  activeDot={false}
                 />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Point Inspector */}
+          {inspectedCurvePoint && (
+            <ChartPointInspector
+              point={inspectedCurvePoint}
+              onClose={() => setInspectedCurvePoint(null)}
+              themeColor="#06b6d4"
+            />
+          )}
         </div>
       )}
 
@@ -604,9 +565,19 @@ export const PremiumCurvesViewer: React.FC = () => {
             </div>
           </div>
 
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span className="flex items-center gap-1.5 text-blue-400">
+              <Sparkles className="w-3.5 h-3.5" />
+              Click any specific dot on any expiration curve to inspect its contract specifications, yield & technical indicators
+            </span>
+          </div>
+
           <div className="h-80 sm:h-96 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+              <LineChart
+                data={chartData}
+                margin={{ top: 10, right: 30, left: 10, bottom: 20 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis
                   dataKey="strike"
@@ -621,168 +592,81 @@ export const PremiumCurvesViewer: React.FC = () => {
                   fontSize={11}
                   label={{ value: "Option Premium ($)", angle: -90, position: "insideLeft", fill: "#94a3b8" }}
                 />
-                <RechartsTooltip
-                  content={({ active, payload, label }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const strike = Number(label);
-                    const spot = analysis?.current_price || null;
-                    const strikeData = chartDataMap[strike];
-                    const detailsByExp = strikeData?.detailsByExp || {};
-
-                    const isPut = optionType === "put";
-                    const distFromSpot = spot ? strike - spot : 0;
-                    const isOTM = spot ? (isPut ? strike < spot : strike > spot) : false;
-                    const isITM = spot ? (isPut ? strike > spot : strike < spot) : false;
-                    const otmDistPct = spot ? Math.abs((1 - strike / spot) * 100) : 0;
-
-                    return (
-                      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-4 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[310px] max-w-[390px] pointer-events-none z-50">
-                        {/* Header: Strike & Spot Relationship */}
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white text-sm font-mono">
-                                ${strike.toFixed(2)} Strike
-                              </span>
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
-                                isPut ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              }`}>
-                                {ticker} {optionType.toUpperCase()}
-                              </span>
-                            </div>
-                            {spot && (
-                              <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 font-mono">
-                                <span>Spot: ${spot.toFixed(2)}</span>
-                                <span>•</span>
-                                <span className={isOTM ? "text-cyan-400 font-semibold" : isITM ? "text-rose-400 font-semibold" : "text-amber-400 font-semibold"}>
-                                  {isOTM ? `${otmDistPct.toFixed(1)}% OTM` : isITM ? `${otmDistPct.toFixed(1)}% ITM` : "ATM"}
-                                </span>
-                                <span>({distFromSpot >= 0 ? `+$${distFromSpot.toFixed(2)}` : `-$${Math.abs(distFromSpot).toFixed(2)}`})</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Expiration Details List */}
-                        <div className="space-y-2">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                            <span>Expiration & Quotes</span>
-                            <span>{priceType.toUpperCase()} Premium</span>
-                          </div>
-
-                          {payload.map((entry: any, i: number) => {
-                            const exp = entry.dataKey as string;
-                            const prem = Number(entry.value);
-                            const rec: any = detailsByExp[exp];
-                            const dte = getDteFromExp(exp);
-                            const formattedDate = formatExpDateDetail(exp);
-
-                            return (
-                              <div
-                                key={i}
-                                className="bg-slate-950/70 border border-slate-800/80 rounded-lg p-2.5 space-y-1 font-mono text-[11px]"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className="w-2.5 h-2.5 rounded-full shrink-0 shadow"
-                                      style={{ backgroundColor: entry.color || EXPIRATION_COLORS[i % EXPIRATION_COLORS.length] }}
-                                    />
-                                    <span className="font-bold text-slate-100 text-xs">{exp}</span>
-                                    <span className="text-[10px] text-slate-400 font-sans">({dte} DTE)</span>
-                                  </div>
-                                  <span className="text-sm font-black text-cyan-300">
-                                    ${prem.toFixed(2)}
-                                  </span>
-                                </div>
-
-                                <div className="text-[10px] text-slate-400 font-sans flex items-center gap-1">
-                                  <Calendar className="w-3 h-3 text-slate-500" />
-                                  <span>{formattedDate}</span>
-                                </div>
-
-                                {rec && (
-                                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1.5 mt-1 border-t border-slate-800/80 text-[10px]">
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-500">Bid / Ask:</span>
-                                      <span className="text-slate-300 font-semibold">${rec.bid?.toFixed(2)} / ${rec.ask?.toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-500">Spread:</span>
-                                      <span className="text-slate-300 font-semibold">${(rec.ask - rec.bid)?.toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-500">Yield/Strike:</span>
-                                      <span className="text-emerald-400 font-semibold">{((rec.premium / strike) * 100).toFixed(2)}%</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-500">Vol / OI:</span>
-                                      <span className="text-slate-300">{(rec.volume || 0).toLocaleString()} / {(rec.openInterest || 0).toLocaleString()}</span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Inter-Expiration Spread Delta (if 2+ curves) */}
-                        {payload.length >= 2 && (
-                          <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                            <span>Inter-Exp Spread (Time Value Gap):</span>
-                            <span className="text-cyan-400 font-bold">
-                              +${(Number(payload[payload.length - 1].value) - Number(payload[0].value)).toFixed(2)}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
-                        {analysis && (
-                          <BollingerRsiTooltipBadge
-                            strike={strike}
-                            spot={analysis.current_price}
-                            rsi={analysis.rsi_14}
-                            bollinger={analysis.bollinger}
-                            fibonacci={analysis.fibonacci}
-                            fiftyTwoWeekHigh={analysis.fifty_two_week_high}
-                            fiftyTwoWeekLow={analysis.fifty_two_week_low}
-                            strikePosition={
-                              (payload[0]?.dataKey ? detailsByExp[String(payload[0].dataKey)]?.strike_bollinger_position : undefined) ||
-                              (analysis.bollinger
-                                ? {
-                                    zone: strike < analysis.bollinger.lower_band ? "below_lower" : strike >= analysis.bollinger.upper_band ? "above_upper" : "within_bands",
-                                    zone_label: strike < analysis.bollinger.lower_band ? "Below Lower Band" : strike >= analysis.bollinger.upper_band ? "Above Upper Band" : "Within Bands",
-                                    is_below_lower: strike < analysis.bollinger.lower_band,
-                                    diff_from_lower: Number((strike - analysis.bollinger.lower_band).toFixed(2)),
-                                    pct_from_lower: Number(((strike - analysis.bollinger.lower_band) / analysis.bollinger.lower_band * 100).toFixed(1)),
-                                    lower_band: analysis.bollinger.lower_band,
-                                    sma: analysis.bollinger.sma,
-                                    upper_band: analysis.bollinger.upper_band,
-                                  }
-                                : undefined)
-                            }
-                          />
-                        )}
-                      </div>
-                    );
-                  }}
-                />
                 <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
-                {expirations.map((exp, idx) => (
-                  <Line
-                    key={exp}
-                    type="monotone"
-                    dataKey={exp}
-                    name={exp}
-                    stroke={EXPIRATION_COLORS[idx % EXPIRATION_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                  />
-                ))}
+                {expirations.map((exp, idx) => {
+                  const color = EXPIRATION_COLORS[idx % EXPIRATION_COLORS.length];
+                  return (
+                    <Line
+                      key={exp}
+                      type="monotone"
+                      dataKey={exp}
+                      name={exp}
+                      stroke={color}
+                      strokeWidth={2}
+                      dot={((props: any): any => {
+                        const { cx, cy, payload } = props;
+                        if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                        const rec = payload?.detailsByExp?.[exp];
+                        if (!rec) return <g key="empty" />;
+                        const pointId = `strike-${exp}-${payload.strike}`;
+                        const isSelected = selectedPointId === pointId;
+
+                        return (
+                          <g
+                            key={pointId}
+                            className="cursor-pointer group"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPointId(pointId);
+                              setInspectedCurvePoint({
+                                ...rec,
+                                ticker: analysis.ticker,
+                                spot: analysis.current_price,
+                                moneyness: analysis.current_price ? (rec.strike / analysis.current_price) * 100 : 100,
+                                returnCashSecured: rec.annualized_return_cash_secured || rec.annualized_return_margin || 0,
+                                returnMargin: rec.annualized_return_margin || 0,
+                                returnPct: rec.annualized_return_cash_secured || rec.annualized_return_margin || 0,
+                                rsi_14: analysis.rsi_14,
+                                bollinger: analysis.bollinger,
+                                fibonacci: analysis.fibonacci,
+                                fiftyTwoWeekHigh: analysis.fifty_two_week_high,
+                                fiftyTwoWeekLow: analysis.fifty_two_week_low,
+                                themeColor: color,
+                              });
+                            }}
+                          >
+                            <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                            {isSelected && (
+                              <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                            )}
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={isSelected ? 6 : 4}
+                              fill={isSelected ? "#ffffff" : color}
+                              stroke={isSelected ? color : "#0f172a"}
+                              strokeWidth={isSelected ? 2.5 : 1.5}
+                              className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                            />
+                          </g>
+                        );
+                      }) as any}
+                      activeDot={false}
+                    />
+                  );
+                })}
               </LineChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Point Inspector */}
+          {inspectedCurvePoint && (
+            <ChartPointInspector
+              point={inspectedCurvePoint}
+              onClose={() => setInspectedCurvePoint(null)}
+              themeColor="#3b82f6"
+            />
+          )}
         </div>
       )}
 

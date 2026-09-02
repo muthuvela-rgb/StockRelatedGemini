@@ -39,6 +39,7 @@ import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { StatCard } from "./StatCard";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import { ChartPointInspector } from "./ChartPointInspector";
 import { MultiPlotViewMenu, STOCK_COLORS } from "./MultiPlotViewMenu";
 import { MultiStockOverlaidChart } from "./MultiStockOverlaidChart";
 import { SingleStockPlotCard } from "./SingleStockPlotCard";
@@ -79,6 +80,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [error, setError] = useState<string | null>(null);
   const [records, setRecords] = useState<PutOptionRecord[]>([]);
   const [scannedSummary, setScannedSummary] = useState<any[]>([]);
+  const [inspectedChartPoint, setInspectedChartPoint] = useState<any | null>(null);
 
   const handleScan = async () => {
     setLoading(true);
@@ -917,6 +919,13 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               /* VIEW MODE 3: SINGLE STOCK PLOT */
               /* When a single strike is selected, X-Axis is Expiration Date and Y-Axis is Option Premium ($) */
               <div>
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span className="flex items-center gap-1.5 text-cyan-400">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Click any specific dot on the curve to inspect its contract specifications, yield & technical indicators
+                  </span>
+                </div>
+
                 <div className="h-72 sm:h-84 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart
@@ -985,71 +994,6 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         />
                       )}
 
-                      <RechartsTooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const d = payload[0].payload;
-                            return (
-                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[260px] max-w-[320px]">
-                                <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
-                                  <span className="font-bold text-cyan-400 text-sm">
-                                    {d.ticker} ${d.strike} Put
-                                  </span>
-                                  <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                                    {d.expiration} ({d.dte}d)
-                                  </span>
-                                </div>
-
-                                <div className="space-y-1 font-mono text-[11px]">
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Strike Price:</span>
-                                    <span className="text-white font-bold">${d.strike.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Spot Price / Moneyness:</span>
-                                    <span className="text-slate-300">${d.spot.toFixed(2)} ({d.moneyness.toFixed(1)}%)</span>
-                                  </div>
-                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
-                                    <span className="text-cyan-400 font-semibold">Bid Premium:</span>
-                                    <span className="text-cyan-300 font-bold text-xs">${d.premium.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Ask Premium:</span>
-                                    <span className="text-slate-300">${d.ask.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
-                                    <span className="text-emerald-400 font-semibold">Cash-Secured Yield:</span>
-                                    <span className="text-emerald-400 font-bold text-xs">{d.returnCashSecured.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Port Margin Yield:</span>
-                                    <span className="text-slate-300">{d.returnPct.toFixed(1)}%</span>
-                                  </div>
-                                  {d.iv && (
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-400">Implied Vol (IV):</span>
-                                      <span className="text-amber-400">{d.iv.toFixed(1)}%</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
-                                <BollingerRsiTooltipBadge
-                                  strike={d.strike}
-                                  spot={d.spot}
-                                  rsi={d.rsi_14}
-                                  bollinger={d.bollinger}
-                                  fibonacci={d.fibonacci}
-                                  fiftyTwoWeekHigh={d.fifty_two_week_high}
-                                  fiftyTwoWeekLow={d.fifty_two_week_low}
-                                  strikePosition={d.strike_bollinger_position}
-                                />
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
                       <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
                       
                       {/* Premium Area / Line */}
@@ -1061,8 +1005,41 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         stroke="#06b6d4"
                         strokeWidth={2.5}
                         fill="url(#singleStockPremiumFill)"
-                        dot={{ r: 3.5, fill: "#06b6d4" }}
-                        activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2 }}
+                        dot={((props: any): any => {
+                          const { cx, cy, payload } = props;
+                          if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                          const isSelected = inspectedChartPoint && (
+                            inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
+                          );
+                          return (
+                            <g
+                              key={`ps-prem-${payload.strike}-${payload.expiration}`}
+                              className="cursor-pointer group"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInspectedChartPoint({
+                                  ...payload,
+                                  themeColor: "#06b6d4",
+                                });
+                              }}
+                            >
+                              <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                              {isSelected && (
+                                <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                              )}
+                              <circle
+                                cx={cx}
+                                cy={cy}
+                                r={isSelected ? 6 : 4}
+                                fill={isSelected ? "#ffffff" : "#06b6d4"}
+                                stroke={isSelected ? "#06b6d4" : "#0f172a"}
+                                strokeWidth={isSelected ? 2.5 : 1.5}
+                                className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                              />
+                            </g>
+                          );
+                        }) as any}
+                        activeDot={false}
                       />
 
                       <Line
@@ -1074,6 +1051,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         strokeWidth={1.5}
                         strokeDasharray="4 4"
                         dot={false}
+                        activeDot={false}
                       />
 
                       {/* Cash-Secured Annualized Return % Line */}
@@ -1085,12 +1063,55 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           name="Cash-Secured Annualized Return (%)"
                           stroke="#10b981"
                           strokeWidth={2}
-                          dot={{ r: 3, fill: "#10b981" }}
+                          dot={((props: any): any => {
+                            const { cx, cy, payload } = props;
+                            if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                            const isSelected = inspectedChartPoint && (
+                              inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
+                            );
+                            return (
+                              <g
+                                key={`ps-yield-${payload.strike}-${payload.expiration}`}
+                                className="cursor-pointer group"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInspectedChartPoint({
+                                    ...payload,
+                                    themeColor: "#10b981",
+                                  });
+                                }}
+                              >
+                                <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                                {isSelected && (
+                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                                )}
+                                <circle
+                                  cx={cx}
+                                  cy={cy}
+                                  r={isSelected ? 6 : 3.5}
+                                  fill={isSelected ? "#ffffff" : "#10b981"}
+                                  stroke={isSelected ? "#10b981" : "#0f172a"}
+                                  strokeWidth={isSelected ? 2.5 : 1.5}
+                                  className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                                />
+                              </g>
+                            );
+                          }) as any}
+                          activeDot={false}
                         />
                       )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
+
+                {/* Point Inspector */}
+                {inspectedChartPoint && (
+                  <ChartPointInspector
+                    point={inspectedChartPoint}
+                    onClose={() => setInspectedChartPoint(null)}
+                    themeColor="#06b6d4"
+                  />
+                )}
 
                 {/* Analytical Footnote Callouts for Single Stock */}
                 {singleStockFilteredRecords.length > 0 && (
@@ -1144,9 +1165,19 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             ) : (
               /* VIEW MODE 4: MULTI-STOCK UNIVERSE PLOT (X-AXIS = % MONEYNESS, LEFT Y-AXIS = OPTION PREMIUM ($), RIGHT Y-AXIS = CASH-SECURED RETURN (%)) */
               <div>
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Click any specific dot in the universe plot to inspect its contract specifications, yield & technical indicators
+                  </span>
+                </div>
+
                 <div className="h-72 sm:h-84 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={multiStockMoneynessData} margin={{ top: 15, right: 30, bottom: 25, left: 10 }}>
+                    <ComposedChart
+                      data={multiStockMoneynessData}
+                      margin={{ top: 15, right: 30, bottom: 25, left: 10 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                       
                       {/* X-Axis: % Moneyness */}
@@ -1181,79 +1212,50 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         label={{ value: "Cash-Secured Return (%)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
                       />
 
-                      <RechartsTooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const d = payload[0].payload;
-                            return (
-                              <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3.5 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[260px] max-w-[320px]">
-                                <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
-                                  <span className="font-bold text-emerald-400 text-sm">
-                                    {d.ticker} ${d.strike} Put
-                                  </span>
-                                  <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                                    {d.expiration} ({d.dte}d)
-                                  </span>
-                                </div>
-
-                                <div className="space-y-1 font-mono text-[11px]">
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">% Moneyness:</span>
-                                    <span className="text-white font-bold">{d.moneyness.toFixed(1)}% of Spot</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Spot & Strike:</span>
-                                    <span className="text-slate-300">${d.spot.toFixed(2)} / ${d.strike.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
-                                    <span className="text-cyan-400 font-semibold">Option Premium (Bid):</span>
-                                    <span className="text-cyan-300 font-bold text-xs">${d.premium.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Ask Premium:</span>
-                                    <span className="text-slate-300">${d.ask.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between pt-1 border-t border-slate-800/80">
-                                    <span className="text-emerald-400 font-semibold">Cash-Secured Ann. Return:</span>
-                                    <span className="text-emerald-400 font-bold text-xs">{d.returnCashSecured.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-slate-400">Port Margin Ann. Return:</span>
-                                    <span className="text-slate-300">{d.returnMargin.toFixed(1)}%</span>
-                                  </div>
-                                  {d.iv && (
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-400">Implied Vol (IV):</span>
-                                      <span className="text-amber-400">{d.iv.toFixed(1)}%</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
-                                <BollingerRsiTooltipBadge
-                                  strike={d.strike}
-                                  spot={d.spot}
-                                  rsi={d.rsi_14}
-                                  bollinger={d.bollinger}
-                                  fibonacci={d.fibonacci}
-                                  fiftyTwoWeekHigh={d.fifty_two_week_high}
-                                  fiftyTwoWeekLow={d.fifty_two_week_low}
-                                  strikePosition={d.strike_bollinger_position}
-                                />
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
                       <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
 
-                      {/* Scatter points for Option Premium ($) on Left Y-Axis */}
+                      {/* Scatter points for Option Premium ($) on Left Y-Axis with interactive dots */}
                       <Scatter
                         yAxisId="left"
                         dataKey="premium"
                         name="Option Premium ($)"
                         fill="#06b6d4"
+                        shape={((props: any): any => {
+                          const { cx, cy, payload } = props;
+                          if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                          const isSelected = inspectedChartPoint && (
+                            inspectedChartPoint.ticker === payload.ticker &&
+                            inspectedChartPoint.strike === payload.strike &&
+                            inspectedChartPoint.expiration === payload.expiration
+                          );
+                          return (
+                            <g
+                              key={`uni-prem-${payload.ticker}-${payload.strike}-${payload.expiration}`}
+                              className="cursor-pointer group"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInspectedChartPoint({
+                                  ...payload,
+                                  themeColor: "#06b6d4",
+                                });
+                              }}
+                            >
+                              <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                              {isSelected && (
+                                <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                              )}
+                              <circle
+                                cx={cx}
+                                cy={cy}
+                                r={isSelected ? 6 : 4}
+                                fill={isSelected ? "#ffffff" : "#06b6d4"}
+                                stroke={isSelected ? "#06b6d4" : "#0f172a"}
+                                strokeWidth={isSelected ? 2.5 : 1.5}
+                                className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                              />
+                            </g>
+                          );
+                        }) as any}
                       />
 
                       {/* Scatter points for Cash-Secured Annualized Return (%) on Right Y-Axis */}
@@ -1263,11 +1265,56 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           dataKey="returnCashSecured"
                           name="Cash-Secured Annualized Return (%)"
                           fill="#10b981"
+                          shape={((props: any): any => {
+                            const { cx, cy, payload } = props;
+                            if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                            const isSelected = inspectedChartPoint && (
+                              inspectedChartPoint.ticker === payload.ticker &&
+                              inspectedChartPoint.strike === payload.strike &&
+                              inspectedChartPoint.expiration === payload.expiration
+                            );
+                            return (
+                              <g
+                                key={`uni-yield-${payload.ticker}-${payload.strike}-${payload.expiration}`}
+                                className="cursor-pointer group"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInspectedChartPoint({
+                                    ...payload,
+                                    themeColor: "#10b981",
+                                  });
+                                }}
+                              >
+                                <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                                {isSelected && (
+                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                                )}
+                                <circle
+                                  cx={cx}
+                                  cy={cy}
+                                  r={isSelected ? 6 : 3.5}
+                                  fill={isSelected ? "#ffffff" : "#10b981"}
+                                  stroke={isSelected ? "#10b981" : "#0f172a"}
+                                  strokeWidth={isSelected ? 2.5 : 1.5}
+                                  className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                                />
+                              </g>
+                            );
+                          }) as any}
                         />
                       )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
+
+                {/* Point Inspector */}
+                {inspectedChartPoint && (
+                  <ChartPointInspector
+                    point={inspectedChartPoint}
+                    onClose={() => setInspectedChartPoint(null)}
+                    themeColor="#10b981"
+                  />
+                )}
 
                 {/* Analytical Footnote Callouts for Multi-Stock */}
                 {multiStockMoneynessData.length > 0 && (

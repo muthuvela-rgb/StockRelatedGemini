@@ -10,9 +10,10 @@ import {
   Tooltip as RechartsTooltip,
   Legend
 } from "recharts";
-import { TrendingUp, Target, Calendar, DollarSign } from "lucide-react";
+import { TrendingUp, Target, Calendar, DollarSign, MousePointerClick } from "lucide-react";
 import { PutOptionRecord } from "../types";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import { ChartPointInspector } from "./ChartPointInspector";
 import { STOCK_COLORS } from "./MultiPlotViewMenu";
 
 interface SingleStockPlotCardProps {
@@ -35,6 +36,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
   const [strikeFilter, setStrikeFilter] = useState<string>("ALL");
   const [expFilter, setExpFilter] = useState<string>("ALL");
   const [xAxisOverride, setXAxisOverride] = useState<"auto" | "expiration" | "strike">("auto");
+  const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
 
   const stockRecords = records.filter((r) => r.ticker === ticker);
   const spotPrice = stockRecords[0]?.current_price || 0;
@@ -194,7 +196,10 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
       {/* Chart Canvas */}
       <div className="h-64 sm:h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 25, bottom: 20, left: 5 }}>
+          <ComposedChart
+            data={chartData}
+            margin={{ top: 10, right: 25, bottom: 20, left: 5 }}
+          >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={themeColor} stopOpacity={0.35} />
@@ -269,67 +274,6 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
               />
             )}
 
-            <RechartsTooltip
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const d = payload[0].payload;
-                  return (
-                    <div className="bg-slate-900/98 backdrop-blur-md border border-slate-700 p-3 rounded-xl shadow-2xl text-xs text-slate-200 min-w-[250px] max-w-[300px]">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1.5">
-                        <span className="font-bold text-sm" style={{ color: themeColor }}>
-                          {d.ticker} ${d.strike} Put
-                        </span>
-                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                          {d.expiration} ({d.dte}d)
-                        </span>
-                      </div>
-
-                      <div className="space-y-1 font-mono text-[11px]">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Strike / Spot:</span>
-                          <span className="text-white font-bold">${d.strike.toFixed(2)} / ${d.spot.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Moneyness:</span>
-                          <span className="text-slate-300">{d.moneyness.toFixed(1)}%</span>
-                        </div>
-                        <div className="flex justify-between pt-1 border-t border-slate-800/80">
-                          <span className="font-semibold" style={{ color: themeColor }}>Bid Premium:</span>
-                          <span className="font-bold text-xs" style={{ color: themeColor }}>${d.premium.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Ask Premium:</span>
-                          <span className="text-slate-300">${d.ask.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between pt-1 border-t border-slate-800/80">
-                          <span className="text-emerald-400 font-semibold">Cash-Secured Yield:</span>
-                          <span className="text-emerald-400 font-bold text-xs">{d.returnCashSecured.toFixed(1)}%</span>
-                        </div>
-                        {d.iv && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Implied Vol (IV):</span>
-                            <span className="text-amber-400">{d.iv.toFixed(1)}%</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
-                      <BollingerRsiTooltipBadge
-                        strike={d.strike}
-                        spot={d.spot}
-                        rsi={d.rsi_14}
-                        bollinger={d.bollinger}
-                        fibonacci={d.fibonacci}
-                        fiftyTwoWeekHigh={d.fifty_two_week_high}
-                        fiftyTwoWeekLow={d.fifty_two_week_low}
-                        strikePosition={d.strike_bollinger_position}
-                      />
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
             <Legend wrapperStyle={{ paddingTop: "8px", fontSize: "0.7rem" }} />
 
             {/* Option Premium Area / Line */}
@@ -341,8 +285,38 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
               stroke={themeColor}
               strokeWidth={2.5}
               fill={`url(#${gradientId})`}
-              dot={{ r: 3, fill: themeColor }}
-              activeDot={{ r: 5, stroke: "#ffffff", strokeWidth: 2 }}
+              dot={((props: any): any => {
+                const { cx, cy, payload } = props;
+                if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                const isSelected = selectedPoint && (
+                  selectedPoint.strike === payload.strike && selectedPoint.expiration === payload.expiration
+                );
+                return (
+                  <g
+                    key={`dot-prem-${payload.strike}-${payload.expiration}`}
+                    className="cursor-pointer group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPoint(payload);
+                    }}
+                  >
+                    <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                    {isSelected && (
+                      <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                    )}
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={isSelected ? 6 : 4}
+                      fill={isSelected ? "#ffffff" : themeColor}
+                      stroke={isSelected ? themeColor : "#0f172a"}
+                      strokeWidth={isSelected ? 2.5 : 1.5}
+                      className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                    />
+                  </g>
+                );
+              }) as any}
+              activeDot={false}
             />
 
             <Line
@@ -354,6 +328,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
               strokeWidth={1.5}
               strokeDasharray="4 4"
               dot={false}
+              activeDot={false}
             />
 
             {/* Cash-Secured Annualized Return % Line */}
@@ -365,12 +340,52 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                 name="Cash Yield (%)"
                 stroke="#10b981"
                 strokeWidth={1.8}
-                dot={{ r: 2.5, fill: "#10b981" }}
+                dot={((props: any): any => {
+                  const { cx, cy, payload } = props;
+                  if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                  const isSelected = selectedPoint && (
+                    selectedPoint.strike === payload.strike && selectedPoint.expiration === payload.expiration
+                  );
+                  return (
+                    <g
+                      key={`dot-yield-${payload.strike}-${payload.expiration}`}
+                      className="cursor-pointer group"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPoint(payload);
+                      }}
+                    >
+                      <circle cx={cx} cy={cy} r={14} fill="transparent" />
+                      {isSelected && (
+                        <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                      )}
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={isSelected ? 6 : 3.5}
+                        fill={isSelected ? "#ffffff" : "#10b981"}
+                        stroke={isSelected ? "#10b981" : "#0f172a"}
+                        strokeWidth={isSelected ? 2.5 : 1.5}
+                        className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                      />
+                    </g>
+                  );
+                }) as any}
+                activeDot={false}
               />
             )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Interactive Pinned Point Details Card */}
+      {selectedPoint && (
+        <ChartPointInspector
+          point={selectedPoint}
+          onClose={() => setSelectedPoint(null)}
+          themeColor={themeColor}
+        />
+      )}
 
       {/* Mini Stats Footer */}
       {chartData.length > 0 && (
