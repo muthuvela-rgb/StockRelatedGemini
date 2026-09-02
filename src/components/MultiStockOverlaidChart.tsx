@@ -80,6 +80,9 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
           iv: contract.implied_volatility,
           rsi_14: contract.rsi_14,
           bollinger: contract.bollinger,
+          fibonacci: contract.fibonacci,
+          fifty_two_week_high: contract.fifty_two_week_high,
+          fifty_two_week_low: contract.fifty_two_week_low,
           strike_bollinger_position: contract.strike_bollinger_position,
         };
       }
@@ -174,11 +177,16 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                                 {s.iv && <div>IV: <span className="text-amber-400">{s.iv.toFixed(1)}%</span></div>}
                               </div>
 
-                              {/* Bollinger Bands & RSI Technicals */}
+                              {/* Bollinger Bands, RSI & Fibonacci Retracement Technicals */}
                               <BollingerRsiTooltipBadge
                                 compact
+                                strike={s.strike}
+                                spot={s.spot}
                                 rsi={s.rsi_14}
                                 bollinger={s.bollinger}
+                                fibonacci={s.fibonacci}
+                                fiftyTwoWeekHigh={s.fifty_two_week_high}
+                                fiftyTwoWeekLow={s.fifty_two_week_low}
                                 strikePosition={s.strike_bollinger_position}
                               />
                             </div>

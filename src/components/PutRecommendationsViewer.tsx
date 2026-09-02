@@ -1206,8 +1206,13 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
                             <div className="mt-2 pt-2 border-t border-slate-800">
                               <BollingerRsiTooltipBadge
+                                strike={selectedTrade.strike}
+                                spot={selectedTrade.current_price}
                                 rsi={selectedTrade.rsi_14}
                                 bollinger={selectedTrade.bollinger}
+                                fibonacci={selectedTrade.fibonacci}
+                                fiftyTwoWeekHigh={selectedTrade.fifty_two_week_high}
+                                fiftyTwoWeekLow={selectedTrade.fifty_two_week_low}
                                 strikePosition={selectedTrade.strike_bollinger_position}
                               />
                             </div>

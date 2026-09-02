@@ -1,3 +1,12 @@
+export interface FibonacciLevels {
+  level_0: number;
+  level_236: number;
+  level_382: number;
+  level_500: number;
+  level_618: number;
+  level_1000: number;
+}
+
 export interface PutOptionRecord {
   ticker: string;
   expiration: string;
@@ -18,6 +27,8 @@ export interface PutOptionRecord {
   bid_used_fallback: boolean;
   ask_used_fallback: boolean;
   market_cap?: number;
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
   rsi_14?: number | null;
   bollinger?: {
     sma: number;
@@ -26,6 +37,7 @@ export interface PutOptionRecord {
     percent_b: number;
     zone: string;
   } | null;
+  fibonacci?: FibonacciLevels | null;
   strike_bollinger_position?: {
     zone: string;
     zone_label: string;
@@ -144,6 +156,9 @@ export interface OptionChainResponse {
     percent_b?: number;
     zone?: string;
   } | null;
+  fibonacci?: FibonacciLevels | null;
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
 }
 
 export interface SecFilingSummary {
@@ -238,6 +253,14 @@ export interface PremiumCurvePoint {
     percent_b?: number;
     zone?: string;
   } | null;
+  fibonacci?: {
+    level_0: number;
+    level_236: number;
+    level_382: number;
+    level_500: number;
+    level_618: number;
+    level_1000: number;
+  } | null;
   strike_bollinger_position?: {
     zone: string;
     zone_label: string;
@@ -253,6 +276,8 @@ export interface PremiumCurvePoint {
 export interface PremiumCurveAnalysis {
   ticker: string;
   current_price: number | null;
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
   expirations: string[];
   records: PremiumCurvePoint[];
   highest_ratio_point: PremiumCurvePoint | null;
@@ -263,6 +288,14 @@ export interface PremiumCurveAnalysis {
     lower_band: number;
     percent_b?: number;
     zone?: string;
+  } | null;
+  fibonacci?: {
+    level_0: number;
+    level_236: number;
+    level_382: number;
+    level_500: number;
+    level_618: number;
+    level_1000: number;
   } | null;
   steepest_slopes: Array<{
     expiration: string;
@@ -321,6 +354,14 @@ export interface PremiumVsExpirationPoint {
     percent_b?: number;
     zone?: string;
   } | null;
+  fibonacci?: {
+    level_0: number;
+    level_236: number;
+    level_382: number;
+    level_500: number;
+    level_618: number;
+    level_1000: number;
+  } | null;
   strike_bollinger_position?: {
     zone: string;
     zone_label: string;
@@ -336,6 +377,8 @@ export interface PremiumVsExpirationPoint {
 export interface PremiumVsExpirationAnalysis {
   ticker: string;
   current_price: number;
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
   target_strike: number;
   target_strike_pct: number;
   option_type: "put" | "call";
@@ -347,6 +390,14 @@ export interface PremiumVsExpirationAnalysis {
     lower_band: number;
     percent_b?: number;
     zone?: string;
+  } | null;
+  fibonacci?: {
+    level_0: number;
+    level_236: number;
+    level_382: number;
+    level_500: number;
+    level_618: number;
+    level_1000: number;
   } | null;
   points: PremiumVsExpirationPoint[];
   knee_point: PremiumVsExpirationPoint | null;
@@ -400,9 +451,18 @@ export interface RecommendedPut {
     hist_vol_pct: number | null;
     iv_to_hv_ratio: number | null;
     fifty_two_week_high: number | null;
+    fifty_two_week_low?: number | null;
     dist_to_52w_high_pct: number | null;
     market_cap?: number | null;
     next_earnings_date?: string | null;
+    fibonacci?: {
+      level_0: number;
+      level_236: number;
+      level_382: number;
+      level_500: number;
+      level_618: number;
+      level_1000: number;
+    } | null;
   };
   rationale: string;
   strategy_flags: string[];
@@ -415,6 +475,8 @@ export interface RecommendedPut {
     score_impact: number;
     label: string;
   };
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
   rsi_14?: number | null;
   bollinger?: {
     sma: number;
@@ -423,6 +485,7 @@ export interface RecommendedPut {
     percent_b?: number;
     zone?: string;
   } | null;
+  fibonacci?: FibonacciLevels | null;
   strike_bollinger_position?: {
     zone: string;
     zone_label: string;

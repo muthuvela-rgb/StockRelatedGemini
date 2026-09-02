@@ -84,6 +84,9 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
         iv: r.implied_volatility,
         rsi_14: r.rsi_14,
         bollinger: r.bollinger,
+        fibonacci: r.fibonacci,
+        fifty_two_week_high: r.fifty_two_week_high,
+        fifty_two_week_low: r.fifty_two_week_low,
         strike_bollinger_position: r.strike_bollinger_position,
       }));
   } else {
@@ -107,6 +110,9 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
         iv: r.implied_volatility,
         rsi_14: r.rsi_14,
         bollinger: r.bollinger,
+        fibonacci: r.fibonacci,
+        fifty_two_week_high: r.fifty_two_week_high,
+        fifty_two_week_low: r.fifty_two_week_low,
         strike_bollinger_position: r.strike_bollinger_position,
       }));
   }
@@ -307,10 +313,15 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                         )}
                       </div>
 
-                      {/* Bollinger Bands and RSI Technical Indicators */}
+                      {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
                       <BollingerRsiTooltipBadge
+                        strike={d.strike}
+                        spot={d.spot}
                         rsi={d.rsi_14}
                         bollinger={d.bollinger}
+                        fibonacci={d.fibonacci}
+                        fiftyTwoWeekHigh={d.fifty_two_week_high}
+                        fiftyTwoWeekLow={d.fifty_two_week_low}
                         strikePosition={d.strike_bollinger_position}
                       />
                     </div>

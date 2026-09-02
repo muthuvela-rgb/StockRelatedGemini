@@ -752,13 +752,28 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       const currentPrice = meta.regularMarketPrice || meta.ask || meta.bid || 0;
       if (!currentPrice || currentPrice <= 0) continue;
 
-      // Compute underlying stock RSI(14) and 20-period Bollinger Bands
+      // Compute underlying stock RSI(14) and 20-period Bollinger Bands & Fibonacci levels
       const chart = await fetchYahooChart(ticker, "3mo", "1d");
       const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
         (c: any) => c !== null && c !== undefined
       );
       const rsi = computeRsi(closes, 14);
       const bollinger = computeBollinger(closes, Number(bollingerPeriod) || 20, Number(bollingerStd) || 2.0);
+
+      const fiftyTwoWeekHigh = meta.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
+      const fiftyTwoWeekLow = meta.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
+      let fibonacci = null;
+      if (fiftyTwoWeekHigh && fiftyTwoWeekLow && fiftyTwoWeekHigh > fiftyTwoWeekLow) {
+        const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
+        fibonacci = {
+          level_0: Number(fiftyTwoWeekLow.toFixed(2)),
+          level_236: Number((fiftyTwoWeekLow + range * 0.236).toFixed(2)),
+          level_382: Number((fiftyTwoWeekLow + range * 0.382).toFixed(2)),
+          level_500: Number((fiftyTwoWeekLow + range * 0.5).toFixed(2)),
+          level_618: Number((fiftyTwoWeekLow + range * 0.618).toFixed(2)),
+          level_1000: Number(fiftyTwoWeekHigh.toFixed(2)),
+        };
+      }
 
       let targetStrike: number | null = null;
       if (strikeMode === "single") {
@@ -895,8 +910,11 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
             bid_used_fallback: bidFallback,
             ask_used_fallback: askFallback,
             market_cap: meta.marketCap || undefined,
+            fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
+            fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
             rsi_14: rsi,
             bollinger: bollinger,
+            fibonacci: fibonacci,
             strike_bollinger_position: strikeBbPos,
           });
         }
@@ -906,8 +924,11 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
         ticker,
         current_price: currentPrice,
         market_cap: meta.marketCap,
+        fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
+        fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
         rsi_14: rsi,
         bollinger: bollinger,
+        fibonacci: fibonacci,
       });
     }
 
@@ -1002,9 +1023,26 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
     const rsi = computeRsi(closes, 14);
     const bollinger = computeBollinger(closes, 20, 2.0);
 
+    const fiftyTwoWeekHigh = chain.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
+    const fiftyTwoWeekLow = chain.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
+    let fibonacci = null;
+    if (fiftyTwoWeekHigh && fiftyTwoWeekLow && fiftyTwoWeekHigh > fiftyTwoWeekLow) {
+      const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
+      fibonacci = {
+        level_0: Number(fiftyTwoWeekLow.toFixed(2)),
+        level_236: Number((fiftyTwoWeekLow + range * 0.236).toFixed(2)),
+        level_382: Number((fiftyTwoWeekLow + range * 0.382).toFixed(2)),
+        level_500: Number((fiftyTwoWeekLow + range * 0.5).toFixed(2)),
+        level_618: Number((fiftyTwoWeekLow + range * 0.618).toFixed(2)),
+        level_1000: Number(fiftyTwoWeekHigh.toFixed(2)),
+      };
+    }
+
     res.json({
       ticker,
       current_price: currentPrice,
+      fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
+      fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       expirations: expDates,
       selected_expiration: expDateStr,
       days_to_expiration: dte,
@@ -1012,6 +1050,7 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
       puts,
       rsi_14: rsi,
       bollinger,
+      fibonacci,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1039,13 +1078,28 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const rawExpirations: number[] = optData.expirationDates || [];
     const expDateStrs = rawExpirations.map((ts) => new Date(ts * 1000).toISOString().split("T")[0]);
 
-    // Calculate RSI and Bollinger Bands for ticker
+    // Calculate RSI, Bollinger Bands, and Fibonacci for ticker
     const chart = await fetchYahooChart(ticker, "3mo", "1d");
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
     const rsi = computeRsi(closes, 14);
     const bollinger = computeBollinger(closes, 20, 2.0);
+
+    const fiftyTwoWeekHigh = optData.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
+    const fiftyTwoWeekLow = optData.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
+    let fibonacci = null;
+    if (fiftyTwoWeekHigh && fiftyTwoWeekLow && fiftyTwoWeekHigh > fiftyTwoWeekLow) {
+      const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
+      fibonacci = {
+        level_0: Number(fiftyTwoWeekLow.toFixed(2)),
+        level_236: Number((fiftyTwoWeekLow + range * 0.236).toFixed(2)),
+        level_382: Number((fiftyTwoWeekLow + range * 0.382).toFixed(2)),
+        level_500: Number((fiftyTwoWeekLow + range * 0.5).toFixed(2)),
+        level_618: Number((fiftyTwoWeekLow + range * 0.618).toFixed(2)),
+        level_1000: Number(fiftyTwoWeekHigh.toFixed(2)),
+      };
+    }
 
     let chosenExpStrs: string[] = [];
     if (requestedExp) {
@@ -1137,6 +1191,7 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
           premium_to_strike: Number((premium / strike).toFixed(4)),
           rsi_14: rsi,
           bollinger: bollinger,
+          fibonacci: fibonacci,
           strike_bollinger_position: strikeBbPos,
         });
       }
@@ -1274,6 +1329,8 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     res.json({
       ticker,
       current_price: currentPrice,
+      fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
+      fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       expirations: chosenExpStrs,
       records,
       highest_ratio_point: highestRatioPoint,
@@ -1282,6 +1339,7 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
       gap_markers: gapMarkers,
       rsi_14: rsi,
       bollinger: bollinger,
+      fibonacci: fibonacci,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1309,13 +1367,28 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       return res.status(404).json({ error: `Unable to get current price for ${ticker}` });
     }
 
-    // Compute RSI & Bollinger for underlying stock
+    // Compute RSI, Bollinger, & Fibonacci for underlying stock
     const chart = await fetchYahooChart(ticker, "3mo", "1d");
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
     const rsi = computeRsi(closes, 14);
     const bollinger = computeBollinger(closes, 20, 2.0);
+
+    const fiftyTwoWeekHigh = optData.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
+    const fiftyTwoWeekLow = optData.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
+    let fibonacci = null;
+    if (fiftyTwoWeekHigh && fiftyTwoWeekLow && fiftyTwoWeekHigh > fiftyTwoWeekLow) {
+      const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
+      fibonacci = {
+        level_0: Number(fiftyTwoWeekLow.toFixed(2)),
+        level_236: Number((fiftyTwoWeekLow + range * 0.236).toFixed(2)),
+        level_382: Number((fiftyTwoWeekLow + range * 0.382).toFixed(2)),
+        level_500: Number((fiftyTwoWeekLow + range * 0.5).toFixed(2)),
+        level_618: Number((fiftyTwoWeekLow + range * 0.618).toFixed(2)),
+        level_1000: Number(fiftyTwoWeekHigh.toFixed(2)),
+      };
+    }
 
     let targetStrike = reqStrike;
     if (targetStrike === null && reqPct !== null) {
@@ -1425,6 +1498,7 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
         annualized_return_cash_secured: Number(annReturnCashSecured.toFixed(2)),
         rsi_14: rsi,
         bollinger: bollinger,
+        fibonacci: fibonacci,
         strike_bollinger_position: strikeBbPos,
       });
     }
@@ -1454,6 +1528,8 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
     res.json({
       ticker,
       current_price: currentPrice,
+      fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
+      fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       target_strike: Number(targetStrike.toFixed(2)),
       target_strike_pct: Number(((targetStrike / currentPrice) * 100).toFixed(1)),
       option_type: optionType,
@@ -1462,6 +1538,7 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       knee_point: kneePoint,
       rsi_14: rsi,
       bollinger: bollinger,
+      fibonacci: fibonacci,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -2112,10 +2189,15 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                     hist_vol_pct: histVolPct,
                     iv_to_hv_ratio: ivToHvRatio,
                     fifty_two_week_high: fiftyTwoWeekHigh,
+                    fifty_two_week_low: technicals?.fifty_two_week_low ?? null,
                     dist_to_52w_high_pct: distTo52wHigh,
                     market_cap: marketCap,
                     next_earnings_date: nextEarningsDate,
+                    fibonacci: technicals?.fibonacci ?? null,
                   },
+                  fibonacci: technicals?.fibonacci ?? null,
+                  fifty_two_week_high: fiftyTwoWeekHigh,
+                  fifty_two_week_low: technicals?.fifty_two_week_low ?? null,
                   earnings_context: earningsInfo ? {
                     next_earnings_date: earningsInfo.nextEarningsDate,
                     days_to_earnings: earningsInfo.daysToEarnings,

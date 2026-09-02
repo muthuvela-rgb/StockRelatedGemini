@@ -1,5 +1,6 @@
 import React from "react";
-import { ShieldCheck, Activity, TrendingDown, Sparkles, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, Activity, Layers, Sparkles } from "lucide-react";
+import { findClosestFibonacci, FibonacciLevels } from "../utils/fibonacci";
 
 export interface BollingerData {
   sma?: number;
@@ -21,12 +22,15 @@ export interface StrikeBollingerPosition {
 }
 
 interface BollingerRsiTooltipBadgeProps {
-  strike?: number;
-  spot?: number;
+  strike?: number | null;
+  spot?: number | null;
   rsi?: number | null;
   bollinger?: BollingerData | null;
   strikeBollingerPosition?: StrikeBollingerPosition | null;
   strikePosition?: StrikeBollingerPosition | null;
+  fibonacci?: FibonacciLevels | null;
+  fiftyTwoWeekHigh?: number | null;
+  fiftyTwoWeekLow?: number | null;
   compact?: boolean;
 }
 
@@ -37,6 +41,9 @@ export const BollingerRsiTooltipBadge: React.FC<BollingerRsiTooltipBadgeProps> =
   bollinger,
   strikeBollingerPosition,
   strikePosition,
+  fibonacci,
+  fiftyTwoWeekHigh,
+  fiftyTwoWeekLow,
   compact = false,
 }) => {
   const activePosition = strikeBollingerPosition || strikePosition;
@@ -50,7 +57,7 @@ export const BollingerRsiTooltipBadge: React.FC<BollingerRsiTooltipBadgeProps> =
   let pctFromLower = activePosition?.pct_from_lower ?? 0;
   let zoneLabel = activePosition?.zone_label || "";
 
-  if (strike !== undefined && lowerBand !== null) {
+  if (strike != null && lowerBand !== null) {
     isBelowLower = strike < lowerBand;
     diffFromLower = Number((strike - lowerBand).toFixed(2));
     pctFromLower = Number(((strike - lowerBand) / lowerBand * 100).toFixed(1));
@@ -70,27 +77,27 @@ export const BollingerRsiTooltipBadge: React.FC<BollingerRsiTooltipBadgeProps> =
 
   // RSI categorization
   const rsiVal = rsi !== null && rsi !== undefined ? Number(rsi.toFixed(1)) : null;
-  let rsiCategory: "oversold" | "neutral" | "overbought" | null = null;
   let rsiLabel = "Neutral";
   let rsiBadgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/30";
 
   if (rsiVal !== null) {
     if (rsiVal < 30) {
-      rsiCategory = "oversold";
       rsiLabel = "Oversold (<30)";
       rsiBadgeColor = "bg-emerald-500/25 text-emerald-300 border-emerald-500/40 ring-1 ring-emerald-500/30";
     } else if (rsiVal > 70) {
-      rsiCategory = "overbought";
       rsiLabel = "Overbought (>70)";
       rsiBadgeColor = "bg-amber-500/25 text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30";
     } else {
-      rsiCategory = "neutral";
       rsiLabel = "Neutral (30-70)";
       rsiBadgeColor = "bg-sky-500/20 text-sky-300 border-sky-500/30";
     }
   }
 
-  const hasAnyData = rsiVal !== null || lowerBand !== null;
+  // Fibonacci Retracement Calculation relative to Strike Price (or Spot Price)
+  const targetPrice = strike != null && strike > 0 ? strike : spot != null ? spot : undefined;
+  const closestFib = findClosestFibonacci(targetPrice, fibonacci, fiftyTwoWeekHigh, fiftyTwoWeekLow);
+
+  const hasAnyData = rsiVal !== null || lowerBand !== null || closestFib !== null;
   if (!hasAnyData) return null;
 
   return (
@@ -114,7 +121,7 @@ export const BollingerRsiTooltipBadge: React.FC<BollingerRsiTooltipBadgeProps> =
       </div>
 
       {/* BOLLINGER BAND POSITION OF STRIKE PRICE */}
-      {lowerBand !== null && strike !== undefined && (
+      {lowerBand !== null && strike != null && (
         <div className="space-y-1">
           {/* If strike is below lower band: Special prominent Green Badge */}
           {isBelowLower ? (
@@ -173,6 +180,55 @@ export const BollingerRsiTooltipBadge: React.FC<BollingerRsiTooltipBadgeProps> =
           )}
         </div>
       )}
+
+      {/* CLOSEST FIBONACCI RETRACEMENT LEVEL */}
+      {closestFib && (
+        <div className="space-y-1">
+          <div className="bg-gradient-to-r from-amber-950/80 via-slate-950/90 to-amber-950/80 border border-amber-500/40 rounded-lg p-2 text-amber-200 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
+                <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Closest Fib: {closestFib.closest.shortName}</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-400/40">
+                ${closestFib.closest.value.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="text-[10px] font-mono mt-1 flex items-center justify-between text-amber-300/90">
+              <span className="text-slate-400">Strike vs Fib Level:</span>
+              <span className={closestFib.closest.isExact ? "text-emerald-300 font-bold" : closestFib.closest.isBelow ? "text-cyan-300 font-medium" : "text-amber-300 font-medium"}>
+                {closestFib.closest.isExact
+                  ? "🎯 Exact at Fib Level"
+                  : closestFib.closest.diff > 0
+                  ? `+$${closestFib.closest.diff.toFixed(2)} (+${closestFib.closest.diffPct}%) above`
+                  : `-$${Math.abs(closestFib.closest.diff).toFixed(2)} (${closestFib.closest.diffPct}%) below`}
+              </span>
+            </div>
+          </div>
+
+          {/* Mini Fibonacci Ladder */}
+          {!compact && (
+            <div className="grid grid-cols-6 gap-0.5 text-[8px] font-mono text-center pt-0.5">
+              {closestFib.allLevels.map((lvl) => (
+                <div
+                  key={lvl.ratioKey}
+                  className={`p-1 rounded border transition-colors ${
+                    lvl.isClosest
+                      ? "bg-amber-500/30 border-amber-400 text-amber-200 font-bold ring-1 ring-amber-400/40"
+                      : "bg-slate-950/60 border-slate-800/60 text-slate-400"
+                  }`}
+                  title={`${lvl.name}: $${lvl.value.toFixed(2)} (Diff: ${lvl.diff >= 0 ? "+" : ""}$${lvl.diff.toFixed(2)})`}
+                >
+                  <span className="block text-[7px] text-slate-500 uppercase">{lvl.pctStr}</span>
+                  <span className="truncate block font-semibold">${lvl.value.toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
+

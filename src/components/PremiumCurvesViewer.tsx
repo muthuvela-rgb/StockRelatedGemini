@@ -540,10 +540,15 @@ export const PremiumCurvesViewer: React.FC = () => {
                               </div>
                             )}
 
-                            {/* Bollinger Bands and RSI Technical Indicators */}
+                            {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
                             <BollingerRsiTooltipBadge
+                              strike={d.snapped_strike || d.target_strike}
+                              spot={spot}
                               rsi={d.rsi_14 || expAnalysis?.rsi_14}
                               bollinger={d.bollinger || expAnalysis?.bollinger}
+                              fibonacci={d.fibonacci || expAnalysis?.fibonacci}
+                              fiftyTwoWeekHigh={expAnalysis?.fifty_two_week_high}
+                              fiftyTwoWeekLow={expAnalysis?.fifty_two_week_low}
                               strikePosition={d.strike_bollinger_position}
                             />
                           </div>
@@ -731,11 +736,16 @@ export const PremiumCurvesViewer: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Bollinger Bands and RSI Technical Indicators */}
+                        {/* Bollinger Bands, RSI & Fibonacci Retracement Technical Indicators */}
                         {analysis && (
                           <BollingerRsiTooltipBadge
+                            strike={strike}
+                            spot={analysis.current_price}
                             rsi={analysis.rsi_14}
                             bollinger={analysis.bollinger}
+                            fibonacci={analysis.fibonacci}
+                            fiftyTwoWeekHigh={analysis.fifty_two_week_high}
+                            fiftyTwoWeekLow={analysis.fifty_two_week_low}
                             strikePosition={
                               (payload[0]?.dataKey ? detailsByExp[String(payload[0].dataKey)]?.strike_bollinger_position : undefined) ||
                               (analysis.bollinger

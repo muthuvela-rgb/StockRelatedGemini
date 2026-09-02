@@ -167,11 +167,15 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
             </div>
           </div>
 
-          {(chainData.rsi_14 !== undefined || chainData.bollinger) && (
+          {(chainData.rsi_14 !== undefined || chainData.bollinger || chainData.fibonacci) && (
             <div className="pt-2 border-t border-slate-800/80">
               <BollingerRsiTooltipBadge
+                spot={chainData.current_price}
                 rsi={chainData.rsi_14}
                 bollinger={chainData.bollinger}
+                fibonacci={chainData.fibonacci}
+                fiftyTwoWeekHigh={chainData.fifty_two_week_high}
+                fiftyTwoWeekLow={chainData.fifty_two_week_low}
               />
             </div>
           )}
