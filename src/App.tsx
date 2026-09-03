@@ -13,7 +13,7 @@ import { WatchlistManager } from "./components/WatchlistManager";
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("options-scanner");
   const [watchlist, setWatchlist] = useState<string[]>([
-    "NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"
+    "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ"
   ]);
 
   useEffect(() => {

@@ -16,6 +16,10 @@ interface WatchlistManagerProps {
 
 const PRESETS = [
   {
+    name: "Default Core Watchlist",
+    tickers: ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ"],
+  },
+  {
     name: "Tech & Options Leaders",
     tickers: ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"],
   },

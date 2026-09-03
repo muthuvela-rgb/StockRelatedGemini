@@ -51,16 +51,16 @@ interface PutScannerProps {
 export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState("NVDA, MSFT, AAPL, AMZN, META");
-  const [minDays, setMinDays] = useState(0);
-  const [maxDays, setMaxDays] = useState(90);
+  const [minDays, setMinDays] = useState(45);
+  const [maxDays, setMaxDays] = useState(500);
   
   // Strike selection state
   const [strikeMode, setStrikeMode] = useState<"band" | "single" | "bollinger">("band");
   const [singleStrikeType, setSingleStrikeType] = useState<"dollar" | "pct">("dollar");
   const [singleStrike, setSingleStrike] = useState<number | string>(150);
-  const [singleStrikePct, setSingleStrikePct] = useState<number>(85);
-  const [pctLow, setPctLow] = useState(70);
-  const [pctHigh, setPctHigh] = useState(95);
+  const [singleStrikePct, setSingleStrikePct] = useState<number>(50);
+  const [pctLow, setPctLow] = useState(30);
+  const [pctHigh, setPctHigh] = useState(70);
   const [bollingerPeriod, setBollingerPeriod] = useState(20);
   const [bollingerStd, setBollingerStd] = useState(2.0);
 
@@ -403,7 +403,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                 type="number"
                 min="1"
                 value={maxDays}
-                onChange={(e) => setMaxDays(parseInt(e.target.value) || 90)}
+                onChange={(e) => setMaxDays(parseInt(e.target.value) || 500)}
                 placeholder="Max DTE"
                 className="w-1/2 bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-2 text-xs outline-none"
               />
@@ -619,6 +619,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
 
                 <div className="hidden md:flex items-center gap-1.5">
                   {[
+                    { low: 30, high: 70, label: "30-70% (Deep OTM)" },
                     { low: 70, high: 95, label: "70-95% (Safe OTM)" },
                     { low: 80, high: 95, label: "80-95% (Near OTM)" },
                     { low: 30, high: 100, label: "30-100% (Full)" },
@@ -1006,14 +1007,17 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         strokeWidth={2.5}
                         fill="url(#singleStockPremiumFill)"
                         dot={((props: any): any => {
-                          const { cx, cy, payload } = props;
-                          if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                          const { cx, cy, payload, key: rechartsKey, index } = props;
+                          const fallbackKey = rechartsKey || `ps-prem-${payload?.strike ?? index}-${payload?.expiration ?? ""}`;
+                          if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                            return <g key={`empty-${fallbackKey}`} />;
+                          }
                           const isSelected = inspectedChartPoint && (
                             inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
                           );
                           return (
                             <g
-                              key={`ps-prem-${payload.strike}-${payload.expiration}`}
+                              key={fallbackKey}
                               className="cursor-pointer group"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1064,14 +1068,17 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           stroke="#10b981"
                           strokeWidth={2}
                           dot={((props: any): any => {
-                            const { cx, cy, payload } = props;
-                            if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                            const { cx, cy, payload, key: rechartsKey, index } = props;
+                            const fallbackKey = rechartsKey || `ps-yield-${payload?.strike ?? index}-${payload?.expiration ?? ""}`;
+                            if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                              return <g key={`empty-${fallbackKey}`} />;
+                            }
                             const isSelected = inspectedChartPoint && (
                               inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
                             );
                             return (
                               <g
-                                key={`ps-yield-${payload.strike}-${payload.expiration}`}
+                                key={fallbackKey}
                                 className="cursor-pointer group"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1221,8 +1228,11 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         name="Option Premium ($)"
                         fill="#06b6d4"
                         shape={((props: any): any => {
-                          const { cx, cy, payload } = props;
-                          if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                          const { cx, cy, payload, key: rechartsKey, index } = props;
+                          const fallbackKey = rechartsKey || `uni-prem-${payload?.ticker ?? ""}-${payload?.strike ?? index}-${payload?.expiration ?? ""}`;
+                          if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                            return <g key={`empty-${fallbackKey}`} />;
+                          }
                           const isSelected = inspectedChartPoint && (
                             inspectedChartPoint.ticker === payload.ticker &&
                             inspectedChartPoint.strike === payload.strike &&
@@ -1230,7 +1240,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           );
                           return (
                             <g
-                              key={`uni-prem-${payload.ticker}-${payload.strike}-${payload.expiration}`}
+                              key={fallbackKey}
                               className="cursor-pointer group"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1266,8 +1276,11 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           name="Cash-Secured Annualized Return (%)"
                           fill="#10b981"
                           shape={((props: any): any => {
-                            const { cx, cy, payload } = props;
-                            if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                            const { cx, cy, payload, key: rechartsKey, index } = props;
+                            const fallbackKey = rechartsKey || `uni-yield-${payload?.ticker ?? ""}-${payload?.strike ?? index}-${payload?.expiration ?? ""}`;
+                            if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                              return <g key={`empty-${fallbackKey}`} />;
+                            }
                             const isSelected = inspectedChartPoint && (
                               inspectedChartPoint.ticker === payload.ticker &&
                               inspectedChartPoint.strike === payload.strike &&
@@ -1275,7 +1288,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                             );
                             return (
                               <g
-                                key={`uni-yield-${payload.ticker}-${payload.strike}-${payload.expiration}`}
+                                key={fallbackKey}
                                 className="cursor-pointer group"
                                 onClick={(e) => {
                                   e.stopPropagation();

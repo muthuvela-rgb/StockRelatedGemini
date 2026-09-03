@@ -31,7 +31,9 @@ function getGenAI(): GoogleGenAI {
 const secSummaryCache = new Map<string, any>();
 
 // --- CONSTANTS & WATCHLIST ---
-const DEFAULT_WATCHLIST = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"];
+const DEFAULT_WATCHLIST = [
+  "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ"
+];
 const WATCHLIST_FILE = path.join(process.cwd(), "watchlist.json");
 
 function getWatchlist(): string[] {
@@ -718,17 +720,17 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
   try {
     const {
       tickers,
-      minDays = 0,
-      maxDays = 365,
+      minDays = 45,
+      maxDays = 500,
       strikeMode = "band", // 'band' | 'single' | 'bollinger'
       singleStrike = null,
       singleStrikeType = "dollar", // 'dollar' | 'pct'
-      singleStrikePct = 85.0,
+      singleStrikePct = 50.0,
       pctLow = 30.0,
-      pctHigh = 100.0,
+      pctHigh = 70.0,
       bollingerPeriod = 20,
       bollingerStd = 2.0,
-      noMargin = false,
+      noMargin = true,
       marginShockPct = 15.0,
       marginFloor = 0.375,
       marginFloorPct = 5.0,
@@ -1063,9 +1065,9 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const ticker = (req.query.ticker as string || "QQQ").toUpperCase();
     const optionType = (req.query.optionType as string || "put").toLowerCase();
     const priceType = (req.query.priceType as string || "bid").toLowerCase();
-    const numExpirations = parseInt(req.query.numExpirations as string) || 3;
+    const numExpirations = parseInt(req.query.numExpirations as string) || 4;
     const requestedExp = req.query.expiration as string;
-    const strikeRange = (req.query.strikeRange as string) || "20-150";
+    const strikeRange = (req.query.strikeRange as string) || "30-70";
     const noStrikeRange = req.query.noStrikeRange === "true";
     const noFallback = req.query.noFallback === "true";
 
@@ -1352,9 +1354,13 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
     const ticker = ((req.query.ticker as string) || "NVDA").toUpperCase();
     const optionType = ((req.query.optionType as string) || "put").toLowerCase();
     const priceType = ((req.query.priceType as string) || "bid").toLowerCase();
-    const months = parseInt(req.query.months as string) || 12;
-    const reqStrike = req.query.strike ? parseFloat(req.query.strike as string) : null;
-    const reqPct = req.query.pctOfPrice ? parseFloat(req.query.pctOfPrice as string) : null;
+    const months = parseInt(req.query.months as string) || 18;
+    const reqStrike = req.query.targetStrike 
+      ? parseFloat(req.query.targetStrike as string) 
+      : (req.query.strike ? parseFloat(req.query.strike as string) : null);
+    const reqPct = req.query.targetStrikePct 
+      ? parseFloat(req.query.targetStrikePct as string) 
+      : (req.query.pctOfPrice ? parseFloat(req.query.pctOfPrice as string) : null);
     const noFallback = req.query.noFallback === "true";
 
     const optData = await fetchYahooOptions(ticker);
@@ -1395,8 +1401,84 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       targetStrike = (currentPrice * reqPct) / 100;
     }
     if (targetStrike === null) {
-      // Default to 85% of spot price
-      targetStrike = currentPrice * 0.85;
+      // Default to 50% of spot price (30-70% deep OTM range)
+      targetStrike = currentPrice * 0.50;
+    }
+
+    // Determine target strikes list (supports single strike, custom percentage range, dollar range, or preset)
+    const mode = (req.query.mode as string) || "single";
+    const strikePctsParam = (req.query.strikePcts as string) || "";
+    const targetStrikeRange = (req.query.targetStrikeRange as string) || "";
+    const targetStrikesParam = (req.query.targetStrikes as string) || "";
+
+    const isRangeMode = mode === "range" || Boolean(strikePctsParam || targetStrikeRange || targetStrikesParam);
+
+    interface TargetStrikeDef {
+      key: string;
+      label: string;
+      pct: number;
+      dollar: number;
+    }
+
+    const targetStrikesList: TargetStrikeDef[] = [];
+
+    if (isRangeMode) {
+      if (strikePctsParam) {
+        const pcts = strikePctsParam.split(",").map((p) => parseFloat(p.trim())).filter((p) => !isNaN(p));
+        for (const p of pcts) {
+          const dollar = (currentPrice * p) / 100;
+          targetStrikesList.push({
+            key: `${p}%`,
+            label: `${p}% Spot ($${dollar.toFixed(1)})`,
+            pct: p,
+            dollar,
+          });
+        }
+      } else if (targetStrikesParam) {
+        const dollars = targetStrikesParam.split(",").map((d) => parseFloat(d.trim())).filter((d) => !isNaN(d));
+        for (const d of dollars) {
+          const pct = Number(((d / currentPrice) * 100).toFixed(1));
+          targetStrikesList.push({
+            key: `$${d}`,
+            label: `$${d} (${pct}%)`,
+            pct,
+            dollar: d,
+          });
+        }
+      } else if (targetStrikeRange) {
+        const parts = targetStrikeRange.split("-").map((p) => parseFloat(p.trim()));
+        const minP = !isNaN(parts[0]) ? parts[0] : 30;
+        const maxP = !isNaN(parts[1]) ? parts[1] : 70;
+        const step = (maxP - minP) <= 30 ? 5 : (maxP - minP) <= 60 ? 10 : 15;
+        for (let p = minP; p <= maxP; p += step) {
+          const dollar = (currentPrice * p) / 100;
+          targetStrikesList.push({
+            key: `${p}%`,
+            label: `${p}% Spot ($${dollar.toFixed(1)})`,
+            pct: p,
+            dollar,
+          });
+        }
+      } else {
+        // Default range: 30% to 70% with 10% step
+        for (const p of [30, 40, 50, 60, 70]) {
+          const dollar = (currentPrice * p) / 100;
+          targetStrikesList.push({
+            key: `${p}%`,
+            label: `${p}% Spot ($${dollar.toFixed(1)})`,
+            pct: p,
+            dollar,
+          });
+        }
+      }
+    } else {
+      const p = Number(((targetStrike / currentPrice) * 100).toFixed(1));
+      targetStrikesList.push({
+        key: `${p}%`,
+        label: `${p}% Spot ($${targetStrike.toFixed(1)})`,
+        pct: p,
+        dollar: targetStrike,
+      });
     }
 
     const rawExpirations: number[] = optData.expirationDates || [];
@@ -1414,7 +1496,13 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       }
     }
 
-    const points: any[] = [];
+    // Structure for multi-strike range calculation
+    const pointsByStrikeKey: Record<string, any[]> = {};
+    for (const ts of targetStrikesList) {
+      pointsByStrikeKey[ts.key] = [];
+    }
+
+    const rangeChartData: any[] = [];
 
     for (const exp of validExpirations) {
       const chain =
@@ -1425,120 +1513,469 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       const contracts = optionType === "call" ? chain.options?.[0]?.calls || [] : chain.options?.[0]?.puts || [];
       if (contracts.length === 0) continue;
 
-      // Find nearest listed strike to targetStrike
-      const nearest = contracts.reduce((prev: any, curr: any) =>
-        Math.abs(curr.strike - targetStrike!) < Math.abs(prev.strike - targetStrike!) ? curr : prev
-      );
-
-      if (!nearest) continue;
-
-      const bid = nearest.bid || 0;
-      const ask = nearest.ask || 0;
-      const last = nearest.lastPrice || 0;
-
-      let premium = priceType === "ask" ? ask : bid;
-      let usedFallback = false;
-      if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
-        premium = last;
-        usedFallback = true;
-      }
-
       const dte = Math.max(1, exp.dte);
-      const marginBasis = estimatePortfolioMargin(currentPrice, nearest.strike, premium, 15.0, 0.375, 5.0, 0.0);
-      const annReturnMargin = ((premium / marginBasis) * (365 / dte)) * 100;
-      const annReturnCashSecured = ((premium / nearest.strike) * (365 / dte)) * 100;
-
-      let strikeBbPos: any = null;
-      if (bollinger) {
-        const isBelow = nearest.strike < bollinger.lower_band;
-        const diff = Number((nearest.strike - bollinger.lower_band).toFixed(2));
-        const pctFromLower = Number(((nearest.strike - bollinger.lower_band) / bollinger.lower_band * 100).toFixed(1));
-        let zoneLabel = "Below Lower Band";
-        let zoneKey = "below_lower";
-        if (nearest.strike >= bollinger.upper_band) {
-          zoneLabel = "Above Upper Band";
-          zoneKey = "above_upper";
-        } else if (nearest.strike >= bollinger.sma) {
-          zoneLabel = "Between Mid & Upper Band";
-          zoneKey = "upper_half";
-        } else if (nearest.strike >= bollinger.lower_band) {
-          zoneLabel = "Between Lower & Mid Band";
-          zoneKey = "lower_half";
-        }
-
-        strikeBbPos = {
-          zone: zoneKey,
-          zone_label: zoneLabel,
-          is_below_lower: isBelow,
-          diff_from_lower: diff,
-          pct_from_lower: pctFromLower,
-          lower_band: bollinger.lower_band,
-          sma: bollinger.sma,
-          upper_band: bollinger.upper_band,
-        };
-      }
-
-      points.push({
+      const expChartRow: any = {
         expiration: exp.dateStr,
         dte,
-        target_strike: Number(targetStrike.toFixed(2)),
-        snapped_strike: nearest.strike,
-        strike_diff: Number((nearest.strike - targetStrike).toFixed(2)),
-        moneyness_pct: Number(((nearest.strike / currentPrice) * 100).toFixed(2)),
-        premium: Number(premium.toFixed(2)),
-        bid: Number(bid.toFixed(2)),
-        ask: Number(ask.toFixed(2)),
-        last_price: Number(last.toFixed(2)),
-        volume: nearest.volume || 0,
-        open_interest: nearest.openInterest || 0,
-        implied_volatility: nearest.impliedVolatility ? Number((nearest.impliedVolatility * 100).toFixed(2)) : 0,
-        used_fallback: usedFallback,
-        capital_basis_margin: Number(marginBasis.toFixed(2)),
-        annualized_return_margin: Number(annReturnMargin.toFixed(2)),
-        annualized_return_cash_secured: Number(annReturnCashSecured.toFixed(2)),
-        rsi_14: rsi,
-        bollinger: bollinger,
-        fibonacci: fibonacci,
-        strike_bollinger_position: strikeBbPos,
+        label: `${exp.dateStr.slice(5)} (${dte}d)`,
+        shortLabel: `${exp.dateStr.slice(5)} (${dte}d)`,
+        strikes: {},
+      };
+
+      for (const ts of targetStrikesList) {
+        const nearest = contracts.reduce((prev: any, curr: any) =>
+          Math.abs(curr.strike - ts.dollar) < Math.abs(prev.strike - ts.dollar) ? curr : prev
+        );
+
+        if (!nearest) continue;
+
+        const bid = nearest.bid || 0;
+        const ask = nearest.ask || 0;
+        const last = nearest.lastPrice || 0;
+
+        let premium = priceType === "ask" ? ask : bid;
+        let usedFallback = false;
+        if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
+          premium = last;
+          usedFallback = true;
+        }
+
+        const marginBasis = estimatePortfolioMargin(currentPrice, nearest.strike, premium, 15.0, 0.375, 5.0, 0.0);
+        const annReturnMargin = ((premium / marginBasis) * (365 / dte)) * 100;
+        const annReturnCashSecured = ((premium / nearest.strike) * (365 / dte)) * 100;
+        const cushion = Number((Math.abs(currentPrice - nearest.strike) / currentPrice * 100).toFixed(1));
+
+        let strikeBbPos: any = null;
+        if (bollinger) {
+          const isBelow = nearest.strike < bollinger.lower_band;
+          const diff = Number((nearest.strike - bollinger.lower_band).toFixed(2));
+          const pctFromLower = Number(((nearest.strike - bollinger.lower_band) / bollinger.lower_band * 100).toFixed(1));
+          let zoneLabel = "Below Lower Band";
+          let zoneKey = "below_lower";
+          if (nearest.strike >= bollinger.upper_band) {
+            zoneLabel = "Above Upper Band";
+            zoneKey = "above_upper";
+          } else if (nearest.strike >= bollinger.sma) {
+            zoneLabel = "Between Mid & Upper Band";
+            zoneKey = "upper_half";
+          } else if (nearest.strike >= bollinger.lower_band) {
+            zoneLabel = "Between Lower & Mid Band";
+            zoneKey = "lower_half";
+          }
+
+          strikeBbPos = {
+            zone: zoneKey,
+            zone_label: zoneLabel,
+            is_below_lower: isBelow,
+            diff_from_lower: diff,
+            pct_from_lower: pctFromLower,
+            lower_band: bollinger.lower_band,
+            sma: bollinger.sma,
+            upper_band: bollinger.upper_band,
+          };
+        }
+
+        const pointObj = {
+          expiration: exp.dateStr,
+          dte,
+          strike_key: ts.key,
+          strike_label: ts.label,
+          target_strike: Number(ts.dollar.toFixed(2)),
+          target_strike_pct: ts.pct,
+          snapped_strike: nearest.strike,
+          strike_diff: Number((nearest.strike - ts.dollar).toFixed(2)),
+          moneyness_pct: Number(((nearest.strike / currentPrice) * 100).toFixed(2)),
+          cushion_to_strike_pct: cushion,
+          premium: Number(premium.toFixed(2)),
+          bid: Number(bid.toFixed(2)),
+          ask: Number(ask.toFixed(2)),
+          last_price: Number(last.toFixed(2)),
+          volume: nearest.volume || 0,
+          open_interest: nearest.openInterest || 0,
+          implied_volatility: nearest.impliedVolatility ? Number((nearest.impliedVolatility * 100).toFixed(2)) : 0,
+          used_fallback: usedFallback,
+          capital_basis_margin: Number(marginBasis.toFixed(2)),
+          annualized_return_margin: Number(annReturnMargin.toFixed(2)),
+          annualized_return_cash_secured: Number(annReturnCashSecured.toFixed(2)),
+          rsi_14: rsi,
+          bollinger: bollinger,
+          fibonacci: fibonacci,
+          strike_bollinger_position: strikeBbPos,
+        };
+
+        pointsByStrikeKey[ts.key].push(pointObj);
+
+        expChartRow.strikes[ts.key] = pointObj;
+        expChartRow[`${ts.key}_premium`] = Number(premium.toFixed(2));
+        expChartRow[`${ts.key}_cash_return`] = Number(annReturnCashSecured.toFixed(2));
+        expChartRow[`${ts.key}_margin_return`] = Number(annReturnMargin.toFixed(2));
+        expChartRow[`${ts.key}_iv`] = nearest.impliedVolatility ? Number((nearest.impliedVolatility * 100).toFixed(2)) : 0;
+        expChartRow[`${ts.key}_cushion`] = cushion;
+      }
+
+      rangeChartData.push(expChartRow);
+    }
+
+    rangeChartData.sort((a, b) => a.dte - b.dte);
+
+    // Compute range results per strike
+    const rangeStrikesResults: any[] = [];
+    for (const ts of targetStrikesList) {
+      const strikePoints = pointsByStrikeKey[ts.key] || [];
+      strikePoints.sort((a, b) => a.dte - b.dte);
+
+      // Knee point calculation
+      let kneePoint: any = null;
+      if (strikePoints.length >= 3) {
+        let maxSlopeDrop = -Infinity;
+        for (let i = 1; i < strikePoints.length - 1; i++) {
+          const prev = strikePoints[i - 1];
+          const curr = strikePoints[i];
+          const next = strikePoints[i + 1];
+
+          const slope1 = (curr.premium - prev.premium) / Math.max(1, curr.dte - prev.dte);
+          const slope2 = (next.premium - curr.premium) / Math.max(1, next.dte - curr.dte);
+          const drop = slope1 - slope2;
+
+          if (drop > maxSlopeDrop && slope1 > 0) {
+            maxSlopeDrop = drop;
+            kneePoint = curr;
+          }
+        }
+      }
+
+      const avgPremium = strikePoints.length > 0 ? strikePoints.reduce((acc, p) => acc + p.premium, 0) / strikePoints.length : 0;
+      const avgCash = strikePoints.length > 0 ? strikePoints.reduce((acc, p) => acc + p.annualized_return_cash_secured, 0) / strikePoints.length : 0;
+      const avgMargin = strikePoints.length > 0 ? strikePoints.reduce((acc, p) => acc + p.annualized_return_margin, 0) / strikePoints.length : 0;
+      const avgIv = strikePoints.length > 0 ? strikePoints.reduce((acc, p) => acc + p.implied_volatility, 0) / strikePoints.length : 0;
+      const cushion = Number((Math.abs(currentPrice - ts.dollar) / currentPrice * 100).toFixed(1));
+      const firstSnapped = strikePoints[0]?.snapped_strike || ts.dollar;
+
+      rangeStrikesResults.push({
+        key: ts.key,
+        label: ts.label,
+        target_strike_pct: ts.pct,
+        target_strike: Number(ts.dollar.toFixed(2)),
+        snapped_strike: firstSnapped,
+        avg_premium: Number(avgPremium.toFixed(2)),
+        avg_cash_return: Number(avgCash.toFixed(2)),
+        avg_margin_return: Number(avgMargin.toFixed(2)),
+        avg_iv: Number(avgIv.toFixed(2)),
+        cushion_to_strike_pct: cushion,
+        knee_point: kneePoint,
+        points: strikePoints,
       });
     }
 
-    points.sort((a, b) => a.dte - b.dte);
-
-    // Calculate knee of curve (point of highest slope deceleration)
-    let kneePoint: any = null;
-    if (points.length >= 3) {
-      let maxSlopeDrop = -Infinity;
-      for (let i = 1; i < points.length - 1; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        const next = points[i + 1];
-
-        const slope1 = (curr.premium - prev.premium) / Math.max(1, curr.dte - prev.dte);
-        const slope2 = (next.premium - curr.premium) / Math.max(1, next.dte - curr.dte);
-        const drop = slope1 - slope2;
-
-        if (drop > maxSlopeDrop && slope1 > 0) {
-          maxSlopeDrop = drop;
-          kneePoint = curr;
-        }
-      }
-    }
+    // Default primary strike is the middle one or the first one
+    const midIdx = Math.floor(targetStrikesList.length / 2);
+    const primaryDef = targetStrikesList[midIdx] || targetStrikesList[0];
+    const primaryPoints = pointsByStrikeKey[primaryDef.key] || [];
+    const primaryResult = rangeStrikesResults.find((r) => r.key === primaryDef.key);
 
     res.json({
       ticker,
       current_price: currentPrice,
       fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
       fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
-      target_strike: Number(targetStrike.toFixed(2)),
-      target_strike_pct: Number(((targetStrike / currentPrice) * 100).toFixed(1)),
+      target_strike: Number(primaryDef.dollar.toFixed(2)),
+      target_strike_pct: primaryDef.pct,
       option_type: optionType,
       price_type: priceType,
-      points,
-      knee_point: kneePoint,
+      points: primaryPoints,
+      knee_point: primaryResult?.knee_point || null,
       rsi_14: rsi,
       bollinger: bollinger,
       fibonacci: fibonacci,
+      is_range_mode: isRangeMode,
+      range_strikes: rangeStrikesResults,
+      range_chart_data: rangeChartData,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Multi-Ticker Compare Premium Curves
+app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
+  try {
+    const rawTickers = req.body?.tickers || req.query?.tickers;
+    let tickers: string[] = [];
+    if (Array.isArray(rawTickers)) {
+      tickers = rawTickers.map((t: any) => String(t).trim().toUpperCase()).filter(Boolean);
+    } else if (typeof rawTickers === "string") {
+      tickers = rawTickers
+        .split(/[\s,]+/)
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean);
+    }
+
+    if (tickers.length === 0) {
+      tickers = ["NVDA", "AAPL", "MSFT", "AMD", "QQQ"];
+    }
+    // Deduplicate and limit to 15 tickers max
+    tickers = Array.from(new Set(tickers)).slice(0, 15);
+
+    const optionType = ((req.body?.optionType || req.query?.optionType || "put") as string).toLowerCase();
+    const priceType = ((req.body?.priceType || req.query?.priceType || "bid") as string).toLowerCase();
+    const targetStrikePct = parseFloat((req.body?.targetStrikePct || req.query?.targetStrikePct || "50") as string) || 50;
+    const months = parseInt((req.body?.months || req.query?.months || "18") as string) || 18;
+    const noFallback = (req.body?.noFallback === true || req.query?.noFallback === "true");
+
+    const maxDays = months * 30.5;
+    const today = new Date();
+
+    const resultsByTicker: Record<string, any> = {};
+    const allExpirationsMap: Record<string, { expiration: string; dte: number; label: string }> = {};
+
+    await Promise.all(
+      tickers.map(async (t) => {
+        try {
+          const optData = await fetchYahooOptions(t);
+          if (!optData) return;
+          const currentPrice = optData.quote?.regularMarketPrice;
+          if (!currentPrice) return;
+
+          // Technicals
+          const chart = await fetchYahooChart(t, "3mo", "1d");
+          const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+            (c: any) => c !== null && c !== undefined
+          );
+          const rsi = computeRsi(closes, 14);
+          const bollinger = computeBollinger(closes, 20, 2.0);
+
+          const fiftyTwoWeekHigh = optData.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
+          const fiftyTwoWeekLow = optData.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
+          let fibonacci = null;
+          if (fiftyTwoWeekHigh && fiftyTwoWeekLow && fiftyTwoWeekHigh > fiftyTwoWeekLow) {
+            const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
+            fibonacci = {
+              level_0: Number(fiftyTwoWeekLow.toFixed(2)),
+              level_236: Number((fiftyTwoWeekLow + range * 0.236).toFixed(2)),
+              level_382: Number((fiftyTwoWeekLow + range * 0.382).toFixed(2)),
+              level_500: Number((fiftyTwoWeekLow + range * 0.5).toFixed(2)),
+              level_618: Number((fiftyTwoWeekLow + range * 0.618).toFixed(2)),
+              level_1000: Number(fiftyTwoWeekHigh.toFixed(2)),
+            };
+          }
+
+          const targetStrike = (currentPrice * targetStrikePct) / 100;
+          const rawExpirations: number[] = optData.expirationDates || [];
+
+          const validExpirations: Array<{ timestamp: number; dateStr: string; dte: number }> = [];
+          for (const expTs of rawExpirations) {
+            const expDate = new Date(expTs * 1000);
+            const diffTime = expDate.getTime() - today.getTime();
+            const dte = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (dte >= 0 && dte <= maxDays) {
+              const dateStr = expDate.toISOString().split("T")[0];
+              validExpirations.push({ timestamp: expTs, dateStr, dte });
+            }
+          }
+
+          const points: any[] = [];
+          for (const exp of validExpirations) {
+            const chain =
+              exp.timestamp === rawExpirations[0]
+                ? optData
+                : (await fetchYahooOptions(t, exp.timestamp)) || optData;
+
+            const contracts = optionType === "call" ? chain.options?.[0]?.calls || [] : chain.options?.[0]?.puts || [];
+            if (contracts.length === 0) continue;
+
+            const nearest = contracts.reduce((prev: any, curr: any) =>
+              Math.abs(curr.strike - targetStrike) < Math.abs(prev.strike - targetStrike) ? curr : prev
+            );
+            if (!nearest) continue;
+
+            const bid = nearest.bid || 0;
+            const ask = nearest.ask || 0;
+            const last = nearest.lastPrice || 0;
+
+            let premium = priceType === "ask" ? ask : bid;
+            let usedFallback = false;
+            if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
+              premium = last;
+              usedFallback = true;
+            }
+
+            const dte = Math.max(1, exp.dte);
+            const marginBasis = estimatePortfolioMargin(currentPrice, nearest.strike, premium, 15.0, 0.375, 5.0, 0.0);
+            const annReturnMargin = ((premium / marginBasis) * (365 / dte)) * 100;
+            const annReturnCashSecured = ((premium / nearest.strike) * (365 / dte)) * 100;
+
+            let strikeBbPos: any = null;
+            if (bollinger) {
+              const isBelow = nearest.strike < bollinger.lower_band;
+              const diff = Number((nearest.strike - bollinger.lower_band).toFixed(2));
+              const pctFromLower = Number(((nearest.strike - bollinger.lower_band) / bollinger.lower_band * 100).toFixed(1));
+              let zoneLabel = "Below Lower Band";
+              let zoneKey = "below_lower";
+              if (nearest.strike >= bollinger.upper_band) {
+                zoneLabel = "Above Upper Band";
+                zoneKey = "above_upper";
+              } else if (nearest.strike >= bollinger.sma) {
+                zoneLabel = "Between Mid & Upper Band";
+                zoneKey = "upper_half";
+              } else if (nearest.strike >= bollinger.lower_band) {
+                zoneLabel = "Between Lower & Mid Band";
+                zoneKey = "lower_half";
+              }
+              strikeBbPos = {
+                zone: zoneKey,
+                zone_label: zoneLabel,
+                is_below_lower: isBelow,
+                diff_from_lower: diff,
+                pct_from_lower: pctFromLower,
+                lower_band: bollinger.lower_band,
+                sma: bollinger.sma,
+                upper_band: bollinger.upper_band,
+              };
+            }
+
+            const cushionToStrikePct = Number((((currentPrice - nearest.strike) / currentPrice) * 100).toFixed(1));
+
+            points.push({
+              expiration: exp.dateStr,
+              dte: exp.dte,
+              target_strike: Number(targetStrike.toFixed(2)),
+              snapped_strike: nearest.strike,
+              strike_diff: Number((nearest.strike - targetStrike).toFixed(2)),
+              moneyness_pct: Number(((nearest.strike / currentPrice) * 100).toFixed(1)),
+              cushion_to_strike_pct: cushionToStrikePct,
+              premium: Number(premium.toFixed(2)),
+              bid: nearest.bid || 0,
+              ask: nearest.ask || 0,
+              last_price: last,
+              volume: nearest.volume || 0,
+              open_interest: nearest.openInterest || 0,
+              implied_volatility: nearest.impliedVolatility ? Number((nearest.impliedVolatility * 100).toFixed(2)) : 0,
+              used_fallback: usedFallback,
+              capital_basis_margin: Number(marginBasis.toFixed(2)),
+              annualized_return_margin: Number(annReturnMargin.toFixed(2)),
+              annualized_return_cash_secured: Number(annReturnCashSecured.toFixed(2)),
+              rsi_14: rsi,
+              bollinger: bollinger,
+              fibonacci: fibonacci,
+              strike_bollinger_position: strikeBbPos,
+            });
+
+            if (!allExpirationsMap[exp.dateStr]) {
+              allExpirationsMap[exp.dateStr] = {
+                expiration: exp.dateStr,
+                dte: exp.dte,
+                label: `${exp.dateStr} (${exp.dte}d)`,
+              };
+            }
+          }
+
+          points.sort((a, b) => a.dte - b.dte);
+
+          // Knee calculation
+          let kneePoint: any = null;
+          if (points.length >= 3) {
+            let maxSlopeDrop = -Infinity;
+            for (let i = 1; i < points.length - 1; i++) {
+              const prev = points[i - 1];
+              const curr = points[i];
+              const next = points[i + 1];
+              const slope1 = (curr.premium - prev.premium) / Math.max(1, curr.dte - prev.dte);
+              const slope2 = (next.premium - curr.premium) / Math.max(1, next.dte - curr.dte);
+              const drop = slope1 - slope2;
+              if (drop > maxSlopeDrop && slope1 > 0) {
+                maxSlopeDrop = drop;
+                kneePoint = curr;
+              }
+            }
+          }
+
+          const avgCashReturn = points.length > 0
+            ? Number((points.reduce((acc, p) => acc + p.annualized_return_cash_secured, 0) / points.length).toFixed(2))
+            : 0;
+          const avgMarginReturn = points.length > 0
+            ? Number((points.reduce((acc, p) => acc + p.annualized_return_margin, 0) / points.length).toFixed(2))
+            : 0;
+          const avgIv = points.length > 0
+            ? Number((points.reduce((acc, p) => acc + p.implied_volatility, 0) / points.length).toFixed(2))
+            : 0;
+
+          resultsByTicker[t] = {
+            ticker: t,
+            current_price: currentPrice,
+            fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
+            fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
+            target_strike: Number(targetStrike.toFixed(2)),
+            target_strike_pct: targetStrikePct,
+            rsi_14: rsi,
+            bollinger: bollinger,
+            fibonacci: fibonacci,
+            points,
+            knee_point: kneePoint,
+            avg_cash_return: avgCashReturn,
+            avg_margin_return: avgMarginReturn,
+            avg_iv: avgIv,
+          };
+        } catch (err: any) {
+          console.error(`Error processing ticker ${t} in compare-premium-curves:`, err);
+        }
+      })
+    );
+
+    const sortedExpirations = Object.values(allExpirationsMap).sort((a, b) => a.dte - b.dte);
+
+    const overlaidChartData = sortedExpirations.map((expObj) => {
+      const row: any = {
+        expiration: expObj.expiration,
+        dte: expObj.dte,
+        label: expObj.label,
+        stocks: {},
+      };
+
+      for (const t of Object.keys(resultsByTicker)) {
+        const item = resultsByTicker[t];
+        const pt = item.points.find((p: any) => p.expiration === expObj.expiration);
+        if (pt) {
+          row[`${t}_premium`] = pt.premium;
+          row[`${t}_cash_return`] = pt.annualized_return_cash_secured;
+          row[`${t}_margin_return`] = pt.annualized_return_margin;
+          row[`${t}_iv`] = pt.implied_volatility;
+          row[`${t}_strike`] = pt.snapped_strike;
+          row[`${t}_spot`] = item.current_price;
+          row[`${t}_cushion`] = pt.cushion_to_strike_pct;
+          row.stocks[t] = {
+            ticker: t,
+            expiration: pt.expiration,
+            dte: pt.dte,
+            strike: pt.snapped_strike,
+            spot: item.current_price,
+            premium: pt.premium,
+            bid: pt.bid,
+            ask: pt.ask,
+            returnCashSecured: pt.annualized_return_cash_secured,
+            returnMargin: pt.annualized_return_margin,
+            iv: pt.implied_volatility,
+            moneyness: pt.moneyness_pct,
+            cushion: pt.cushion_to_strike_pct,
+            rsi_14: pt.rsi_14,
+            bollinger: pt.bollinger,
+            fibonacci: pt.fibonacci,
+            strike_bollinger_position: pt.strike_bollinger_position,
+            fifty_two_week_high: item.fifty_two_week_high,
+            fifty_two_week_low: item.fifty_two_week_low,
+          };
+        }
+      }
+      return row;
+    });
+
+    res.json({
+      tickers: Object.keys(resultsByTicker),
+      target_strike_pct: targetStrikePct,
+      option_type: optionType,
+      price_type: priceType,
+      expirations: sortedExpirations,
+      results_by_ticker: resultsByTicker,
+      overlaid_chart_data: overlaidChartData,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1760,7 +2197,7 @@ interface EarningsTimingInfo {
 
 function computePutRecommendationScore(
   tier: "least_risk" | "medium_risk" | "high_risk",
-  annualMarginReturn: number,
+  annualCashReturn: number,
   pop: number,
   cushionPct: number,
   dte: number,
@@ -1782,14 +2219,14 @@ function computePutRecommendationScore(
   if (tier === "least_risk") {
     score += Math.min(25, Math.max(0, (pop - 80) * 1.5));
     score += Math.min(15, Math.max(0, cushionPct * 0.6));
-    score += Math.min(15, Math.max(0, annualMarginReturn * 0.4));
+    score += Math.min(15, Math.max(0, annualCashReturn * 1.0));
   } else if (tier === "medium_risk") {
     score += Math.min(20, Math.max(0, (pop - 68) * 1.2));
     score += Math.min(15, Math.max(0, cushionPct * 0.9));
-    score += Math.min(20, Math.max(0, annualMarginReturn * 0.35));
+    score += Math.min(20, Math.max(0, annualCashReturn * 0.9));
   } else {
     score += Math.min(15, Math.max(0, (pop - 50) * 0.8));
-    score += Math.min(28, Math.max(0, annualMarginReturn * 0.28));
+    score += Math.min(28, Math.max(0, annualCashReturn * 0.7));
     score += Math.min(10, Math.max(0, cushionPct * 1.0));
   }
 
@@ -1890,11 +2327,12 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
   try {
     const {
       tickers,
-      minDte = 7,
-      maxDte = 60,
+      minDte = 45,
+      maxDte = 500,
       minBid = 0.35,
       minOpenInterest = 5,
       marginShockPct = 15.0,
+      minAnnualReturn = 8.0,
       minAnnualMarginReturn = 8.0,
     } = req.body;
 
@@ -2053,7 +2491,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                 const annualReturnCash = (execBid / cashBasisPerShare) * (365 / exp.dte) * 100;
                 const annualReturnMargin = (execBid / marginBasisPerShare) * (365 / exp.dte) * 100;
 
-                if (annualReturnMargin < minAnnualMarginReturn) continue;
+                const minReturnThreshold = minAnnualReturn || minAnnualMarginReturn || 5;
+                if (annualReturnCash < minReturnThreshold) continue;
 
                 const spreadPct = execBid > 0 && ask > 0 ? Number((((ask - execBid) / execBid) * 100).toFixed(1)) : 0;
                 const dailyTheta = Math.abs(greeks.theta || 0) * 100;
@@ -2068,7 +2507,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                 if (cushionToStrikePct >= 18) flags.push("Deep OTM Safety Buffer");
                 if (spreadPct <= 8) flags.push("Tight Bid-Ask Spread");
                 if (oi >= 250) flags.push("High Open Interest");
-                if (annualReturnMargin >= 40) flags.push("High Yield Harvest");
+                if (annualReturnCash >= 15) flags.push("High Cash Yield");
 
                 // Risk Tier Categorization
                 // Incorporating Delta, Downside Cushion, POP, Bollinger Band Lower support, and RSI(14)
@@ -2104,7 +2543,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
 
                 const scoreResult = computePutRecommendationScore(
                   riskTier,
-                  annualReturnMargin,
+                  annualReturnCash,
                   pop,
                   cushionToStrikePct,
                   exp.dte,
@@ -2132,11 +2571,11 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
 
                 let rationale = "";
                 if (riskTier === "least_risk") {
-                  rationale = `Safe Delta ${greeks.delta?.toFixed(2) || "-0.12"} positioned ${cushionToStrikePct}% ($${(currentPrice - strike).toFixed(2)}) below spot${bbRsiContext}${rsiStr}. Offers ${pop}% POP with $${(execBid * 100).toFixed(0)} premium ($${dailyTheta.toFixed(2)}/day theta) and ${annualReturnMargin.toFixed(1)}% annualized margin return.`;
+                  rationale = `Safe Delta ${greeks.delta?.toFixed(2) || "-0.12"} positioned ${cushionToStrikePct}% ($${(currentPrice - strike).toFixed(2)}) below spot${bbRsiContext}${rsiStr}. Offers ${pop}% POP with $${(execBid * 100).toFixed(0)} premium ($${dailyTheta.toFixed(2)}/day theta) and ${annualReturnCash.toFixed(1)}% annualized cash-secured return.`;
                 } else if (riskTier === "medium_risk") {
-                  rationale = `Optimal Delta ${greeks.delta?.toFixed(2) || "-0.22"} sweet-spot with ${cushionToStrikePct}% downside cushion${bbRsiContext}${rsiStr}. Delivers strong ${annualReturnMargin.toFixed(1)}% annualized margin return with ${pop}% POP and $${dailyTheta.toFixed(2)}/day theta decay.`;
+                  rationale = `Optimal Delta ${greeks.delta?.toFixed(2) || "-0.22"} sweet-spot with ${cushionToStrikePct}% downside cushion${bbRsiContext}${rsiStr}. Delivers solid ${annualReturnCash.toFixed(1)}% annualized cash-secured return with ${pop}% POP and $${dailyTheta.toFixed(2)}/day theta decay.`;
                 } else {
-                  rationale = `High-yield Delta ${greeks.delta?.toFixed(2) || "-0.35"} generating ${annualReturnMargin.toFixed(1)}% annualized margin yield ($${(execBid * 100).toFixed(0)} premium)${bbRsiContext}${rsiStr} with ${cushionToStrikePct}% buffer and rapid $${dailyTheta.toFixed(2)}/day theta decay.`;
+                  rationale = `High-yield Delta ${greeks.delta?.toFixed(2) || "-0.35"} generating ${annualReturnCash.toFixed(1)}% annualized cash-secured yield ($${(execBid * 100).toFixed(0)} premium)${bbRsiContext}${rsiStr} with ${cushionToStrikePct}% buffer and rapid $${dailyTheta.toFixed(2)}/day theta decay.`;
                 }
 
                 if (scoreResult.earningsNote) {
@@ -2292,9 +2731,9 @@ app.post("/api/ai-put-strategy", async (req: Request, res: Response) => {
   try {
     const { leastRisk, mediumRisk, highRisk, tickers } = req.body;
 
-    const sampleLeast = (leastRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Yield Margin: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
-    const sampleMed = (mediumRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Yield Margin: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
-    const sampleHigh = (highRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Yield Margin: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
+    const sampleLeast = (leastRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Cash Yield: ${r.annualized_return_cash_secured}% | Margin Yield: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
+    const sampleMed = (mediumRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Cash Yield: ${r.annualized_return_cash_secured}% | Margin Yield: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
+    const sampleHigh = (highRisk || []).slice(0, 3).map((r: any) => `${r.ticker} $${r.strike}P exp ${r.expiration} (${r.dte}d) | Cash Yield: ${r.annualized_return_cash_secured}% | Margin Yield: ${r.annualized_return_margin}% | POP: ${r.probability_of_profit}% | Cushion: ${r.cushion_to_strike_pct}% | Score: ${r.score}`);
 
     const prompt = `You are a Senior Quantitative Portfolio Manager and Volatility Structurer.
 Analyze the following top sell put option opportunities across three risk tiers (Least Risk, Medium Risk, High Risk) for the user's watchlist universe (${tickers ? tickers.join(", ") : "mega-caps"}).

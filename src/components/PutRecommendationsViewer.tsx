@@ -54,7 +54,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   // Filters & State
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
-  const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended">("sweetspot");
+  const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended" | "custom_range">("custom_range");
   const [minAnnualReturn, setMinAnnualReturn] = useState<number>(8);
   const [minBid, setMinBid] = useState<number>(0.35);
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
@@ -81,6 +81,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   // Determine DTE range from horizon selection
   const dteRange = useMemo(() => {
     switch (horizon) {
+      case "custom_range":
+        return { minDte: 45, maxDte: 500 };
       case "weeklies":
         return { minDte: 5, maxDte: 16 };
       case "sweetspot":
@@ -91,7 +93,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         return { minDte: 30, maxDte: 60 };
       case "all":
       default:
-        return { minDte: 6, maxDte: 65 };
+        return { minDte: 45, maxDte: 500 };
     }
   }, [horizon]);
 
@@ -102,7 +104,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
     let targetTickers: string[] = [];
     if (universe === "watchlist") {
-      targetTickers = watchlist.length > 0 ? watchlist : ["NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA", "QQQ"];
+      targetTickers = watchlist.length > 0 ? watchlist : ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ"];
     } else if (universe === "qqq") {
       targetTickers = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "COST", "PLTR", "AMAT", "NFLX", "QQQ"];
     } else if (universe === "spy") {
@@ -182,7 +184,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
   // Copy trade order to clipboard
   const handleCopyTrade = (item: RecommendedPut) => {
-    const text = `SELL -1 ${item.ticker} 100 ${item.expiration} $${item.strike.toFixed(2)} PUT @ $${item.bid.toFixed(2)} LMT (POP: ${item.probability_of_profit}%, Ann Margin: ${item.annualized_return_margin.toFixed(1)}%, Cushion: ${item.cushion_to_strike_pct}%)`;
+    const text = `SELL -1 ${item.ticker} 100 ${item.expiration} $${item.strike.toFixed(2)} PUT @ $${item.bid.toFixed(2)} LMT (POP: ${item.probability_of_profit}%, Cash Yield: ${item.annualized_return_cash_secured.toFixed(1)}%, Cushion: ${item.cushion_to_strike_pct}%)`;
     navigator.clipboard.writeText(text);
     setCopiedId(item.id);
     setTimeout(() => setCopiedId(null), 2500);
@@ -338,18 +340,19 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               onChange={(e: any) => setHorizon(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
+              <option value="custom_range">Default (45 to 500 DTE - Multi-Month & LEAPS)</option>
               <option value="sweetspot">Sweet Spot (20 to 45 DTE - Optimal Theta)</option>
               <option value="weeklies">Weeklies (5 to 16 DTE - High Decay)</option>
               <option value="monthly">Monthly Standard (14 to 35 DTE)</option>
               <option value="extended">Extended (30 to 60 DTE - Safe Cushion)</option>
-              <option value="all">All Horizons (6 to 65 DTE)</option>
+              <option value="all">All Horizons (45 to 500 DTE)</option>
             </select>
           </div>
 
           {/* Min Annual Return Slider */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <label className="text-slate-400 font-medium">Min Annual Margin Return</label>
+              <label className="text-slate-400 font-medium">Min Annual Cash Return</label>
               <span className="text-emerald-400 font-bold font-mono">{minAnnualReturn}%</span>
             </div>
             <input

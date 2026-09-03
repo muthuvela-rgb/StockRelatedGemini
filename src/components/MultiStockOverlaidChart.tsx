@@ -155,17 +155,20 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                   stroke={color}
                   strokeWidth={2.5}
                   dot={((props: any): any => {
-                    const { cx, cy, payload } = props;
-                    if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                    const { cx, cy, payload, key: rechartsKey, index } = props;
+                    const fallbackKey = rechartsKey || `dot-${t}-${payload?.expiration ?? index}`;
+                    if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                      return <g key={`empty-${fallbackKey}`} />;
+                    }
                     const st = payload?.stocks?.[t];
-                    if (!st) return <g key="empty" />;
+                    if (!st) return <g key={`empty-${fallbackKey}`} />;
                     const isSelected = selectedPoint && (
                       selectedPoint.ticker === t && selectedPoint.expiration === payload.expiration
                     );
 
                     return (
                       <g
-                        key={`dot-${t}-${payload.expiration}`}
+                        key={fallbackKey}
                         className="cursor-pointer group"
                         onClick={(e) => {
                           e.stopPropagation();

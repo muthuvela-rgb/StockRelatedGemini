@@ -286,14 +286,17 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
               strokeWidth={2.5}
               fill={`url(#${gradientId})`}
               dot={((props: any): any => {
-                const { cx, cy, payload } = props;
-                if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                const { cx, cy, payload, key: rechartsKey, index } = props;
+                const fallbackKey = rechartsKey || `dot-prem-${payload?.strike ?? index}-${payload?.expiration ?? ""}`;
+                if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                  return <g key={`empty-${fallbackKey}`} />;
+                }
                 const isSelected = selectedPoint && (
                   selectedPoint.strike === payload.strike && selectedPoint.expiration === payload.expiration
                 );
                 return (
                   <g
-                    key={`dot-prem-${payload.strike}-${payload.expiration}`}
+                    key={fallbackKey}
                     className="cursor-pointer group"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -341,14 +344,17 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                 stroke="#10b981"
                 strokeWidth={1.8}
                 dot={((props: any): any => {
-                  const { cx, cy, payload } = props;
-                  if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return <g key="empty" />;
+                  const { cx, cy, payload, key: rechartsKey, index } = props;
+                  const fallbackKey = rechartsKey || `dot-yield-${payload?.strike ?? index}-${payload?.expiration ?? ""}`;
+                  if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) {
+                    return <g key={`empty-${fallbackKey}`} />;
+                  }
                   const isSelected = selectedPoint && (
                     selectedPoint.strike === payload.strike && selectedPoint.expiration === payload.expiration
                   );
                   return (
                     <g
-                      key={`dot-yield-${payload.strike}-${payload.expiration}`}
+                      key={fallbackKey}
                       className="cursor-pointer group"
                       onClick={(e) => {
                         e.stopPropagation();

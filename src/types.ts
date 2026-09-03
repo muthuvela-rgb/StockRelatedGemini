@@ -401,6 +401,76 @@ export interface PremiumVsExpirationAnalysis {
   } | null;
   points: PremiumVsExpirationPoint[];
   knee_point: PremiumVsExpirationPoint | null;
+  // Multi-strike range support
+  is_range_mode?: boolean;
+  range_strikes?: Array<{
+    key: string;
+    label: string;
+    target_strike_pct: number;
+    target_strike: number;
+    snapped_strike: number;
+    avg_premium: number;
+    avg_cash_return: number;
+    avg_margin_return: number;
+    avg_iv: number;
+    cushion_to_strike_pct: number;
+    knee_point: PremiumVsExpirationPoint | null;
+    points: PremiumVsExpirationPoint[];
+  }>;
+  range_chart_data?: Array<{
+    expiration: string;
+    dte: number;
+    label: string;
+    shortLabel: string;
+    strikes: Record<string, any>;
+    [key: string]: any;
+  }>;
+}
+
+export interface MultiTickerCompareResult {
+  ticker: string;
+  current_price: number;
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
+  target_strike: number;
+  target_strike_pct: number;
+  rsi_14?: number | null;
+  bollinger?: {
+    sma: number;
+    upper_band: number;
+    lower_band: number;
+    percent_b?: number;
+    zone?: string;
+  } | null;
+  fibonacci?: {
+    level_0: number;
+    level_236: number;
+    level_382: number;
+    level_500: number;
+    level_618: number;
+    level_1000: number;
+  } | null;
+  points: PremiumVsExpirationPoint[];
+  knee_point: PremiumVsExpirationPoint | null;
+  avg_cash_return: number;
+  avg_margin_return: number;
+  avg_iv: number;
+}
+
+export interface MultiTickerCompareAnalysis {
+  tickers: string[];
+  target_strike_pct: number;
+  option_type: "put" | "call";
+  price_type: "bid" | "ask";
+  expirations: Array<{ expiration: string; dte: number; label: string }>;
+  results_by_ticker: Record<string, MultiTickerCompareResult>;
+  overlaid_chart_data: Array<{
+    expiration: string;
+    dte: number;
+    label: string;
+    stocks: Record<string, any>;
+    [key: string]: any;
+  }>;
 }
 
 export type RiskTier = "least_risk" | "medium_risk" | "high_risk";
