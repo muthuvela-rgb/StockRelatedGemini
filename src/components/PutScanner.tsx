@@ -33,7 +33,9 @@ import {
   AreaChart,
   Area,
   Line,
-  ComposedChart
+  ComposedChart,
+  ReferenceLine,
+  ReferenceArea
 } from "recharts";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
@@ -43,6 +45,8 @@ import { ChartPointInspector } from "./ChartPointInspector";
 import { MultiPlotViewMenu, STOCK_COLORS } from "./MultiPlotViewMenu";
 import { MultiStockOverlaidChart } from "./MultiStockOverlaidChart";
 import { SingleStockPlotCard } from "./SingleStockPlotCard";
+import { VerticalPutOptimizerPanel } from "./VerticalPutOptimizerPanel";
+import { VerticalPutSpread } from "../utils/verticalPutOptimizer";
 
 interface PutScannerProps {
   watchlist: string[];
@@ -221,6 +225,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [singleStockStrikeFilter, setSingleStockStrikeFilter] = useState<string>("ALL");
   const [singleStockExpFilter, setSingleStockExpFilter] = useState<string>("ALL");
   const [showSecondaryReturnLine, setShowSecondaryReturnLine] = useState(true);
+  const [singleStockSelectedSpread, setSingleStockSelectedSpread] = useState<VerticalPutSpread | null>(null);
 
   // Active view determination
   const isAllTickersSelected = selectedTickersForPlot.includes("ALL");
@@ -887,7 +892,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                     onChange={(e) => setShowSecondaryReturnLine(e.target.checked)}
                     className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
                   />
-                  <span>Show Cash Yield % Axis</span>
+                  <span>Show Annualized % Return (Cash Secured) Axis</span>
                 </label>
               </div>
             </div>
@@ -991,12 +996,54 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           fontSize={11}
                           unit="%"
                           domain={[0, "auto"]}
-                          label={{ value: "Cash-Secured Return (%)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
+                          label={{ value: "Annualized % Return (Cash Secured)", angle: 90, position: "insideRight", fill: "#10b981", fontSize: 11 }}
                         />
                       )}
 
                       <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
                       
+                      {/* Vertical Put Strategy Overlay on Single Stock Strike Curve */}
+                      {!isSingleStrikeSelected && singleStockSelectedSpread && (
+                        <>
+                          <ReferenceArea
+                            x1={singleStockSelectedSpread.buyStrike}
+                            x2={singleStockSelectedSpread.sellStrike}
+                            yAxisId="left"
+                            fill="#10b981"
+                            fillOpacity={0.12}
+                            stroke="#10b981"
+                            strokeOpacity={0.4}
+                            strokeDasharray="3 3"
+                          />
+                          <ReferenceLine
+                            x={singleStockSelectedSpread.sellStrike}
+                            yAxisId="left"
+                            stroke="#10b981"
+                            strokeDasharray="4 4"
+                            strokeWidth={2}
+                            label={{
+                              value: `SELL $${singleStockSelectedSpread.sellStrike}`,
+                              fill: "#34d399",
+                              fontSize: 10,
+                              position: "top",
+                            }}
+                          />
+                          <ReferenceLine
+                            x={singleStockSelectedSpread.buyStrike}
+                            yAxisId="left"
+                            stroke="#f59e0b"
+                            strokeDasharray="4 4"
+                            strokeWidth={2}
+                            label={{
+                              value: `BUY $${singleStockSelectedSpread.buyStrike}`,
+                              fill: "#fbbf24",
+                              fontSize: 10,
+                              position: "top",
+                            }}
+                          />
+                        </>
+                      )}
+
                       {/* Premium Area / Line */}
                       <Area
                         yAxisId="left"
@@ -1015,6 +1062,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           const isSelected = inspectedChartPoint && (
                             inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
                           );
+                          const isSellLeg = !isSingleStrikeSelected && singleStockSelectedSpread && singleStockSelectedSpread.sellStrike === payload.strike;
+                          const isBuyLeg = !isSingleStrikeSelected && singleStockSelectedSpread && singleStockSelectedSpread.buyStrike === payload.strike;
+
                           return (
                             <g
                               key={fallbackKey}
@@ -1028,16 +1078,22 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                               }}
                             >
                               <circle cx={cx} cy={cy} r={14} fill="transparent" />
-                              {isSelected && (
+                              {isSellLeg && (
+                                <circle cx={cx} cy={cy} r={10} fill="none" stroke="#10b981" strokeWidth={2.5} className="animate-pulse" />
+                              )}
+                              {isBuyLeg && (
+                                <circle cx={cx} cy={cy} r={10} fill="none" stroke="#f59e0b" strokeWidth={2.5} className="animate-pulse" />
+                              )}
+                              {isSelected && !isSellLeg && !isBuyLeg && (
                                 <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
                               )}
                               <circle
                                 cx={cx}
                                 cy={cy}
-                                r={isSelected ? 6 : 4}
-                                fill={isSelected ? "#ffffff" : "#06b6d4"}
-                                stroke={isSelected ? "#06b6d4" : "#0f172a"}
-                                strokeWidth={isSelected ? 2.5 : 1.5}
+                                r={isSelected || isSellLeg || isBuyLeg ? 6 : 4}
+                                fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : "#06b6d4"}
+                                stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? "#06b6d4" : "#0f172a"}
+                                strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : 1.5}
                                 className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                               />
                             </g>
@@ -1064,7 +1120,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           yAxisId="right"
                           type="monotone"
                           dataKey="returnCashSecured"
-                          name="Cash-Secured Annualized Return (%)"
+                          name="Annualized % Return (Cash Secured)"
                           stroke="#10b981"
                           strokeWidth={2}
                           dot={((props: any): any => {
@@ -1118,6 +1174,37 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                     onClose={() => setInspectedChartPoint(null)}
                     themeColor="#06b6d4"
                   />
+                )}
+
+                {/* Vertical Put Strategy Optimizer for Single Stock Strike Curve */}
+                {!isSingleStrikeSelected && (
+                  <div className="mt-4">
+                    <VerticalPutOptimizerPanel
+                      ticker={targetSingleTicker}
+                      expiration={singleStockExpFilter !== "ALL" ? singleStockExpFilter : (singleStockExpirations[0] || "")}
+                      spotPrice={singleStockFilteredRecords[0]?.current_price || 0}
+                      dte={
+                        singleStockRecordsAll.find(
+                          (r) => r.expiration === (singleStockExpFilter !== "ALL" ? singleStockExpFilter : singleStockExpirations[0])
+                        )?.days_to_expiration || 30
+                      }
+                      data={singleStockRecordsAll
+                        .filter((r) => r.expiration === (singleStockExpFilter !== "ALL" ? singleStockExpFilter : singleStockExpirations[0]))
+                        .map((r) => ({
+                          strike: r.strike,
+                          bid: r.bid,
+                          ask: r.ask,
+                          premium: r.bid,
+                          days_to_expiration: r.days_to_expiration,
+                          current_price: r.current_price,
+                        }))}
+                      selectedSpread={singleStockSelectedSpread}
+                      onSelectSpread={setSingleStockSelectedSpread}
+                      availableExpirations={singleStockExpirations}
+                      selectedExpiration={singleStockExpFilter !== "ALL" ? singleStockExpFilter : singleStockExpirations[0]}
+                      onSelectExpiration={(newExp) => setSingleStockExpFilter(newExp)}
+                    />
+                  </div>
                 )}
 
                 {/* Analytical Footnote Callouts for Single Stock */}
@@ -1273,7 +1360,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         <Scatter
                           yAxisId="right"
                           dataKey="returnCashSecured"
-                          name="Cash-Secured Annualized Return (%)"
+                          name="Annualized % Return (Cash Secured)"
                           fill="#10b981"
                           shape={((props: any): any => {
                             const { cx, cy, payload, key: rechartsKey, index } = props;

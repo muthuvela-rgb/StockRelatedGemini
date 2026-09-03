@@ -28,13 +28,17 @@ import {
   Legend,
   AreaChart,
   Area,
-  ComposedChart
+  ComposedChart,
+  ReferenceLine,
+  ReferenceArea
 } from "recharts";
 import { PremiumCurveAnalysis, PremiumVsExpirationAnalysis } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { ChartPointInspector } from "./ChartPointInspector";
 import { MultiTickerCurveComparator } from "./MultiTickerCurveComparator";
+import { VerticalPutOptimizerPanel } from "./VerticalPutOptimizerPanel";
+import { VerticalPutSpread } from "../utils/verticalPutOptimizer";
 
 const STRIKE_RANGE_COLORS = [
   "#38bdf8", // sky blue
@@ -90,6 +94,8 @@ export const PremiumCurvesViewer: React.FC = () => {
   const [showSecondaryReturnLine, setShowSecondaryReturnLine] = useState(true);
   const [inspectedCurvePoint, setInspectedCurvePoint] = useState<any | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [optimizerExp, setOptimizerExp] = useState<string>("");
+  const [selectedVerticalPutSpread, setSelectedVerticalPutSpread] = useState<VerticalPutSpread | null>(null);
 
   const fetchCurves = async () => {
     setLoading(true);
@@ -1167,8 +1173,49 @@ export const PremiumCurvesViewer: React.FC = () => {
                   label={{ value: "Option Premium ($)", angle: -90, position: "insideLeft", fill: "#94a3b8" }}
                 />
                 <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
+
+                {/* Vertical Put Strategy Highlighting (When Spread is Selected) */}
+                {selectedVerticalPutSpread && (
+                  <>
+                    <ReferenceArea
+                      x1={selectedVerticalPutSpread.buyStrike}
+                      x2={selectedVerticalPutSpread.sellStrike}
+                      fill="#10b981"
+                      fillOpacity={0.12}
+                      stroke="#10b981"
+                      strokeOpacity={0.4}
+                      strokeDasharray="3 3"
+                    />
+                    <ReferenceLine
+                      x={selectedVerticalPutSpread.sellStrike}
+                      stroke="#10b981"
+                      strokeDasharray="4 4"
+                      strokeWidth={2}
+                      label={{
+                        value: `SELL $${selectedVerticalPutSpread.sellStrike}`,
+                        fill: "#34d399",
+                        fontSize: 10,
+                        position: "top",
+                      }}
+                    />
+                    <ReferenceLine
+                      x={selectedVerticalPutSpread.buyStrike}
+                      stroke="#f59e0b"
+                      strokeDasharray="4 4"
+                      strokeWidth={2}
+                      label={{
+                        value: `BUY $${selectedVerticalPutSpread.buyStrike}`,
+                        fill: "#fbbf24",
+                        fontSize: 10,
+                        position: "top",
+                      }}
+                    />
+                  </>
+                )}
+
                 {expirations.map((exp, idx) => {
                   const color = EXPIRATION_COLORS[idx % EXPIRATION_COLORS.length];
+                  const isActiveExp = exp === (optimizerExp || expirations[0]);
                   return (
                     <Line
                       key={exp}
@@ -1176,7 +1223,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                       dataKey={exp}
                       name={exp}
                       stroke={color}
-                      strokeWidth={2}
+                      strokeWidth={isActiveExp && selectedVerticalPutSpread ? 3 : 2}
                       dot={((props: any): any => {
                         const { cx, cy, payload, key: rechartsKey, index } = props;
                         const fallbackKey = rechartsKey || `strike-${exp}-${payload?.strike ?? index}`;
@@ -1187,6 +1234,8 @@ export const PremiumCurvesViewer: React.FC = () => {
                         if (!rec) return <g key={`empty-${fallbackKey}`} />;
                         const pointId = `strike-${exp}-${payload.strike}`;
                         const isSelected = selectedPointId === pointId;
+                        const isSellLeg = isActiveExp && selectedVerticalPutSpread && selectedVerticalPutSpread.sellStrike === payload.strike;
+                        const isBuyLeg = isActiveExp && selectedVerticalPutSpread && selectedVerticalPutSpread.buyStrike === payload.strike;
 
                         return (
                           <g
@@ -1213,16 +1262,22 @@ export const PremiumCurvesViewer: React.FC = () => {
                             }}
                           >
                             <circle cx={cx} cy={cy} r={14} fill="transparent" />
-                            {isSelected && (
+                            {isSellLeg && (
+                              <circle cx={cx} cy={cy} r={10} fill="none" stroke="#10b981" strokeWidth={2.5} className="animate-pulse" />
+                            )}
+                            {isBuyLeg && (
+                              <circle cx={cx} cy={cy} r={10} fill="none" stroke="#f59e0b" strokeWidth={2.5} className="animate-pulse" />
+                            )}
+                            {isSelected && !isSellLeg && !isBuyLeg && (
                               <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
                             )}
                             <circle
                               cx={cx}
                               cy={cy}
-                              r={isSelected ? 6 : 4}
-                              fill={isSelected ? "#ffffff" : color}
-                              stroke={isSelected ? color : "#0f172a"}
-                              strokeWidth={isSelected ? 2.5 : 1.5}
+                              r={isSelected || isSellLeg || isBuyLeg ? 6 : 4}
+                              fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : color}
+                              stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? color : "#0f172a"}
+                              strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : 1.5}
                               className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                             />
                           </g>
@@ -1243,6 +1298,33 @@ export const PremiumCurvesViewer: React.FC = () => {
               onClose={() => setInspectedCurvePoint(null)}
               themeColor="#3b82f6"
             />
+          )}
+
+          {/* Vertical Put Strategy Optimizer for Strike Curve */}
+          {optionType === "put" && (
+            <div className="mt-5">
+              <VerticalPutOptimizerPanel
+                ticker={analysis.ticker}
+                expiration={optimizerExp || expirations[0] || ""}
+                spotPrice={analysis.current_price || 0}
+                dte={getDteFromExp(optimizerExp || expirations[0] || "")}
+                data={(analysis.records || [])
+                  .filter((r) => r.expiration === (optimizerExp || expirations[0]))
+                  .map((r) => ({
+                    strike: r.strike,
+                    bid: r.bid || r.lastPrice || 0,
+                    ask: r.ask || r.lastPrice || 0,
+                    premium: r.bid || r.lastPrice || 0,
+                    days_to_expiration: getDteFromExp(r.expiration),
+                    current_price: analysis.current_price || 0,
+                  }))}
+                selectedSpread={selectedVerticalPutSpread}
+                onSelectSpread={setSelectedVerticalPutSpread}
+                availableExpirations={expirations}
+                selectedExpiration={optimizerExp || expirations[0] || ""}
+                onSelectExpiration={(newExp) => setOptimizerExp(newExp)}
+              />
+            </div>
           )}
         </div>
       )}

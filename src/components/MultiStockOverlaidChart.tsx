@@ -99,7 +99,7 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={overlaidData}
-            margin={{ top: 15, right: 30, bottom: 25, left: 10 }}
+            margin={{ top: 15, right: showSecondaryReturnLine ? 55 : 30, bottom: 25, left: 10 }}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
             
@@ -133,6 +133,26 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                 fontSize: 11,
               }}
             />
+
+            {/* Right Y-Axis: Cash-Secured Annualized Return (%) */}
+            {showSecondaryReturnLine && (
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="#10b981"
+                fontSize={11}
+                unit="%"
+                domain={[0, "auto"]}
+                tickFormatter={(v) => `${v}%`}
+                label={{
+                  value: "Annualized % Return (Cash Secured)",
+                  angle: 90,
+                  position: "insideRight",
+                  fill: "#10b981",
+                  fontSize: 11,
+                }}
+              />
+            )}
 
             <Legend wrapperStyle={{ paddingTop: "10px", fontSize: "0.75rem" }} />
 
@@ -200,6 +220,31 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                 />
               );
             })}
+
+            {/* Cash-Secured Annualized Return (%) dashed lines on Right Y-Axis */}
+            {showSecondaryReturnLine &&
+              activeTickers.map((t, idx) => {
+                const color =
+                  STOCK_COLORS[
+                    uniqueTickers.indexOf(t) >= 0
+                      ? uniqueTickers.indexOf(t) % STOCK_COLORS.length
+                      : idx % STOCK_COLORS.length
+                  ];
+                return (
+                  <Line
+                    key={`${t}_return_line`}
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={`${t}_return`}
+                    name={`${t} Ann. Return (Cash Secured %)`}
+                    stroke={color}
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                    dot={false}
+                    activeDot={false}
+                  />
+                );
+              })}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
