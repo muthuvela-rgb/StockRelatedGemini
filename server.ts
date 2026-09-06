@@ -40,7 +40,7 @@ const secSummaryCache = new Map<string, any>();
 
 // --- CONSTANTS & WATCHLIST ---
 const DEFAULT_WATCHLIST = [
-  "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ"
+  "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"
 ];
 const WATCHLIST_FILE = path.join(process.cwd(), "watchlist.json");
 
@@ -2282,6 +2282,325 @@ Provide an executive, high-density financial and strategic breakdown of this ${p
 }
 
 // ==========================================
+// SEC FILING IMPACT ENGINE FOR PUT RECOMMENDATIONS
+// ==========================================
+
+export interface SecFilingScoreImpact {
+  recent_filings_count: number;
+  latest_filing_date: string | null;
+  latest_filing_form: string | null;
+  latest_filing_desc: string | null;
+  sentiment: "Bullish" | "Bearish" | "Neutral" | "Not Analyzed";
+  score_impact: number;
+  catalyst_risk: "Low" | "Moderate" | "High";
+  rationale: string;
+  flags: string[];
+}
+
+const secSubmissionsCache = new Map<string, { timestamp: number; data: any }>();
+const secFilingImpactCache = new Map<string, { timestamp: number; impact: SecFilingScoreImpact }>();
+const SEC_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+
+async function evaluateSecFilingImpactForTicker(ticker: string): Promise<SecFilingScoreImpact> {
+  const normTicker = ticker.trim().toUpperCase();
+  const cached = secFilingImpactCache.get(normTicker);
+  if (cached && Date.now() - cached.timestamp < SEC_CACHE_TTL_MS) {
+    return cached.impact;
+  }
+
+  // Broad market ETFs and Trusts (QQQ, SPY, IWM, DIA, TQQQ, SOXL, etc.)
+  const isEtfOrTrust = [
+    "QQQ", "SPY", "IWM", "DIA", "TQQQ", "SQQQ", "SOXL", "SOXS", "VOO", "VTI", "XLF", "XLK", "SMH"
+  ].includes(normTicker);
+
+  if (isEtfOrTrust) {
+    const etfImpact: SecFilingScoreImpact = {
+      recent_filings_count: 0,
+      latest_filing_date: null,
+      latest_filing_form: null,
+      latest_filing_desc: null,
+      sentiment: "Neutral",
+      score_impact: 0,
+      catalyst_risk: "Low",
+      rationale: "Broad-market index/ETF: Multi-asset diversification eliminates single-stock SEC reporting surprise risk.",
+      flags: ["Index/ETF (Zero Single-Stock SEC Risk)"],
+    };
+    secFilingImpactCache.set(normTicker, { timestamp: Date.now(), impact: etfImpact });
+    return etfImpact;
+  }
+
+  const cikMap = await getSecTickerCikMap();
+  const cik = cikMap[normTicker];
+
+  if (!cik) {
+    const fallbackImpact: SecFilingScoreImpact = {
+      recent_filings_count: 0,
+      latest_filing_date: null,
+      latest_filing_form: null,
+      latest_filing_desc: null,
+      sentiment: "Neutral",
+      score_impact: 0,
+      catalyst_risk: "Low",
+      rationale: "No direct operating CIK on SEC EDGAR index; neutral reporting profile applied.",
+      flags: [],
+    };
+    secFilingImpactCache.set(normTicker, { timestamp: Date.now(), impact: fallbackImpact });
+    return fallbackImpact;
+  }
+
+  try {
+    const paddedCik = String(cik).padStart(10, "0");
+    let subData: any = null;
+    const subCached = secSubmissionsCache.get(normTicker);
+    if (subCached && Date.now() - subCached.timestamp < SEC_CACHE_TTL_MS) {
+      subData = subCached.data;
+    } else {
+      const subRes = await fetch(`https://data.sec.gov/submissions/CIK${paddedCik}.json`, {
+        headers: { "User-Agent": "muthu.vela@gmail.com StockRelated/1.0" },
+      });
+      if (subRes.ok) {
+        subData = await subRes.json();
+        secSubmissionsCache.set(normTicker, { timestamp: Date.now(), data: subData });
+      }
+    }
+
+    if (!subData?.filings?.recent) {
+      const noDataImpact: SecFilingScoreImpact = {
+        recent_filings_count: 0,
+        latest_filing_date: null,
+        latest_filing_form: null,
+        latest_filing_desc: null,
+        sentiment: "Neutral",
+        score_impact: 0,
+        catalyst_risk: "Low",
+        rationale: "SEC filings unavailable; neutral scoring applied.",
+        flags: [],
+      };
+      return noDataImpact;
+    }
+
+    const recent = subData.filings.recent;
+    const forms: string[] = recent.form || [];
+    const dates: string[] = recent.filingDate || [];
+    const descs: string[] = recent.primaryDocDescription || [];
+    const accns: string[] = recent.accessionNumber || [];
+    const docs: string[] = recent.primaryDocument || [];
+
+    // Filter relevant filings (10-K, 10-Q, 8-K, 20-F, 6-K and their amendments)
+    const targetFilings: Array<{
+      form: string;
+      date: string;
+      desc: string;
+      accn: string;
+      doc: string;
+      daysAgo: number;
+      isAmendment: boolean;
+    }> = [];
+
+    const now = Date.now();
+    for (let i = 0; i < forms.length && targetFilings.length < 15; i++) {
+      const f = (forms[i] || "").trim().toUpperCase();
+      const baseForm = f.replace(/\/A$/, "");
+      const isTarget = ["10-K", "10-Q", "8-K", "20-F", "6-K"].includes(baseForm) || f.endsWith("/A");
+      if (isTarget) {
+        const fileTime = new Date(dates[i]).getTime();
+        const daysAgo = Math.max(0, Math.round((now - fileTime) / (1000 * 60 * 60 * 24)));
+        targetFilings.push({
+          form: forms[i],
+          date: dates[i],
+          desc: descs[i] || "",
+          accn: accns[i] || "",
+          doc: docs[i] || "",
+          daysAgo,
+          isAmendment: f.endsWith("/A"),
+        });
+      }
+    }
+
+    if (targetFilings.length === 0) {
+      const emptyImpact: SecFilingScoreImpact = {
+        recent_filings_count: 0,
+        latest_filing_date: null,
+        latest_filing_form: null,
+        latest_filing_desc: null,
+        sentiment: "Neutral",
+        score_impact: 0,
+        catalyst_risk: "Low",
+        rationale: "No recent material periodic or current filings detected.",
+        flags: [],
+      };
+      return emptyImpact;
+    }
+
+    const latest = targetFilings[0];
+    let scoreAdjustment = 0;
+    let sentiment: "Bullish" | "Bearish" | "Neutral" = "Neutral";
+    let catalystRisk: "Low" | "Moderate" | "High" = "Low";
+    const flags: string[] = [];
+    const reasons: string[] = [];
+
+    // Check if we have an AI summary cached for the latest filing
+    const latestAccnNoDash = latest.accn.replace(/-/g, "");
+    const latestUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${latestAccnNoDash}/${latest.doc}`;
+    const cacheKey = `${normTicker}_${latest.form}_${latest.date}_${latestUrl}`;
+    const cachedSummary = secSummaryCache.get(cacheKey);
+
+    if (cachedSummary) {
+      if (cachedSummary.sentiment === "Bullish") {
+        scoreAdjustment += 5;
+        sentiment = "Bullish";
+        flags.push(`SEC: Bullish ${latest.form} (+5)`);
+        reasons.push(`AI Analysis: Bullish operational signals in ${latest.form} (${cachedSummary.title || "Strong Performance"}).`);
+      } else if (cachedSummary.sentiment === "Bearish") {
+        scoreAdjustment -= 8;
+        sentiment = "Bearish";
+        catalystRisk = "High";
+        flags.push(`SEC: Bearish ${latest.form} (-8)`);
+        reasons.push(`AI Analysis: Bearish headwind warnings in ${latest.form}.`);
+      } else {
+        reasons.push(`AI Analysis: Neutral operational disclosures in ${latest.form}.`);
+      }
+    }
+
+    // Examine recent periodic reports (10-Q, 10-K)
+    const recentPeriodic = targetFilings.find((f) => {
+      const b = f.form.toUpperCase().replace(/\/A$/, "");
+      return b === "10-Q" || b === "10-K" || b === "20-F";
+    });
+
+    if (recentPeriodic) {
+      if (recentPeriodic.daysAgo <= 45) {
+        // Clean post-10Q runway! Quarterly numbers are digested, minimal earnings disclosure shock
+        scoreAdjustment += 4;
+        if (sentiment === "Neutral") sentiment = "Bullish";
+        flags.push(`SEC: Clean Post-${recentPeriodic.form} Runway (+4)`);
+        reasons.push(`Fresh ${recentPeriodic.form} filed ${recentPeriodic.daysAgo}d ago (${recentPeriodic.date}) provides post-audit financial clarity.`);
+      } else if (recentPeriodic.daysAgo >= 75) {
+        // Late cycle 10-Q: Next earnings/filing is approaching
+        scoreAdjustment -= 2;
+        catalystRisk = catalystRisk === "High" ? "High" : "Moderate";
+        flags.push(`SEC: Late Cycle (${recentPeriodic.daysAgo}d since ${recentPeriodic.form})`);
+        reasons.push(`Last ${recentPeriodic.form} filed ${recentPeriodic.daysAgo}d ago; approaching subsequent quarterly cycle.`);
+      }
+    }
+
+    // Scan recent 8-K filings (within past 90 days) for material catalysts
+    const recent8Ks = targetFilings.filter(
+      (f) => f.form.toUpperCase().startsWith("8-K") && f.daysAgo <= 90
+    );
+
+    let foundMaterialPositive = false;
+
+    for (const filing of recent8Ks) {
+      const textToScan = (filing.desc + " " + filing.doc).toLowerCase();
+
+      // Negative triggers: Restatements, delisting, material default, severe disputes
+      if (
+        textToScan.includes("4.02") ||
+        textToScan.includes("non-reliance") ||
+        textToScan.includes("restatement") ||
+        textToScan.includes("3.01") ||
+        textToScan.includes("delist") ||
+        textToScan.includes("2.04") ||
+        textToScan.includes("acceleration") ||
+        textToScan.includes("default") ||
+        textToScan.includes("subpoena") ||
+        textToScan.includes("material weakness")
+      ) {
+        scoreAdjustment -= 10;
+        sentiment = "Bearish";
+        catalystRisk = "High";
+        flags.push(`⚠️ SEC: Material Adverse 8-K (${filing.date})`);
+        reasons.push(`Material event risk in 8-K (${filing.date}): Restatement, debt acceleration, or regulatory inquiry.`);
+        break;
+      }
+
+      // Dilution triggers
+      if (
+        textToScan.includes("convertible senior notes") ||
+        textToScan.includes("public offering") ||
+        textToScan.includes("underwritten offering")
+      ) {
+        scoreAdjustment -= 4;
+        if (sentiment === "Neutral") sentiment = "Bearish";
+        catalystRisk = catalystRisk === "High" ? "High" : "Moderate";
+        flags.push(`SEC: Dilutive Financing 8-K (-4)`);
+        reasons.push(`Capital markets/notes offering in 8-K (${filing.date}) introduces supply pressure.`);
+      }
+
+      // Positive triggers: Strategic M&A, major contracts, buybacks, strong earnings release
+      if (
+        textToScan.includes("acquire") ||
+        textToScan.includes("acquisition") ||
+        textToScan.includes("merger") ||
+        textToScan.includes("definitive agreement") ||
+        textToScan.includes("repurchase") ||
+        textToScan.includes("buyback") ||
+        textToScan.includes("item 1.01") ||
+        textToScan.includes("item 2.02")
+      ) {
+        if (!foundMaterialPositive) {
+          scoreAdjustment += 4;
+          if (sentiment !== "Bearish") sentiment = "Bullish";
+          foundMaterialPositive = true;
+          flags.push(`SEC: Strategic 8-K Catalyst (+4)`);
+          reasons.push(`Strategic catalyst in 8-K (${filing.date}): Commercial agreement, M&A expansion, or capital return.`);
+        }
+      }
+
+      // Amendments check (8-K/A)
+      if (filing.isAmendment) {
+        if (
+          textToScan.includes("item 5.02") ||
+          textToScan.includes("compensat") ||
+          textToScan.includes("officer") ||
+          textToScan.includes("exhibit")
+        ) {
+          flags.push(`SEC: Routine 8-K/A Governance`);
+          reasons.push(`Form 8-K/A amendment (${filing.date}) is routine executive/governance compensation disclosure.`);
+        }
+      }
+    }
+
+    // Clamp score adjustment within sensible boundaries [-15, +8]
+    scoreAdjustment = Math.max(-15, Math.min(8, scoreAdjustment));
+
+    // Consolidate rationale
+    const rationale = reasons.length > 0
+      ? reasons.join(" ")
+      : `Latest filing ${latest.form} (${latest.date}, ${latest.daysAgo}d ago) confirms orderly corporate reporting without adverse disclosures.`;
+
+    const impact: SecFilingScoreImpact = {
+      recent_filings_count: targetFilings.length,
+      latest_filing_date: latest.date,
+      latest_filing_form: latest.form,
+      latest_filing_desc: latest.desc || null,
+      sentiment,
+      score_impact: scoreAdjustment,
+      catalyst_risk: catalystRisk,
+      rationale,
+      flags,
+    };
+
+    secFilingImpactCache.set(normTicker, { timestamp: Date.now(), impact });
+    return impact;
+  } catch (err) {
+    console.error(`Error evaluating SEC filing impact for ${normTicker}:`, err);
+    return {
+      recent_filings_count: 0,
+      latest_filing_date: null,
+      latest_filing_form: null,
+      latest_filing_desc: null,
+      sentiment: "Neutral",
+      score_impact: 0,
+      catalyst_risk: "Low",
+      rationale: "SEC evaluation fallback; neutral score applied.",
+      flags: [],
+    };
+  }
+}
+
+// ==========================================
 // PUT RECOMMENDATIONS ACROSS RISK TIERS
 // ==========================================
 
@@ -2305,12 +2624,15 @@ function computePutRecommendationScore(
   isBelowBollingerLower: boolean,
   spreadPct: number,
   openInterest: number,
-  earningsInfo?: EarningsTimingInfo | null
+  earningsInfo?: EarningsTimingInfo | null,
+  secFilingImpact?: SecFilingScoreImpact | null
 ): {
   score: number;
   earningsScoreAdj: number;
   earningsNote: string;
   earningsFlag: string | null;
+  secScoreAdj: number;
+  secFilingNote: string;
 } {
   let score = 50;
 
@@ -2417,8 +2739,26 @@ function computePutRecommendationScore(
 
   score += earningsScoreAdj;
 
+  // SEC FILING SCORING INTEGRATION:
+  let secScoreAdj = 0;
+  let secFilingNote = "";
+  if (secFilingImpact) {
+    let adj = secFilingImpact.score_impact;
+    if (tier === "least_risk") {
+      // Conservative puts are extra sensitive to material adverse SEC disclosures
+      if (adj < 0) adj = Math.round(adj * 1.3);
+      else if (adj > 0) adj = Math.min(8, Math.round(adj * 1.1));
+    } else if (tier === "high_risk") {
+      // Aggressive tier can tolerate higher catalyst risk
+      if (adj < 0) adj = Math.round(adj * 0.85);
+    }
+    secScoreAdj = adj;
+    secFilingNote = secFilingImpact.rationale;
+    score += secScoreAdj;
+  }
+
   const finalScore = Math.max(10, Math.min(99, Math.round(score)));
-  return { score: finalScore, earningsScoreAdj, earningsNote, earningsFlag };
+  return { score: finalScore, earningsScoreAdj, earningsNote, earningsFlag, secScoreAdj, secFilingNote };
 }
 
 app.post("/api/put-recommendations", async (req: Request, res: Response) => {
@@ -2455,10 +2795,11 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
       await Promise.all(
         batch.map(async (ticker) => {
           try {
-            // Concurrently fetch options chain and technicals
-            const [optData, technicals] = await Promise.all([
+            // Concurrently fetch options chain, technicals, and SEC filing impact
+            const [optData, technicals, secFilingImpact] = await Promise.all([
               fetchYahooOptions(ticker),
               getTechnicalsForTicker(ticker),
+              evaluateSecFilingImpactForTicker(ticker),
             ]);
 
             if (!optData) return;
@@ -2486,6 +2827,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
               bollinger_lower: bollingerLower,
               bollinger_upper: bollingerUpper,
               dist_to_52w_high_pct: distTo52wHigh,
+              sec_filing_impact: secFilingImpact || null,
             };
 
             const rawExpirations: number[] = optData.expirationDates || [];
@@ -2651,11 +2993,15 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   isBelowBollingerLower,
                   spreadPct,
                   oi,
-                  earningsInfo
+                  earningsInfo,
+                  secFilingImpact
                 );
 
                 if (scoreResult.earningsFlag) {
                   flags.push(scoreResult.earningsFlag);
+                }
+                if (secFilingImpact?.flags && secFilingImpact.flags.length > 0) {
+                  flags.push(...secFilingImpact.flags);
                 }
 
                 // Algorithmic Trade Rationale with RSI & Bollinger Band details
@@ -2678,6 +3024,9 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
 
                 if (scoreResult.earningsNote) {
                   rationale += ` • Earnings Timing: ${scoreResult.earningsNote}`;
+                }
+                if (secFilingImpact?.rationale) {
+                  rationale += ` • SEC Filing Impact (${secFilingImpact.sentiment}${secFilingImpact.score_impact >= 0 ? ` +${secFilingImpact.score_impact}` : ` ${secFilingImpact.score_impact}`}): ${secFilingImpact.rationale}`;
                 }
 
                 const item = {
@@ -2744,6 +3093,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                     score_impact: scoreResult.earningsScoreAdj,
                     label: scoreResult.earningsNote,
                   } : undefined,
+                  sec_filing_impact: secFilingImpact || undefined,
                   rationale,
                   strategy_flags: flags,
                 };
@@ -2975,7 +3325,7 @@ app.get("/api/sec-earnings", async (req: Request, res: Response) => {
     const tickersParam = req.query.tickers as string;
     const tickers = tickersParam
       ? tickersParam.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
-      : ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA"];
+      : getWatchlist();
 
     const cikMap = await getSecTickerCikMap();
     const results: any[] = [];

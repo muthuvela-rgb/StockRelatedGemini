@@ -111,7 +111,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
     let targetTickers: string[] = [];
     if (universe === "watchlist") {
-      targetTickers = watchlist.length > 0 ? watchlist : ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ"];
+      targetTickers = watchlist.length > 0 ? watchlist : ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"];
     } else if (universe === "qqq") {
       targetTickers = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "COST", "PLTR", "AMAT", "NFLX", "QQQ"];
     } else if (universe === "spy") {
@@ -1022,7 +1022,30 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                         </span>
                       </span>
                     )}
-                    {item.strategy_flags.filter(f => !f.toLowerCase().includes("earnings")).map((flag, idx) => (
+                    {item.sec_filing_impact && (
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-md border font-medium flex items-center gap-1 ${
+                          item.sec_filing_impact.sentiment === "Bullish"
+                            ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                            : item.sec_filing_impact.sentiment === "Bearish"
+                            ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                            : "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                        }`}
+                        title={item.sec_filing_impact.rationale}
+                      >
+                        <span>📑</span>
+                        <span>
+                          SEC: {item.sec_filing_impact.latest_filing_form ? `${item.sec_filing_impact.latest_filing_form} ` : ""}
+                          ({item.sec_filing_impact.sentiment})
+                          {item.sec_filing_impact.score_impact !== 0 && (
+                            <span className="font-mono font-bold ml-1">
+                              {item.sec_filing_impact.score_impact > 0 ? `+${item.sec_filing_impact.score_impact}` : item.sec_filing_impact.score_impact}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    )}
+                    {item.strategy_flags.filter(f => !f.toLowerCase().includes("earnings") && !f.toLowerCase().includes("sec:")).map((flag, idx) => (
                       <span
                         key={idx}
                         className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800/90 text-slate-300 border border-slate-700/80 font-medium"
@@ -1277,7 +1300,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       </td>
                       <td className="py-3 px-3">
                         <div className="text-slate-200">{item.expiration}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           <span className="text-[10px] text-slate-400 font-sans">{item.dte} DTE</span>
                           {item.earnings_context && item.earnings_context.next_earnings_date && (
                             <span
@@ -1291,6 +1314,21 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                               title={item.earnings_context.label}
                             >
                               {item.earnings_context.expires_before_earnings ? "Pre-ER" : item.earnings_context.spans_earnings ? "Spans-ER" : "ER"}
+                            </span>
+                          )}
+                          {item.sec_filing_impact && (
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-mono border ${
+                                item.sec_filing_impact.sentiment === "Bullish"
+                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                                  : item.sec_filing_impact.sentiment === "Bearish"
+                                  ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                                  : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                              }`}
+                              title={item.sec_filing_impact.rationale}
+                            >
+                              SEC {item.sec_filing_impact.sentiment.slice(0, 4)}
+                              {item.sec_filing_impact.score_impact !== 0 ? ` ${item.sec_filing_impact.score_impact > 0 ? `+${item.sec_filing_impact.score_impact}` : item.sec_filing_impact.score_impact}` : ""}
                             </span>
                           )}
                         </div>

@@ -58,6 +58,8 @@ const TICKER_COLORS: Record<string, string> = {
   SNDK: "#eab308", // yellow
   SKHY: "#0ea5e9", // sky
   SPCX: "#d946ef", // fuchsia
+  RKLB: "#f97316", // orange
+  CRDO: "#059669", // dark emerald
 };
 
 function getColorForTicker(ticker: string, index: number): string {

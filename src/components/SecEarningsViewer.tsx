@@ -30,7 +30,13 @@ interface SecEarningsViewerProps {
 }
 
 export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist }) => {
-  const [tickersInput, setTickersInput] = useState("NVDA, MSFT, AAPL, AMZN, META, GOOGL, TSLA");
+  // Default tickers matching My Watchlist components
+  const defaultWatchlistString =
+    watchlist && watchlist.length > 0
+      ? watchlist.join(", ")
+      : "NVDA, QQQ, ALAB, MU, NBIS, SNDK, SKHY, SPCX, TSLA, META, CRWV, SNOW, TQQQ, RKLB, CRDO";
+
+  const [tickersInput, setTickersInput] = useState(defaultWatchlistString);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reports, setReports] = useState<SecCompanyReport[]>([]);
@@ -64,8 +70,27 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
   };
 
   useEffect(() => {
-    fetchSecReports();
+    fetchSecReports(defaultWatchlistString);
   }, []);
+
+  // Synchronize when watchlist prop updates from backend
+  useEffect(() => {
+    if (watchlist && watchlist.length > 0) {
+      const formatted = watchlist.join(", ");
+      setTickersInput((prev) => {
+        if (
+          !prev.trim() ||
+          prev === "NVDA, MSFT, AAPL, AMZN, META, GOOGL, TSLA" ||
+          prev === "NVDA, QQQ, ALAB, MU, NBIS, SNDK, SKHY, SPCX, TSLA, META, CRWV, SNOW, TQQQ" ||
+          prev === "NVDA, QQQ, ALAB, MU, NBIS, SNDK, SKHY, SPCX, TSLA, META, CRWV, SNOW, TQQQ, RKLB, CRDO"
+        ) {
+          fetchSecReports(formatted);
+          return formatted;
+        }
+        return prev;
+      });
+    }
+  }, [watchlist]);
 
   const getFilingKey = (ticker: string, form: string, date: string, url: string) => {
     return `${ticker}_${form}_${date}_${url}`;
@@ -295,12 +320,14 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => {
-                setTickersInput(watchlist.join(", "));
-                fetchSecReports(watchlist.join(", "));
+                const target = watchlist && watchlist.length > 0 ? watchlist.join(", ") : defaultWatchlistString;
+                setTickersInput(target);
+                fetchSecReports(target);
               }}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition cursor-pointer"
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
             >
-              Use Watchlist
+              <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
+              Reset to My Watchlist
             </button>
             <button
               onClick={() => fetchSecReports()}
@@ -333,12 +360,25 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
         {/* Search & Filter Controls */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1">
           <div className="md:col-span-6">
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">Tickers (Comma Separated)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-semibold text-slate-300">Tickers (Comma Separated)</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = watchlist && watchlist.length > 0 ? watchlist.join(", ") : defaultWatchlistString;
+                  setTickersInput(target);
+                  fetchSecReports(target);
+                }}
+                className="text-[10px] text-blue-400 hover:text-blue-300 transition cursor-pointer"
+              >
+                Sync with My Watchlist
+              </button>
+            </div>
             <input
               type="text"
               value={tickersInput}
               onChange={(e) => setTickersInput(e.target.value)}
-              placeholder="e.g. NVDA, MSFT, AAPL, AMZN, META"
+              placeholder="e.g. NVDA, QQQ, ALAB, MU, NBIS, SNDK, SKHY, SPCX, TSLA, META, CRWV, SNOW, TQQQ, RKLB, CRDO"
               className="w-full bg-slate-950/70 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500 transition"
             />
           </div>

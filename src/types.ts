@@ -250,6 +250,18 @@ export interface SecCompanyReport {
   }>;
 }
 
+export interface SecFilingScoreImpact {
+  recent_filings_count: number;
+  latest_filing_date: string | null;
+  latest_filing_form: string | null;
+  latest_filing_desc: string | null;
+  sentiment: "Bullish" | "Bearish" | "Neutral" | "Not Analyzed";
+  score_impact: number;
+  catalyst_risk: "Low" | "Moderate" | "High";
+  rationale: string;
+  flags: string[];
+}
+
 export interface PremiumCurvePoint {
   expiration: string;
   strike: number;
@@ -561,6 +573,7 @@ export interface RecommendedPut {
     score_impact: number;
     label: string;
   };
+  sec_filing_impact?: SecFilingScoreImpact;
   fifty_two_week_high?: number | null;
   fifty_two_week_low?: number | null;
   rsi_14?: number | null;
