@@ -5,6 +5,7 @@ import {
   Layers,
   Activity,
   FileSpreadsheet,
+  MessageSquareQuote,
   Clock,
   BookmarkCheck,
   Search,
@@ -23,6 +24,7 @@ export type ActiveTab =
   | "option-chain"
   | "premium-curves"
   | "sec-earnings"
+  | "earnings-transcripts"
   | "watchlist";
 
 interface HeaderProps {
@@ -49,6 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "option-chain" as ActiveTab, label: "Option Chain & Greeks", icon: Layers },
     { id: "premium-curves" as ActiveTab, label: "Premium Curves", icon: Search },
     { id: "sec-earnings" as ActiveTab, label: "SEC Earnings", icon: FileSpreadsheet },
+    { id: "earnings-transcripts" as ActiveTab, label: "Earnings Transcripts", icon: MessageSquareQuote, badge: "Alpha Vantage" },
     { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount },
   ];
 

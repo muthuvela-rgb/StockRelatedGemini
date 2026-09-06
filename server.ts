@@ -4,6 +4,11 @@ import path from "path";
 import fs from "fs";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
+import {
+  fetchAlphaVantageTranscript,
+  summarizeEarningsTranscriptWithGemini,
+  getAlphaVantageKeyStatus,
+} from "./server/transcripts";
 
 const app = express();
 const PORT = 3000;
@@ -3120,6 +3125,83 @@ app.post("/api/sec-summarize-batch", async (req: Request, res: Response) => {
   } catch (e: any) {
     console.error("Error in /api/sec-summarize-batch:", e);
     res.status(500).json({ error: e.message || "Failed to batch summarize filings" });
+  }
+});
+
+// ==========================================
+// ALPHA VANTAGE & EARNINGS TRANSCRIPT APIS
+// ==========================================
+
+// Get Alpha Vantage API & Gemini Key status
+app.get("/api/earnings-transcripts/status", (req: Request, res: Response) => {
+  const avStatus = getAlphaVantageKeyStatus();
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 5);
+  res.json({
+    hasAlphaVantageKey: avStatus.hasKey,
+    maskedAlphaVantageKey: avStatus.maskedKey,
+    hasGeminiKey: hasGemini,
+  });
+});
+
+// Fetch Earnings Call Transcripts for a ticker
+app.get("/api/earnings-transcripts", async (req: Request, res: Response) => {
+  try {
+    const ticker = String(req.query.ticker || "NVDA").trim().toUpperCase();
+    const quarter = req.query.quarter ? String(req.query.quarter).trim() : undefined;
+
+    const result = await fetchAlphaVantageTranscript(ticker, quarter);
+    res.json({
+      success: true,
+      ticker,
+      quarter: quarter || "latest",
+      source: result.source,
+      notice: result.notice,
+      transcripts: result.transcripts,
+    });
+  } catch (err: any) {
+    console.error("Error in /api/earnings-transcripts:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Failed to fetch earnings transcripts",
+    });
+  }
+});
+
+// Summarize Earnings Call Transcript with Gemini 3.8 Flash
+app.post("/api/earnings-transcripts/summarize", async (req: Request, res: Response) => {
+  try {
+    const { transcript } = req.body;
+    if (!transcript || !transcript.transcript_text) {
+      return res.status(400).json({ error: "Transcript payload with transcript_text is required" });
+    }
+
+    const ai = getGenAI();
+    const summary = await summarizeEarningsTranscriptWithGemini(ai, transcript);
+    res.json({
+      success: true,
+      summary,
+    });
+  } catch (err: any) {
+    console.error("Error in /api/earnings-transcripts/summarize:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Failed to summarize earnings transcript with Gemini AI",
+    });
+  }
+});
+
+// Download or view the Python CLI script
+app.get("/api/earnings-transcripts/python-script", (req: Request, res: Response) => {
+  try {
+    const scriptPath = path.join(process.cwd(), "earnings_summarizer.py");
+    if (fs.existsSync(scriptPath)) {
+      const scriptCode = fs.readFileSync(scriptPath, "utf-8");
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.send(scriptCode);
+    }
+    res.status(404).json({ error: "Script not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

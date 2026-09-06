@@ -8,6 +8,7 @@ import { ShortDatedScreener } from "./components/ShortDatedScreener";
 import { OptionChainViewer } from "./components/OptionChainViewer";
 import { PremiumCurvesViewer } from "./components/PremiumCurvesViewer";
 import { SecEarningsViewer } from "./components/SecEarningsViewer";
+import { EarningsTranscriptsViewer } from "./components/EarningsTranscriptsViewer";
 import { WatchlistManager } from "./components/WatchlistManager";
 
 export const App: React.FC = () => {
@@ -72,6 +73,9 @@ export const App: React.FC = () => {
         )}
         {activeTab === "sec-earnings" && (
           <SecEarningsViewer watchlist={watchlist} />
+        )}
+        {activeTab === "earnings-transcripts" && (
+          <EarningsTranscriptsViewer watchlist={watchlist} />
         )}
         {activeTab === "watchlist" && (
           <WatchlistManager

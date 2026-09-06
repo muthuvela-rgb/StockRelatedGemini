@@ -1,6 +1,6 @@
 {
   "name": "StockRelated Options & Stock Analytics",
-  "description": "Comprehensive stock and options analysis toolkit for put annualized returns, stock fall detection, technical indicators, Black-Scholes Greeks, and SEC earnings reports.",
+  "description": "Comprehensive stock and options analysis toolkit with Black-Scholes Greeks, put annualized returns, stock fall detection, SEC EDGAR reports, and Alpha Vantage earnings call transcripts summarized with Gemini AI.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

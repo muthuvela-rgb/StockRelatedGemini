@@ -645,3 +645,48 @@ export interface AiPortfolioStrategy {
   risk_rules: string[];
 }
 
+export interface EarningsCallTranscript {
+  ticker: string;
+  quarter: string;
+  date: string;
+  year?: number;
+  quarter_number?: number;
+  speakers?: Array<{ name: string; title: string }>;
+  transcript_text: string;
+  word_count?: number;
+  source: "alpha_vantage_live" | "sample_verified";
+  ai_summary?: TranscriptAiSummary | null;
+}
+
+export interface TranscriptAiSummary {
+  executive_summary: string;
+  revenue_and_eps: {
+    reported_revenue: string;
+    revenue_growth_yoy: string;
+    reported_eps: string;
+    eps_growth_yoy: string;
+    guidance_vs_consensus: string;
+  };
+  guidance_and_outlook: string;
+  key_catalysts: string[];
+  risks_and_headwinds: string[];
+  analyst_qa_highlights: Array<{
+    analyst: string;
+    firm: string;
+    question: string;
+    executive_response: string;
+    sentiment: "bullish" | "neutral" | "defensive" | "cautious";
+  }>;
+  management_sentiment: {
+    score: number;
+    label: "Bullish" | "Moderately Bullish" | "Neutral" | "Cautious" | "Bearish";
+    rationale: string;
+  };
+  options_implications: string;
+  executive_quotes: Array<{
+    speaker: string;
+    role: string;
+    quote: string;
+  }>;
+}
+
