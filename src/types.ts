@@ -138,6 +138,15 @@ export interface OptionGreeks {
   theta: number | null;
   vega: number | null;
   rho: number | null;
+  expiration?: string;
+  days_to_expiration?: number;
+}
+
+export interface ExpirationChainData {
+  expiration: string;
+  days_to_expiration: number;
+  calls: OptionGreeks[];
+  puts: OptionGreeks[];
 }
 
 export interface OptionChainResponse {
@@ -148,6 +157,10 @@ export interface OptionChainResponse {
   days_to_expiration: number;
   calls: OptionGreeks[];
   puts: OptionGreeks[];
+  all_chains?: Record<string, ExpirationChainData>;
+  all_calls?: OptionGreeks[];
+  all_puts?: OptionGreeks[];
+  is_all_expirations?: boolean;
   rsi_14?: number | null;
   bollinger?: {
     sma: number;
@@ -159,6 +172,8 @@ export interface OptionChainResponse {
   fibonacci?: FibonacciLevels | null;
   fifty_two_week_high?: number | null;
   fifty_two_week_low?: number | null;
+  next_earnings_date?: string | null;
+  next_earnings_timestamp?: number | null;
 }
 
 export interface SecFilingSummary {

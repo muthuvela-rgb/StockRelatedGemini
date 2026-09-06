@@ -946,87 +946,171 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
   }
 });
 
+// In-memory cache for option chains (60s TTL)
+const optionChainCache = new Map<string, { timestamp: number; optData: any; rawExpirations: number[]; expDataMap: Map<number, any> }>();
+
 // Option Chain with Black-Scholes Greeks
 app.get("/api/option-chain", async (req: Request, res: Response) => {
   try {
     const ticker = (req.query.ticker as string || "QQQ").toUpperCase();
     const expirationIdx = parseInt(req.query.expirationIndex as string) || 0;
     const requestedExpDate = req.query.expiration as string;
+    const fetchAll = req.query.all === "true" || requestedExpDate === "ALL";
 
-    const optData = await fetchYahooOptions(ticker);
-    if (!optData) {
-      return res.status(404).json({ error: `No options data found for ${ticker}` });
+    const now = Date.now();
+    let cache = optionChainCache.get(ticker);
+    let optData: any = null;
+    let rawExpirations: number[] = [];
+
+    if (cache && (now - cache.timestamp < 60000)) {
+      optData = cache.optData;
+      rawExpirations = cache.rawExpirations;
+    } else {
+      optData = await fetchYahooOptions(ticker);
+      if (!optData) {
+        return res.status(404).json({ error: `No options data found for ${ticker}` });
+      }
+      rawExpirations = optData.expirationDates || [];
+      cache = {
+        timestamp: now,
+        optData,
+        rawExpirations,
+        expDataMap: new Map<number, any>([[rawExpirations[0], optData]]),
+      };
+      optionChainCache.set(ticker, cache);
     }
 
-    const rawExpirations: number[] = optData.expirationDates || [];
     if (rawExpirations.length === 0) {
       return res.status(404).json({ error: `No expiration dates for ${ticker}` });
     }
 
     const expDates = rawExpirations.map((ts) => new Date(ts * 1000).toISOString().split("T")[0]);
-    let targetExpTs = rawExpirations[Math.min(expirationIdx, rawExpirations.length - 1)];
+    const isAllExps = requestedExpDate === "ALL";
 
-    if (requestedExpDate && expDates.includes(requestedExpDate)) {
+    let targetExpTs = rawExpirations[Math.min(expirationIdx, rawExpirations.length - 1)];
+    if (requestedExpDate && requestedExpDate !== "ALL" && expDates.includes(requestedExpDate)) {
       const idx = expDates.indexOf(requestedExpDate);
       targetExpTs = rawExpirations[idx];
     }
 
-    const chain =
-      targetExpTs === rawExpirations[0]
-        ? optData
-        : (await fetchYahooOptions(ticker, targetExpTs)) || optData;
-
-    const currentPrice = chain.quote?.regularMarketPrice || 100;
-    const expDateStr = new Date(targetExpTs * 1000).toISOString().split("T")[0];
+    const currentPrice = optData.quote?.regularMarketPrice || 100;
     const today = new Date();
-    const expDate = new Date(targetExpTs * 1000);
-    const dte = Math.max(Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 1);
 
-    const rawCalls = chain.options?.[0]?.calls || [];
-    const rawPuts = chain.options?.[0]?.puts || [];
+    // Helper to calculate Greeks and map options
+    const mapOptionContracts = (contracts: any[], isCall: boolean, dteDays: number, expStr: string) => {
+      return contracts.map((c: any) => {
+        const greeks = calculateGreeks(c.strike, currentPrice, c.impliedVolatility || 0.3, dteDays, isCall);
+        return {
+          strike: c.strike,
+          contractSymbol: c.contractSymbol,
+          lastPrice: c.lastPrice || 0,
+          bid: c.bid || 0,
+          ask: c.ask || 0,
+          volume: c.volume || 0,
+          openInterest: c.openInterest || 0,
+          impliedVolatility: Number(((c.impliedVolatility || 0) * 100).toFixed(2)),
+          inTheMoney: c.inTheMoney || false,
+          expiration: expStr,
+          days_to_expiration: dteDays,
+          ...greeks,
+        };
+      });
+    };
 
-    const calls = rawCalls.map((c: any) => {
-      const greeks = calculateGreeks(c.strike, currentPrice, c.impliedVolatility || 0.3, dte, true);
-      return {
-        strike: c.strike,
-        contractSymbol: c.contractSymbol,
-        lastPrice: c.lastPrice || 0,
-        bid: c.bid || 0,
-        ask: c.ask || 0,
-        volume: c.volume || 0,
-        openInterest: c.openInterest || 0,
-        impliedVolatility: Number(((c.impliedVolatility || 0) * 100).toFixed(2)),
-        inTheMoney: c.inTheMoney || false,
-        ...greeks,
-      };
-    });
+    let singleCalls: any[] = [];
+    let singlePuts: any[] = [];
+    let singleExpDateStr = new Date(targetExpTs * 1000).toISOString().split("T")[0];
+    let singleDte = Math.max(Math.ceil((new Date(targetExpTs * 1000).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 1);
 
-    const puts = rawPuts.map((p: any) => {
-      const greeks = calculateGreeks(p.strike, currentPrice, p.impliedVolatility || 0.3, dte, false);
-      return {
-        strike: p.strike,
-        contractSymbol: p.contractSymbol,
-        lastPrice: p.lastPrice || 0,
-        bid: p.bid || 0,
-        ask: p.ask || 0,
-        volume: p.volume || 0,
-        openInterest: p.openInterest || 0,
-        impliedVolatility: Number(((p.impliedVolatility || 0) * 100).toFixed(2)),
-        inTheMoney: p.inTheMoney || false,
-        ...greeks,
-      };
-    });
+    if (!isAllExps) {
+      let chain = cache.expDataMap.get(targetExpTs);
+      if (!chain) {
+        chain = targetExpTs === rawExpirations[0] ? optData : (await fetchYahooOptions(ticker, targetExpTs)) || optData;
+        cache.expDataMap.set(targetExpTs, chain);
+      }
+      singleCalls = mapOptionContracts(chain.options?.[0]?.calls || [], true, singleDte, singleExpDateStr);
+      singlePuts = mapOptionContracts(chain.options?.[0]?.puts || [], false, singleDte, singleExpDateStr);
+    }
 
-    // Technicals for underlying stock
-    const chart = await fetchYahooChart(ticker, "3mo", "1d");
+    const allChainsMap: Record<string, any> = {};
+    const allCalls: any[] = [];
+    const allPuts: any[] = [];
+
+    // If fetchAll is true or user requested ALL expirations, fetch and compile all option chains
+    if (fetchAll) {
+      const missingTs = rawExpirations.filter((ts) => !cache!.expDataMap.has(ts));
+      if (missingTs.length > 0) {
+        // Fetch in chunks of 8
+        for (let i = 0; i < missingTs.length; i += 8) {
+          const chunk = missingTs.slice(i, i + 8);
+          const chunkResults = await Promise.all(
+            chunk.map((ts) => fetchYahooOptions(ticker, ts).catch(() => null))
+          );
+          chunk.forEach((ts, idx) => {
+            const resData = chunkResults[idx];
+            if (resData) cache!.expDataMap.set(ts, resData);
+          });
+        }
+      }
+
+      for (const ts of rawExpirations) {
+        const expStr = new Date(ts * 1000).toISOString().split("T")[0];
+        const chainDte = Math.max(Math.ceil((new Date(ts * 1000).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 1);
+        const chain = cache.expDataMap.get(ts) || optData;
+        const cList = mapOptionContracts(chain.options?.[0]?.calls || [], true, chainDte, expStr);
+        const pList = mapOptionContracts(chain.options?.[0]?.puts || [], false, chainDte, expStr);
+
+        allChainsMap[expStr] = {
+          expiration: expStr,
+          days_to_expiration: chainDte,
+          calls: cList,
+          puts: pList,
+        };
+        allCalls.push(...cList);
+        allPuts.push(...pList);
+      }
+    }
+
+    // Technicals and earnings for underlying stock
+    const [chart, quoteSummary] = await Promise.all([
+      fetchYahooChart(ticker, "3mo", "1d"),
+      fetchYahooQuoteSummary(ticker).catch(() => null),
+    ]);
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
     const rsi = computeRsi(closes, 14);
     const bollinger = computeBollinger(closes, 20, 2.0);
 
-    const fiftyTwoWeekHigh = chain.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
-    const fiftyTwoWeekLow = chain.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
+    const nextEarningsDate = (() => {
+      const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+      if (Array.isArray(cal) && cal.length > 0) {
+        if (cal[0]?.fmt) return cal[0].fmt;
+        if (cal[0]?.raw) return new Date(cal[0].raw * 1000).toISOString().split("T")[0];
+        if (typeof cal[0] === "string") return cal[0];
+      }
+      const sum = quoteSummary?.summaryDetail?.earningsDate;
+      if (Array.isArray(sum) && sum.length > 0) {
+        if (sum[0]?.fmt) return sum[0].fmt;
+        if (sum[0]?.raw) return new Date(sum[0].raw * 1000).toISOString().split("T")[0];
+      }
+      return null;
+    })();
+
+    const nextEarningsTimestamp = (() => {
+      const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+      if (Array.isArray(cal) && cal.length > 0 && cal[0]?.raw) {
+        return cal[0].raw * 1000;
+      }
+      const sum = quoteSummary?.summaryDetail?.earningsDate;
+      if (Array.isArray(sum) && sum.length > 0 && sum[0]?.raw) {
+        return sum[0].raw * 1000;
+      }
+      return null;
+    })();
+
+    const fiftyTwoWeekHigh = optData.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
+    const fiftyTwoWeekLow = optData.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
     let fibonacci = null;
     if (fiftyTwoWeekHigh && fiftyTwoWeekLow && fiftyTwoWeekHigh > fiftyTwoWeekLow) {
       const range = fiftyTwoWeekHigh - fiftyTwoWeekLow;
@@ -1046,13 +1130,19 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
       fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
       fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       expirations: expDates,
-      selected_expiration: expDateStr,
-      days_to_expiration: dte,
-      calls,
-      puts,
+      selected_expiration: isAllExps ? "ALL" : singleExpDateStr,
+      days_to_expiration: isAllExps ? (allCalls[0]?.days_to_expiration || 30) : singleDte,
+      is_all_expirations: isAllExps,
+      calls: isAllExps ? allCalls : singleCalls,
+      puts: isAllExps ? allPuts : singlePuts,
+      all_chains: fetchAll ? allChainsMap : undefined,
+      all_calls: fetchAll ? allCalls : undefined,
+      all_puts: fetchAll ? allPuts : undefined,
       rsi_14: rsi,
       bollinger,
       fibonacci,
+      next_earnings_date: nextEarningsDate,
+      next_earnings_timestamp: nextEarningsTimestamp,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

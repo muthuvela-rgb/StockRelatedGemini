@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   TrendingUp,
   Search,
@@ -15,7 +15,10 @@ import {
   Clock,
   DollarSign,
   Activity,
-  ChevronRight
+  ChevronRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import {
   LineChart,
@@ -180,6 +183,72 @@ export const PremiumCurvesViewer: React.FC = () => {
     rangeMaxPct,
     rangeStepPct,
   ]);
+
+  type StrikeRangeSortKey =
+    | "key"
+    | "snapped_strike"
+    | "cushion_to_strike_pct"
+    | "avg_premium"
+    | "avg_cash_return"
+    | "avg_margin_return"
+    | "avg_iv"
+    | "knee_point";
+
+  const [strikeSortField, setStrikeSortField] = useState<StrikeRangeSortKey>("avg_cash_return");
+  const [strikeSortDir, setStrikeSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleStrikeSort = (field: StrikeRangeSortKey) => {
+    if (strikeSortField === field) {
+      setStrikeSortDir(strikeSortDir === "asc" ? "desc" : "asc");
+    } else {
+      setStrikeSortField(field);
+      setStrikeSortDir(field === "key" || field === "snapped_strike" ? "asc" : "desc");
+    }
+  };
+
+  const sortedRangeStrikes = useMemo(() => {
+    if (!expAnalysis?.range_strikes) return [];
+    const list = [...expAnalysis.range_strikes];
+    return list.sort((a, b) => {
+      let valA: any = 0;
+      let valB: any = 0;
+      switch (strikeSortField) {
+        case "key":
+          valA = a.target_strike ?? 0;
+          valB = b.target_strike ?? 0;
+          break;
+        case "snapped_strike":
+          valA = a.snapped_strike ?? 0;
+          valB = b.snapped_strike ?? 0;
+          break;
+        case "cushion_to_strike_pct":
+          valA = a.cushion_to_strike_pct ?? 0;
+          valB = b.cushion_to_strike_pct ?? 0;
+          break;
+        case "avg_premium":
+          valA = a.avg_premium ?? 0;
+          valB = b.avg_premium ?? 0;
+          break;
+        case "avg_cash_return":
+          valA = a.avg_cash_return ?? 0;
+          valB = b.avg_cash_return ?? 0;
+          break;
+        case "avg_margin_return":
+          valA = a.avg_margin_return ?? 0;
+          valB = b.avg_margin_return ?? 0;
+          break;
+        case "avg_iv":
+          valA = a.avg_iv ?? 0;
+          valB = b.avg_iv ?? 0;
+          break;
+        case "knee_point":
+          valA = a.knee_point?.premium ?? -1;
+          valB = b.knee_point?.premium ?? -1;
+          break;
+      }
+      return strikeSortDir === "asc" ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
+    });
+  }, [expAnalysis?.range_strikes, strikeSortField, strikeSortDir]);
 
   // Helpers for tooltip formatting
   const formatExpDateDetail = (expStr: string) => {
@@ -924,21 +993,117 @@ export const PremiumCurvesViewer: React.FC = () => {
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                    <table className="w-full text-left text-xs select-none">
                       <thead>
                         <tr className="border-b border-slate-800 text-slate-400 text-[11px]">
-                          <th className="pb-2 font-medium">Strike (% Spot)</th>
-                          <th className="pb-2 font-medium">Listed Strike</th>
-                          <th className="pb-2 font-medium">Downside Cushion</th>
-                          <th className="pb-2 font-medium">Avg Premium</th>
-                          <th className="pb-2 font-medium text-emerald-400">Avg Cash Return</th>
-                          <th className="pb-2 font-medium text-blue-400">Avg Margin Return</th>
-                          <th className="pb-2 font-medium">Avg IV</th>
-                          <th className="pb-2 font-medium text-amber-400">Sweet-Spot Knee</th>
+                          <th
+                            onClick={() => handleStrikeSort("key")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "key" ? "text-cyan-400" : ""}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Strike (% Spot)</span>
+                              {strikeSortField === "key" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("snapped_strike")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "snapped_strike" ? "text-cyan-400" : ""}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Listed Strike</span>
+                              {strikeSortField === "snapped_strike" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("cushion_to_strike_pct")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "cushion_to_strike_pct" ? "text-cyan-400" : ""}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Downside Cushion</span>
+                              {strikeSortField === "cushion_to_strike_pct" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("avg_premium")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_premium" ? "text-cyan-400" : ""}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Avg Premium</span>
+                              {strikeSortField === "avg_premium" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("avg_cash_return")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_cash_return" ? "text-emerald-300" : "text-emerald-400"}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Avg Cash Return</span>
+                              {strikeSortField === "avg_cash_return" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("avg_margin_return")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_margin_return" ? "text-blue-300" : "text-blue-400"}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Avg Margin Return</span>
+                              {strikeSortField === "avg_margin_return" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("avg_iv")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_iv" ? "text-purple-300" : "text-slate-400"}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Avg IV</span>
+                              {strikeSortField === "avg_iv" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-purple-400" /> : <ArrowDown className="w-3 h-3 text-purple-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleStrikeSort("knee_point")}
+                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "knee_point" ? "text-amber-300" : "text-amber-400"}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Sweet-Spot Knee</span>
+                              {strikeSortField === "knee_point" ? (
+                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-400" /> : <ArrowDown className="w-3 h-3 text-amber-400" />
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                              )}
+                            </div>
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60 font-mono">
-                        {expAnalysis.range_strikes.map((s, idx) => {
+                        {sortedRangeStrikes.map((s, idx) => {
                           const color = STRIKE_RANGE_COLORS[idx % STRIKE_RANGE_COLORS.length];
                           const isVisible = activeRangeStrikes.includes(s.key);
                           return (

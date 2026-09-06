@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Clock,
   Zap,
@@ -6,7 +6,10 @@ import {
   RefreshCw,
   Download,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
@@ -68,6 +71,47 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
       setLoading(false);
     }
   };
+
+  type ShortDatedSortKey =
+    | "ticker"
+    | "expiration"
+    | "strike"
+    | "current_price"
+    | "moneyness_pct"
+    | "bid"
+    | "implied_volatility"
+    | "capital_basis"
+    | "annualized_return_pct";
+
+  const [sortBy, setSortBy] = useState<ShortDatedSortKey>("annualized_return_pct");
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+  const handleSort = (field: ShortDatedSortKey) => {
+    if (sortBy === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortBy(field);
+      setSortAsc(field === "ticker" || field === "expiration" || field === "strike");
+    }
+  };
+
+  const sortedRecords = useMemo(() => {
+    const list = [...records];
+    return list.sort((a, b) => {
+      let valA: any = a[sortBy];
+      let valB: any = b[sortBy];
+
+      if (sortBy === "expiration") {
+        valA = a.days_to_expiration ?? a.expiration;
+        valB = b.days_to_expiration ?? b.expiration;
+      }
+
+      if (typeof valA === "string" && typeof valB === "string") {
+        return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortAsc ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
+    });
+  }, [records, sortBy, sortAsc]);
 
   useEffect(() => {
     runShortScan();
@@ -166,28 +210,136 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80">
+            <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
-                <th className="px-4 py-3">Ticker</th>
-                <th className="px-3 py-3">Expiration (DTE)</th>
-                <th className="px-3 py-3">Strike</th>
-                <th className="px-3 py-3">Spot</th>
-                <th className="px-3 py-3">Moneyness %</th>
-                <th className="px-3 py-3">Bid / Ask</th>
-                <th className="px-3 py-3">IV %</th>
-                <th className="px-3 py-3">OCC Margin Basis</th>
-                <th className="px-4 py-3 text-right">Annualized Yield</th>
+                <th
+                  onClick={() => handleSort("ticker")}
+                  className={`px-4 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "ticker" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Ticker</span>
+                    {sortBy === "ticker" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("expiration")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "expiration" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Expiration (DTE)</span>
+                    {sortBy === "expiration" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("strike")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "strike" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Strike</span>
+                    {sortBy === "strike" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("current_price")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "current_price" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Spot</span>
+                    {sortBy === "current_price" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("moneyness_pct")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "moneyness_pct" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Moneyness %</span>
+                    {sortBy === "moneyness_pct" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("bid")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "bid" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Bid / Ask</span>
+                    {sortBy === "bid" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("implied_volatility")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "implied_volatility" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>IV %</span>
+                    {sortBy === "implied_volatility" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("capital_basis")}
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "capital_basis" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>OCC Margin Basis</span>
+                    {sortBy === "capital_basis" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("annualized_return_pct")}
+                  className={`px-4 py-3 text-right cursor-pointer hover:text-white transition-colors ${sortBy === "annualized_return_pct" ? "text-blue-300 bg-slate-750" : ""}`}
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Annualized Yield</span>
+                    {sortBy === "annualized_return_pct" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800 font-mono">
-              {records.length === 0 ? (
+              {sortedRecords.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center text-slate-500 font-sans">
                     {loading ? "Scanning short-dated options..." : "No contracts met the short-dated screener criteria."}
                   </td>
                 </tr>
               ) : (
-                records.map((r, i) => (
+                sortedRecords.map((r, i) => (
                   <tr key={i} className="hover:bg-slate-800/50 transition-colors">
                     <td className="px-4 py-3 font-sans font-bold text-white">
                       {r.ticker}

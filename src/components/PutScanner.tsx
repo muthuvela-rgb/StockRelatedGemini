@@ -15,7 +15,10 @@ import {
   Percent,
   Calendar,
   Layers,
-  Sparkles
+  Sparkles,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import {
   ScatterChart,
@@ -1515,61 +1518,124 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80">
+            <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
                 <th
-                  className="px-4 py-3 cursor-pointer hover:text-white"
+                  className={`px-4 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "ticker" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("ticker")}
                 >
-                  Ticker {sortBy === "ticker" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Ticker</span>
+                    {sortBy === "ticker" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "expiration" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("expiration")}
                 >
-                  Expiration (DTE) {sortBy === "expiration" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Expiration (DTE)</span>
+                    {sortBy === "expiration" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "strike" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("strike")}
                 >
-                  Strike {sortBy === "strike" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Strike</span>
+                    {sortBy === "strike" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "current_price" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("current_price")}
                 >
-                  Spot {sortBy === "current_price" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Spot</span>
+                    {sortBy === "current_price" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "moneyness_pct" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("moneyness_pct")}
                 >
-                  Moneyness % {sortBy === "moneyness_pct" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Moneyness %</span>
+                    {sortBy === "moneyness_pct" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "bid" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("bid")}
                 >
-                  Bid / Ask {sortBy === "bid" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Bid / Ask</span>
+                    {sortBy === "bid" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "implied_volatility" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("implied_volatility")}
                 >
-                  IV % {sortBy === "implied_volatility" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>IV %</span>
+                    {sortBy === "implied_volatility" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-3 py-3 cursor-pointer hover:text-white"
+                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "capital_basis" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("capital_basis")}
                 >
-                  Capital Basis {sortBy === "capital_basis" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center gap-1.5">
+                    <span>Capital Basis</span>
+                    {sortBy === "capital_basis" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
                 <th
-                  className="px-4 py-3 cursor-pointer hover:text-white text-right"
+                  className={`px-4 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "annualized_return_pct" ? "text-emerald-400" : ""}`}
                   onClick={() => handleSort("annualized_return_pct")}
                 >
-                  Annualized Return % {sortBy === "annualized_return_pct" && (sortAsc ? "↑" : "↓")}
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>Annualized Return %</span>
+                    {sortBy === "annualized_return_pct" ? (
+                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
+                    )}
+                  </div>
                 </th>
               </tr>
             </thead>

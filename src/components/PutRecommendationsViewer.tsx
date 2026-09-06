@@ -23,7 +23,10 @@ import {
   Target,
   ExternalLink,
   HelpCircle,
-  Download
+  Download,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import {
   LineChart,
@@ -224,6 +227,95 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
     return list;
   }, [data, activeTierTab, searchQuery, sortBy]);
+
+  type TableSortKey =
+    | "ticker"
+    | "strike"
+    | "expiration"
+    | "risk_tier"
+    | "pop"
+    | "delta"
+    | "bid"
+    | "cushion"
+    | "annual_cash"
+    | "annual_margin"
+    | "theta"
+    | "score";
+
+  const [tableSortKey, setTableSortKey] = useState<TableSortKey | null>(null);
+  const [tableSortAsc, setTableSortAsc] = useState<boolean>(false);
+
+  const handleTableSort = (key: TableSortKey) => {
+    if (tableSortKey === key) {
+      setTableSortAsc(!tableSortAsc);
+    } else {
+      setTableSortKey(key);
+      setTableSortAsc(key === "ticker" || key === "expiration" || key === "strike");
+    }
+  };
+
+  const tableRows = useMemo(() => {
+    if (!tableSortKey) return currentList;
+    const list = [...currentList];
+    return list.sort((a, b) => {
+      let valA: any = 0;
+      let valB: any = 0;
+      switch (tableSortKey) {
+        case "ticker":
+          valA = a.ticker;
+          valB = b.ticker;
+          break;
+        case "strike":
+          valA = a.strike;
+          valB = b.strike;
+          break;
+        case "expiration":
+          valA = a.dte ?? 0;
+          valB = b.dte ?? 0;
+          break;
+        case "risk_tier":
+          valA = a.risk_tier;
+          valB = b.risk_tier;
+          break;
+        case "pop":
+          valA = a.probability_of_profit;
+          valB = b.probability_of_profit;
+          break;
+        case "delta":
+          valA = Math.abs(a.greeks?.delta ?? 0);
+          valB = Math.abs(b.greeks?.delta ?? 0);
+          break;
+        case "bid":
+          valA = a.bid;
+          valB = b.bid;
+          break;
+        case "cushion":
+          valA = a.cushion_to_strike_pct;
+          valB = b.cushion_to_strike_pct;
+          break;
+        case "annual_cash":
+          valA = a.annualized_return_cash_secured;
+          valB = b.annualized_return_cash_secured;
+          break;
+        case "annual_margin":
+          valA = a.annualized_return_margin;
+          valB = b.annualized_return_margin;
+          break;
+        case "theta":
+          valA = a.daily_theta_decay;
+          valB = b.daily_theta_decay;
+          break;
+        case "score":
+          valA = a.score;
+          valB = b.score;
+          break;
+      }
+      if (typeof valA === "string") {
+        return tableSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return tableSortAsc ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
+    });
+  }, [currentList, tableSortKey, tableSortAsc]);
 
   // Generate payoff data for selected trade
   const payoffChartData = useMemo(() => {
@@ -964,26 +1056,170 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       {!loading && viewMode === "table" && currentList.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full text-left border-collapse text-xs select-none">
               <thead>
                 <tr className="bg-slate-950/90 text-slate-400 border-b border-slate-800 font-mono text-[11px]">
-                  <th className="py-3 px-3.5 font-bold">Ticker / Spot</th>
-                  <th className="py-3 px-3 font-bold">Strike</th>
-                  <th className="py-3 px-3 font-bold">Expiration / DTE</th>
-                  <th className="py-3 px-3 font-bold">Risk Tier</th>
-                  <th className="py-3 px-3 font-bold">POP</th>
-                  <th className="py-3 px-3 font-bold">Delta (Δ)</th>
-                  <th className="py-3 px-3 font-bold">Bid (Ask)</th>
-                  <th className="py-3 px-3 font-bold">Buffer %</th>
-                  <th className="py-3 px-3 font-bold text-emerald-400">Cash Ann %</th>
-                  <th className="py-3 px-3 font-bold text-slate-300">Margin Ann %</th>
-                  <th className="py-3 px-3 font-bold text-amber-300">Theta/Day</th>
-                  <th className="py-3 px-3 font-bold text-center">Score</th>
+                  <th
+                    onClick={() => handleTableSort("ticker")}
+                    className={`py-3 px-3.5 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "ticker" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Ticker / Spot</span>
+                      {tableSortKey === "ticker" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("strike")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "strike" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Strike</span>
+                      {tableSortKey === "strike" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("expiration")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "expiration" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Expiration / DTE</span>
+                      {tableSortKey === "expiration" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("risk_tier")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "risk_tier" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Risk Tier</span>
+                      {tableSortKey === "risk_tier" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("pop")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "pop" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>POP</span>
+                      {tableSortKey === "pop" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("delta")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "delta" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Delta (Δ)</span>
+                      {tableSortKey === "delta" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("bid")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "bid" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Bid (Ask)</span>
+                      {tableSortKey === "bid" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("cushion")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "cushion" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Buffer %</span>
+                      {tableSortKey === "cushion" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("annual_cash")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "annual_cash" ? "text-emerald-300" : "text-emerald-400"}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Cash Ann %</span>
+                      {tableSortKey === "annual_cash" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("annual_margin")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "annual_margin" ? "text-blue-300" : "text-slate-300"}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Margin Ann %</span>
+                      {tableSortKey === "annual_margin" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("theta")}
+                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "theta" ? "text-amber-200" : "text-amber-300"}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Theta/Day</span>
+                      {tableSortKey === "theta" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-amber-400" /> : <ArrowDown className="w-3 h-3 text-amber-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => handleTableSort("score")}
+                    className={`py-3 px-3 font-bold text-center cursor-pointer hover:text-white transition-colors ${tableSortKey === "score" ? "text-blue-400" : ""}`}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Score</span>
+                      {tableSortKey === "score" ? (
+                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
+                      )}
+                    </div>
+                  </th>
                   <th className="py-3 px-3.5 font-bold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
-                {currentList.map((item) => {
+                {tableRows.map((item) => {
                   const isLeast = item.risk_tier === "least_risk";
                   const isMed = item.risk_tier === "medium_risk";
 
