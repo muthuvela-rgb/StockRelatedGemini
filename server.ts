@@ -2183,7 +2183,7 @@ SEC Document Text Content:
 ${docText}
 
 Provide an executive, high-density financial and strategic breakdown of this ${params.form} submission. Focus on:
-1. Core message & why this filing matters to equity and options traders.
+1. Core message & why this filing matters to equity and options traders. If this is an amendment (${params.form.includes('/A') ? 'AMENDMENT' : 'any /A form'}), clearly identify what information or exhibits are being amended, corrected, updated, or restated compared to the original filing.
 2. Financial numbers (Revenue, EPS, guidance changes, operating margins, segment growth).
 3. Material events, major contracts, leadership changes, legal updates, or financing details.
 4. Risk factors and macroeconomic commentary.
@@ -2194,7 +2194,7 @@ Provide an executive, high-density financial and strategic breakdown of this ${p
       model: "gemini-3.7-flash",
       contents: prompt,
       config: {
-        systemInstruction: "You are an elite Wall Street securities analyst and SEC filing forensic specialist. You produce precise, insightful, and actionable breakdowns of 10-K, 10-Q, and 8-K filings with zero fluff.",
+        systemInstruction: "You are an elite Wall Street securities analyst and SEC filing forensic specialist. You produce precise, insightful, and actionable breakdowns of 10-K, 10-Q, 8-K filings, and all amendments (such as 8-K/A, 10-Q/A, 10-K/A) with zero fluff.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -3026,11 +3026,39 @@ app.get("/api/sec-earnings", async (req: Request, res: Response) => {
           const primaryDocs: string[] = recent.primaryDocument || [];
           const primaryDocDescs: string[] = recent.primaryDocDescription || [];
 
-          for (let i = 0; i < forms.length && filingsList.length < 8; i++) {
-            if (["10-K", "10-Q", "8-K"].includes(forms[i])) {
+          const isTargetFiling = (formStr: string): boolean => {
+            if (!formStr) return false;
+            const norm = formStr.trim().toUpperCase();
+            // Core periodic and material filings: 10-K, 10-Q, 8-K, 20-F, 6-K and their amendments
+            const baseForm = norm.replace(/\/A$/, "");
+            if (["10-K", "10-Q", "8-K", "20-F", "6-K"].includes(baseForm)) return true;
+            // Also include amendments to all filings (ending in /A)
+            if (norm.endsWith("/A")) return true;
+            return false;
+          };
+
+          for (let i = 0; i < forms.length && filingsList.length < 20; i++) {
+            if (isTargetFiling(forms[i])) {
               const accnNoDash = accns[i].replace(/-/g, "");
               const url = `https://www.sec.gov/Archives/edgar/data/${cik}/${accnNoDash}/${primaryDocs[i]}`;
               const cacheKey = `${ticker}_${forms[i]}_${dates[i]}_${url}`;
+              const isAmendment = forms[i].toUpperCase().endsWith("/A");
+
+              let description = primaryDocDescs[i] || "";
+              if (!description || description.trim().toUpperCase() === forms[i].trim().toUpperCase()) {
+                if (isAmendment) {
+                  const base = forms[i].toUpperCase().replace(/\/A$/, "");
+                  description = `Amendment to ${base} Filing (${forms[i]})`;
+                } else if (forms[i] === "8-K") {
+                  description = "Current Report of Material Events (8-K)";
+                } else if (forms[i] === "10-Q") {
+                  description = "Quarterly Financial Report (10-Q)";
+                } else if (forms[i] === "10-K") {
+                  description = "Annual Comprehensive Report (10-K)";
+                } else {
+                  description = `${forms[i]} Disclosure`;
+                }
+              }
               
               filingsList.push({
                 form: forms[i],
@@ -3038,7 +3066,8 @@ app.get("/api/sec-earnings", async (req: Request, res: Response) => {
                 url,
                 accession_number: accns[i],
                 primary_doc: primaryDocs[i],
-                description: primaryDocDescs[i] || `${forms[i]} Disclosure`,
+                description,
+                is_amendment: isAmendment,
                 ai_summary: secSummaryCache.get(cacheKey) || null,
               });
             }

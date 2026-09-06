@@ -245,6 +245,7 @@ export interface SecCompanyReport {
     accession_number?: string;
     primary_doc?: string;
     description?: string;
+    is_amendment?: boolean;
     ai_summary?: SecFilingSummary | null;
   }>;
 }

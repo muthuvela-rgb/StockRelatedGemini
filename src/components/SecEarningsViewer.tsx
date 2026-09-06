@@ -121,9 +121,14 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
   const handleSummarizeAll10QAnd8K = async () => {
     const targetItems: Array<{ ticker: string; form: string; date: string; url: string; epsData?: any; revData?: any }> = [];
 
+    const isSummarizable = (form: string) => {
+      const base = form.replace(/\/A$/i, "").toUpperCase();
+      return ["10-Q", "8-K", "10-K", "20-F", "6-K"].includes(base) || form.endsWith("/A");
+    };
+
     reports.forEach((r) => {
       r.filings.forEach((f) => {
-        if (["10-Q", "8-K", "10-K"].includes(f.form) && !f.ai_summary) {
+        if (isSummarizable(f.form) && !f.ai_summary) {
           targetItems.push({
             ticker: r.ticker,
             form: f.form,
@@ -137,7 +142,7 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
     });
 
     if (targetItems.length === 0) {
-      alert("All eligible 10-Q and 8-K filings already have AI summaries generated!");
+      alert("All eligible filings (including amendments) already have AI summaries generated!");
       return;
     }
 
@@ -204,7 +209,18 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
   // Filter Filings helper
   const getFilteredFilings = (filings: any[]) => {
     return filings.filter((f) => {
-      if (selectedFormFilter !== "ALL" && f.form !== selectedFormFilter) return false;
+      if (selectedFormFilter !== "ALL") {
+        const isFilingAmendment = f.form.toUpperCase().endsWith("/A") || Boolean(f.is_amendment);
+        if (selectedFormFilter === "AMENDMENTS") {
+          if (!isFilingAmendment) return false;
+        } else {
+          const filterBase = selectedFormFilter.replace(/\/A$/i, "").toUpperCase();
+          const filingBase = f.form.replace(/\/A$/i, "").toUpperCase();
+          if (filingBase !== filterBase && f.form.toUpperCase() !== selectedFormFilter.toUpperCase()) {
+            return false;
+          }
+        }
+      }
       if (sentimentFilter !== "ALL") {
         if (!f.ai_summary || f.ai_summary.sentiment !== sentimentFilter) return false;
       }
@@ -270,7 +286,7 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
                   </span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Direct SEC EDGAR integration to fetch official 10-Q, 8-K, and 10-K filings, parse disclosures, and produce institutional-grade executive summaries.
+                  Direct SEC EDGAR integration to fetch official 10-Q, 8-K, 10-K filings, and all amendments (8-K/A, 10-Q/A, 10-K/A), parse disclosures, and produce institutional-grade executive summaries.
                 </p>
               </div>
             </div>
@@ -307,7 +323,7 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
               ) : (
                 <>
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  Summarize All 10-Q & 8-K Filings
+                  Summarize All Filings & Amendments
                 </>
               )}
             </button>
@@ -346,12 +362,13 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
             <select
               value={selectedFormFilter}
               onChange={(e) => setSelectedFormFilter(e.target.value)}
-              className="w-full bg-slate-950/70 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500 transition cursor-pointer"
+              className="w-full bg-slate-950/70 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs outline-none focus:border-blue-500 transition cursor-pointer font-medium"
             >
-              <option value="ALL">All Document Types (10-K, 10-Q, 8-K)</option>
-              <option value="10-Q">10-Q (Quarterly Reports)</option>
-              <option value="8-K">8-K (Current Material Events / Earnings)</option>
-              <option value="10-K">10-K (Annual Reports)</option>
+              <option value="ALL">All Document Types & Amendments</option>
+              <option value="8-K">8-K & 8-K/A (Current Reports / Material Events)</option>
+              <option value="10-Q">10-Q & 10-Q/A (Quarterly Reports)</option>
+              <option value="10-K">10-K & 10-K/A (Annual Reports)</option>
+              <option value="AMENDMENTS">Only Amendments (/A)</option>
             </select>
           </div>
         </div>
@@ -487,17 +504,30 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
                             {/* Filing Card Header Row */}
                             <div className="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
                               <div className="flex items-center gap-3">
-                                <span
-                                  className={`px-2.5 py-1 rounded-lg font-mono font-black text-xs border ${
-                                    filing.form === "10-Q"
-                                      ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                                      : filing.form === "8-K"
-                                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                                      : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                                  }`}
-                                >
-                                  {filing.form}
-                                </span>
+                                {(() => {
+                                  const isAmendment = filing.form.toUpperCase().endsWith("/A") || Boolean(filing.is_amendment);
+                                  const baseForm = filing.form.replace(/\/A$/i, "").toUpperCase();
+                                  const badgeColor = baseForm === "10-Q"
+                                    ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                                    : baseForm === "8-K"
+                                    ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                                    : baseForm === "10-K"
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                                    : "bg-indigo-500/20 text-indigo-300 border-indigo-500/30";
+
+                                  return (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className={`px-2.5 py-1 rounded-lg font-mono font-black text-xs border ${badgeColor}`}>
+                                        {filing.form}
+                                      </span>
+                                      {isAmendment && (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30 uppercase tracking-wide">
+                                          AMENDMENT
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 <div>
                                   <div className="flex items-center gap-2">
