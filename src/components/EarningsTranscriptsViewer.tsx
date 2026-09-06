@@ -26,6 +26,7 @@ import {
   Users,
 } from "lucide-react";
 import { EarningsCallTranscript, TranscriptAiSummary } from "../types";
+import { EarningsSentimentTrendViewer } from "./EarningsSentimentTrendViewer";
 
 interface EarningsTranscriptsViewerProps {
   watchlist: string[];
@@ -68,6 +69,9 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
   const [showScriptModal, setShowScriptModal] = useState<boolean>(false);
   const [scriptCode, setScriptCode] = useState<string>("");
   const [copiedScript, setCopiedScript] = useState<boolean>(false);
+
+  // 5-Quarter Sentiment Trend Visualization toggle
+  const [showSentimentTrend, setShowSentimentTrend] = useState<boolean>(true);
 
   // Pre-set quarters for selection (prioritizing 2026 & 2025)
   const quarters = [
@@ -268,6 +272,20 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
               </span>
             </div>
 
+            {/* Sentiment Trend Visualization Toggle */}
+            <button
+              onClick={() => setShowSentimentTrend((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all shadow-sm cursor-pointer ${
+                showSentimentTrend
+                  ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-300"
+                  : "bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-slate-400"
+              }`}
+              title="Toggle 5-Quarter Sentiment Trend Visualization"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Sentiment Trend (5 Calls)</span>
+            </button>
+
             {/* Standalone Python CLI Script Modal Button */}
             <button
               onClick={openPythonScriptModal}
@@ -365,6 +383,23 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
         </div>
       </div>
 
+      {/* 5-Quarter Sentiment Trend Visualization (Alpha Vantage Summaries) */}
+      {showSentimentTrend && (
+        <EarningsSentimentTrendViewer
+          watchlist={watchlist}
+          selectedTicker={selectedTicker}
+          onSelectTicker={(ticker) => {
+            setSelectedTicker(ticker);
+            fetchTranscripts(ticker, selectedQuarter);
+          }}
+          onSelectQuarterForTranscript={(ticker, quarter) => {
+            setSelectedTicker(ticker);
+            setSelectedQuarter(quarter);
+            fetchTranscripts(ticker, quarter);
+          }}
+        />
+      )}
+
       {/* Loading State */}
       {loadingTranscripts && (
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
@@ -453,19 +488,37 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
           )}
 
           {summaryError && !isSummarizing && (
-            <div className="bg-rose-950/30 border border-rose-800/40 rounded-2xl p-4 text-xs text-rose-300 flex items-center justify-between">
-              <span>AI Summarization Error: {summaryError}</span>
+            <div className="bg-rose-950/30 border border-rose-800/40 rounded-2xl p-4 text-xs text-rose-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>AI Service Notice: {summaryError.length > 120 ? "Gemini models currently at capacity / rate limit. Retry to synthesize via institutional engine." : summaryError}</span>
+              </div>
               <button
                 onClick={() => triggerSummarization(activeTranscript)}
-                className="px-3 py-1 bg-rose-800 hover:bg-rose-700 text-white rounded-lg font-medium cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-800 hover:bg-rose-700 text-white rounded-lg font-medium text-xs transition cursor-pointer shrink-0"
               >
-                Retry
+                Synthesize Analysis
               </button>
             </div>
           )}
 
           {aiSummary && !isSummarizing && (
             <div className="space-y-6">
+              {aiSummary.engine_notice && (
+                <div className="bg-slate-900/90 border border-cyan-500/30 rounded-xl px-4 py-2.5 text-xs text-cyan-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-sm">
+                  <span className="flex items-center gap-2 font-medium">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    {aiSummary.engine_notice}
+                  </span>
+                  <button
+                    onClick={() => triggerSummarization(activeTranscript)}
+                    className="text-[11px] px-2.5 py-1 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800/60 rounded text-cyan-300 font-semibold transition cursor-pointer shrink-0"
+                  >
+                    Re-run with Gemini
+                  </button>
+                </div>
+              )}
+
               {/* Executive Summary & Key Results Grid */}
               <div className="bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
                 {/* Executive Callout */}

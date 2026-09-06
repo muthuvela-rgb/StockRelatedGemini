@@ -688,5 +688,36 @@ export interface TranscriptAiSummary {
     role: string;
     quote: string;
   }>;
+  engine_notice?: string;
+  is_fallback?: boolean;
+}
+
+export interface EarningsCallSentimentPoint {
+  quarter: string; // e.g. "2026Q2"
+  label_quarter: string; // e.g. "Q2 '26"
+  date: string; // e.g. "2026-08-27"
+  sentiment_score: number; // 1.0 to 10.0
+  sentiment_label: "Bullish" | "Moderately Bullish" | "Neutral" | "Cautious" | "Bearish";
+  sentiment_delta?: number; // delta vs prior quarter, e.g. +0.4
+  executive_summary: string; // Summarized text from Alpha Vantage
+  reported_revenue: string;
+  revenue_growth_yoy: string;
+  reported_eps: string;
+  eps_growth_yoy: string;
+  guidance_highlight: string;
+  executive_quote?: string;
+  executive_speaker?: string;
+  analyst_tone?: "bullish" | "neutral" | "defensive" | "cautious";
+  source: string;
+}
+
+export interface TickerSentimentHistory {
+  ticker: string;
+  calls: EarningsCallSentimentPoint[];
+  average_score: number;
+  latest_score: number;
+  sentiment_trend: "improving" | "stable" | "deteriorating";
+  trend_delta: number;
+  summary_overview: string;
 }
 
