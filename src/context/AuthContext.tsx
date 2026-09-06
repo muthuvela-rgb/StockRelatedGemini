@@ -21,7 +21,7 @@ interface AuthContextType {
   authError: string | null;
   clearAuthError: () => void;
   // Cloud Watchlist sync
-  syncCloudWatchlist: (watchlist: string[]) => Promise<void>;
+  syncCloudWatchlist: (watchlist: string[]) => Promise<string[]>;
   loadCloudWatchlist: () => Promise<string[] | null>;
   // Saved Trades
   savedTrades: SavedTradeItem[];
@@ -81,18 +81,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const syncCloudWatchlist = async (watchlist: string[]) => {
-    if (!user) return;
+  const syncCloudWatchlist = async (watchlist: string[]): Promise<string[]> => {
+    const currentUid = user?.uid || auth.currentUser?.uid;
+    if (!currentUid) {
+      throw new Error("You must be signed in with Google to sync watchlist to Cloud.");
+    }
+    const cleanList = Array.from(
+      new Set(watchlist.map((t) => String(t).trim().toUpperCase()))
+    ).filter(Boolean);
+
     try {
-      await saveUserWatchlistToCloud(user.uid, watchlist);
-    } catch (e) {
+      const savedList = await saveUserWatchlistToCloud(currentUid, cleanList);
+      return savedList;
+    } catch (e: any) {
       console.error("Cloud watchlist sync error:", e);
+      throw e;
     }
   };
 
   const loadCloudWatchlist = async (): Promise<string[] | null> => {
-    if (!user) return null;
-    return await fetchUserWatchlist(user.uid);
+    const currentUid = user?.uid || auth.currentUser?.uid;
+    if (!currentUid) return null;
+    return await fetchUserWatchlist(currentUid);
   };
 
   const refreshSavedTrades = async () => {

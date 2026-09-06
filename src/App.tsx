@@ -24,53 +24,75 @@ const AppContent: React.FC = () => {
 
   const { user, loading, syncCloudWatchlist, loadCloudWatchlist } = useAuth();
 
-  // Initial load from server-side watchlist
+  // Initial load synchronization:
+  // 1. First check user's Firestore cloud watchlist
+  // 2. If present, load it and sync to backend server /api/watchlist
+  // 3. If no cloud watchlist exists yet, fetch server /api/watchlist and seed cloud
   useEffect(() => {
     if (!user) return;
-    fetch("/api/watchlist")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.tickers && Array.isArray(data.tickers) && data.tickers.length > 0) {
-          setWatchlist(data.tickers);
-        }
-      })
-      .catch((err) => console.error("Error fetching watchlist:", err));
-  }, [user]);
+    let isMounted = true;
 
-  // When user logs in, retrieve personal Firestore cloud watchlist
-  useEffect(() => {
-    if (!user) return;
-    loadCloudWatchlist().then((cloudList) => {
-      if (cloudList && Array.isArray(cloudList) && cloudList.length > 0) {
-        setWatchlist(cloudList);
-      } else {
-        // Seed user's cloud document with initial active watchlist
-        syncCloudWatchlist(watchlist);
+    async function initializeWatchlist() {
+      try {
+        const cloudList = await loadCloudWatchlist();
+        if (!isMounted) return;
+
+        if (cloudList && Array.isArray(cloudList) && cloudList.length > 0) {
+          setWatchlist(cloudList);
+          // Sync cloud list to backend server so all server calculations match
+          fetch("/api/watchlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tickers: cloudList }),
+          }).catch((err) => console.error("Error syncing cloud watchlist to server:", err));
+        } else {
+          // If no personal cloud list exists yet, load server watchlist and seed cloud
+          const res = await fetch("/api/watchlist");
+          const data = await res.json();
+          if (!isMounted) return;
+          const initialList = (data.tickers && Array.isArray(data.tickers) && data.tickers.length > 0)
+            ? data.tickers
+            : watchlist;
+          setWatchlist(initialList);
+          // Seed cloud document with this initial watchlist
+          syncCloudWatchlist(initialList).catch((err) => console.error("Error seeding cloud watchlist:", err));
+        }
+      } catch (err) {
+        console.error("Error initializing watchlist:", err);
       }
-    });
+    }
+
+    initializeWatchlist();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user?.uid]);
 
   const handleUpdateWatchlist = async (newWatchlist: string[]) => {
-    setWatchlist(newWatchlist);
+    const cleanList = Array.from(
+      new Set(newWatchlist.map((t) => String(t).trim().toUpperCase()))
+    ).filter(Boolean);
+
+    setWatchlist(cleanList);
+
     // 1. Central server persistence
-    try {
-      await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tickers: newWatchlist }),
-      });
-    } catch (e) {
+    const serverPromise = fetch("/api/watchlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tickers: cleanList }),
+    }).catch((e) => {
       console.error("Error saving watchlist to server:", e);
-    }
+    });
 
     // 2. Firestore Cloud database persistence if authenticated
-    if (user) {
-      try {
-        await syncCloudWatchlist(newWatchlist);
-      } catch (cloudErr) {
-        console.error("Error saving watchlist to Cloud Firestore:", cloudErr);
-      }
-    }
+    const cloudPromise = user
+      ? syncCloudWatchlist(cleanList).catch((cloudErr) => {
+          console.error("Error saving watchlist to Cloud Firestore:", cloudErr);
+        })
+      : Promise.resolve();
+
+    await Promise.allSettled([serverPromise, cloudPromise]);
   };
 
   const handleSelectTickerFromModal = (ticker: string) => {

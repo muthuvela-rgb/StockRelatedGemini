@@ -77,14 +77,20 @@ export async function signOutUser(): Promise<void> {
 }
 
 // User Profile & Watchlist Persistence
-export async function fetchUserWatchlist(uid: string): Promise<string[] | null> {
+export async function fetchUserWatchlist(uid?: string): Promise<string[] | null> {
+  const effectiveUid = uid || auth.currentUser?.uid;
+  if (!effectiveUid) return null;
+
   try {
-    const userRef = doc(db, "users", uid);
+    const userRef = doc(db, "users", effectiveUid);
     const snap = await getDoc(userRef);
     if (snap.exists()) {
       const data = snap.data();
       if (Array.isArray(data?.watchlist) && data.watchlist.length > 0) {
-        return data.watchlist;
+        const cleanList = Array.from(
+          new Set(data.watchlist.map((t: any) => String(t).trim().toUpperCase()))
+        ).filter(Boolean);
+        return cleanList;
       }
     }
   } catch (err) {
@@ -93,17 +99,34 @@ export async function fetchUserWatchlist(uid: string): Promise<string[] | null> 
   return null;
 }
 
-export async function saveUserWatchlistToCloud(uid: string, watchlist: string[]): Promise<void> {
+export async function saveUserWatchlistToCloud(uid: string | undefined, watchlist: string[]): Promise<string[]> {
+  const effectiveUid = uid || auth.currentUser?.uid;
+  if (!effectiveUid) {
+    throw new Error("User must be authenticated to push watchlist to Cloud Firestore.");
+  }
+
+  const cleanList = Array.from(
+    new Set(watchlist.map((t) => String(t).trim().toUpperCase()))
+  ).filter(Boolean);
+
   try {
-    const userRef = doc(db, "users", uid);
+    const userRef = doc(db, "users", effectiveUid);
+    const currentUser = auth.currentUser;
+
     await setDoc(
       userRef,
       {
-        watchlist,
+        uid: effectiveUid,
+        email: currentUser?.email || "",
+        displayName: currentUser?.displayName || "Trader",
+        photoURL: currentUser?.photoURL || "",
+        watchlist: cleanList,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
+    console.log(`[Firestore] Saved ${cleanList.length} watchlist tickers for user ${effectiveUid}`);
+    return cleanList;
   } catch (err) {
     console.error("Error saving user watchlist to Firestore:", err);
     throw err;

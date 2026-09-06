@@ -13,7 +13,8 @@ import {
   Bookmark,
   LogIn,
   ShieldCheck,
-  Check
+  Check,
+  AlertCircle
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -63,11 +64,26 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     }
     setCloudSyncing(true);
     try {
-      await syncCloudWatchlist(watchlist);
-      setSaveStatus("Synced to Cloud Firestore");
-      setTimeout(() => setSaveStatus(null), 2500);
-    } catch (e) {
-      setSaveStatus("Failed to sync to cloud");
+      const cleanList = Array.from(
+        new Set(watchlist.map((t) => String(t).trim().toUpperCase()))
+      ).filter(Boolean);
+
+      // 1. Sync directly to Cloud Firestore user document
+      await syncCloudWatchlist(cleanList);
+
+      // 2. Also persist to central backend server
+      await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers: cleanList }),
+      });
+
+      setSaveStatus(`Pushed ${cleanList.length} tickers to Cloud Firestore & Server`);
+      setTimeout(() => setSaveStatus(null), 3500);
+    } catch (e: any) {
+      console.error("Failed to push watchlist to cloud:", e);
+      setSaveStatus(e?.message ? `Push failed: ${e.message}` : "Failed to push to cloud");
+      setTimeout(() => setSaveStatus(null), 4500);
     } finally {
       setCloudSyncing(false);
     }
@@ -80,13 +96,15 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
       const cloudList = await loadCloudWatchlist();
       if (cloudList && cloudList.length > 0) {
         onUpdateWatchlist(cloudList);
-        setSaveStatus(`Restored ${cloudList.length} tickers from Firestore`);
+        setSaveStatus(`Restored ${cloudList.length} tickers from Cloud Firestore`);
       } else {
-        setSaveStatus("No saved cloud watchlist found");
+        setSaveStatus("No saved cloud watchlist found in Firestore");
       }
-      setTimeout(() => setSaveStatus(null), 2500);
-    } catch (e) {
-      setSaveStatus("Error pulling from cloud");
+      setTimeout(() => setSaveStatus(null), 3500);
+    } catch (e: any) {
+      console.error("Failed to pull watchlist from cloud:", e);
+      setSaveStatus(e?.message ? `Pull failed: ${e.message}` : "Error pulling from cloud");
+      setTimeout(() => setSaveStatus(null), 4500);
     } finally {
       setCloudSyncing(false);
     }
@@ -100,7 +118,10 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     if (!watchlist.includes(clean)) {
       const updated = [...watchlist, clean];
       onUpdateWatchlist(updated);
-      setSaveStatus(`Added ${clean}`);
+      setSaveStatus(`Added ${clean} (synced to Cloud & Server)`);
+      setTimeout(() => setSaveStatus(null), 2500);
+    } else {
+      setSaveStatus(`${clean} is already in watchlist`);
       setTimeout(() => setSaveStatus(null), 2500);
     }
     setNewTicker("");
@@ -109,20 +130,21 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const handleRemove = (tickerToRemove: string) => {
     const updated = watchlist.filter((t) => t !== tickerToRemove);
     onUpdateWatchlist(updated);
-    setSaveStatus(`Removed ${tickerToRemove}`);
+    setSaveStatus(`Removed ${tickerToRemove} (synced to Cloud & Server)`);
     setTimeout(() => setSaveStatus(null), 2500);
   };
 
   const handleApplyPreset = (tickers: string[]) => {
-    const combined = Array.from(new Set([...watchlist, ...tickers]));
+    const combined = Array.from(new Set([...watchlist, ...tickers.map((t) => t.trim().toUpperCase())]));
     onUpdateWatchlist(combined);
-    setSaveStatus("Preset tickers added to watchlist");
+    setSaveStatus(`Preset added (${combined.length} tickers synced to Cloud)`);
     setTimeout(() => setSaveStatus(null), 2500);
   };
 
   const handleReplaceWithPreset = (tickers: string[]) => {
-    onUpdateWatchlist(tickers);
-    setSaveStatus("Watchlist replaced with preset");
+    const clean = Array.from(new Set(tickers.map((t) => t.trim().toUpperCase())));
+    onUpdateWatchlist(clean);
+    setSaveStatus(`Replaced with preset (${clean.length} tickers synced to Cloud)`);
     setTimeout(() => setSaveStatus(null), 2500);
   };
 
@@ -142,8 +164,16 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
           </div>
 
           {saveStatus && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
-              <CheckCircle className="w-3.5 h-3.5" />
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold ${
+              saveStatus.toLowerCase().includes("fail") || saveStatus.toLowerCase().includes("error")
+                ? "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+            }`}>
+              {saveStatus.toLowerCase().includes("fail") || saveStatus.toLowerCase().includes("error") ? (
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+              ) : (
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+              )}
               <span>{saveStatus}</span>
             </div>
           )}
