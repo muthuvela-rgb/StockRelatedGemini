@@ -58,8 +58,8 @@ interface PutScannerProps {
 export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState("NVDA, MSFT, AAPL, AMZN, META");
-  const [minDays, setMinDays] = useState(45);
-  const [maxDays, setMaxDays] = useState(500);
+  const [minDays, setMinDays] = useState(90);
+  const [maxDays, setMaxDays] = useState(1000);
   
   // Strike selection state
   const [strikeMode, setStrikeMode] = useState<"band" | "single" | "bollinger">("band");
@@ -396,24 +396,27 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
 
           {/* DTE Range */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Expiration (DTE Range)</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Expiration (DTE Range)</span>
+              <span className="text-[10px] font-mono text-cyan-400 font-bold">{minDays}-{maxDays} DTE</span>
+            </label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
                 min="0"
                 value={minDays}
                 onChange={(e) => setMinDays(parseInt(e.target.value) || 0)}
-                placeholder="Min DTE"
-                className="w-1/2 bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-2 text-xs outline-none"
+                placeholder="Min DTE (90)"
+                className="w-1/2 bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-2 text-xs outline-none focus:border-cyan-500 font-mono"
               />
               <span className="text-slate-500 text-xs">to</span>
               <input
                 type="number"
                 min="1"
                 value={maxDays}
-                onChange={(e) => setMaxDays(parseInt(e.target.value) || 500)}
-                placeholder="Max DTE"
-                className="w-1/2 bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-2 text-xs outline-none"
+                onChange={(e) => setMaxDays(parseInt(e.target.value) || 1000)}
+                placeholder="Max DTE (1000)"
+                className="w-1/2 bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-2 text-xs outline-none focus:border-cyan-500 font-mono"
               />
             </div>
           </div>

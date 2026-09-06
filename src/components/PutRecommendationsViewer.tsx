@@ -75,6 +75,10 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [contractQuantity, setContractQuantity] = useState<number>(1);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Custom DTE inputs (defaulting 90 to 1000 days)
+  const [customMinDte, setCustomMinDte] = useState<number>(90);
+  const [customMaxDte, setCustomMaxDte] = useState<number>(1000);
+
   // AI Strategy Modal State
   const [aiModalOpen, setAiModalOpen] = useState<boolean>(false);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
@@ -85,7 +89,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const dteRange = useMemo(() => {
     switch (horizon) {
       case "custom_range":
-        return { minDte: 45, maxDte: 500 };
+        return { minDte: customMinDte, maxDte: customMaxDte };
       case "weeklies":
         return { minDte: 5, maxDte: 16 };
       case "sweetspot":
@@ -96,9 +100,9 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         return { minDte: 30, maxDte: 60 };
       case "all":
       default:
-        return { minDte: 45, maxDte: 500 };
+        return { minDte: 90, maxDte: 1000 };
     }
-  }, [horizon]);
+  }, [horizon, customMinDte, customMaxDte]);
 
   // Fetch Put Recommendations
   const fetchRecommendations = async () => {
@@ -423,7 +427,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           <div>
             <label className="block text-slate-400 font-medium mb-1.5 flex items-center justify-between">
               <span>Expiration Horizon</span>
-              <span className="text-[10px] font-mono text-slate-400">
+              <span className="text-[10px] font-mono text-cyan-400 font-bold">
                 {dteRange.minDte}-{dteRange.maxDte} DTE
               </span>
             </label>
@@ -432,13 +436,43 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               onChange={(e: any) => setHorizon(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
-              <option value="custom_range">Default (45 to 500 DTE - Multi-Month & LEAPS)</option>
+              <option value="custom_range">Default (90 to 1000 DTE - Multi-Month & LEAPS)</option>
+              <option value="all">All Horizons (90 to 1000 DTE)</option>
               <option value="sweetspot">Sweet Spot (20 to 45 DTE - Optimal Theta)</option>
               <option value="weeklies">Weeklies (5 to 16 DTE - High Decay)</option>
               <option value="monthly">Monthly Standard (14 to 35 DTE)</option>
               <option value="extended">Extended (30 to 60 DTE - Safe Cushion)</option>
-              <option value="all">All Horizons (45 to 500 DTE)</option>
             </select>
+
+            {horizon === "custom_range" && (
+              <div className="flex items-center gap-2 mt-2 pt-1">
+                <div className="flex-1">
+                  <span className="text-[10px] text-slate-400 block font-mono">Min DTE</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={customMaxDte}
+                    value={customMinDte}
+                    onChange={(e) => setCustomMinDte(parseInt(e.target.value) || 90)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono focus:border-cyan-500 outline-none"
+                    placeholder="90"
+                  />
+                </div>
+                <span className="text-slate-500 text-xs mt-3">&ndash;</span>
+                <div className="flex-1">
+                  <span className="text-[10px] text-slate-400 block font-mono">Max DTE</span>
+                  <input
+                    type="number"
+                    min={customMinDte}
+                    max="2000"
+                    value={customMaxDte}
+                    onChange={(e) => setCustomMaxDte(parseInt(e.target.value) || 1000)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 font-mono focus:border-cyan-500 outline-none"
+                    placeholder="1000"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Min Annual Return Slider */}

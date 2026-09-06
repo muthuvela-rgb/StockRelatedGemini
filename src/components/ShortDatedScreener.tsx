@@ -165,6 +165,8 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
               <option value="7">≤ 7 Days (Ultra Short / Weekly)</option>
               <option value="15">≤ 15 Days (2 Weeks)</option>
               <option value="30">≤ 30 Days (1 Month)</option>
+              <option value="90">≤ 90 Days (Quarterly)</option>
+              <option value="1000">≤ 1000 Days (Long-Term & LEAPS)</option>
             </select>
           </div>
 

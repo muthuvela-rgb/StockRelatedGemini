@@ -728,8 +728,8 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
   try {
     const {
       tickers,
-      minDays = 45,
-      maxDays = 500,
+      minDays = 90,
+      maxDays = 1000,
       strikeMode = "band", // 'band' | 'single' | 'bollinger'
       singleStrike = null,
       singleStrikeType = "dollar", // 'dollar' | 'pct'
@@ -2425,8 +2425,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
   try {
     const {
       tickers,
-      minDte = 45,
-      maxDte = 500,
+      minDte = 90,
+      maxDte = 1000,
       minBid = 0.35,
       minOpenInterest = 5,
       marginShockPct = 15.0,
@@ -2501,8 +2501,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
               }
             }
 
-            // Evaluate up to 4 expirations per ticker to balance depth and performance
-            const targetExpirations = validExpirations.slice(0, 4);
+            // Evaluate up to 8 expirations per ticker to balance depth and performance across 90-1000 DTE
+            const targetExpirations = validExpirations.slice(0, 8);
 
             for (const exp of targetExpirations) {
               let chain = optData;

@@ -122,6 +122,7 @@ export const PremiumCurvesViewer: React.FC = () => {
           ticker: ticker.trim().toUpperCase(),
           optionType,
           priceType,
+          months: "36",
         });
 
         if (singleStrikeType === "range") {

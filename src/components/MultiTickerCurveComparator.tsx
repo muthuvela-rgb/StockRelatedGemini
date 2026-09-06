@@ -103,7 +103,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
           optionType,
           priceType,
           targetStrikePct,
-          months: 18,
+          months: 36,
         }),
       });
 
