@@ -6,12 +6,21 @@ import {
   CheckCircle,
   Sparkles,
   Layers,
-  RefreshCw
+  RefreshCw,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  Bookmark,
+  LogIn,
+  ShieldCheck,
+  Check
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 interface WatchlistManagerProps {
   watchlist: string[];
   onUpdateWatchlist: (newWatchlist: string[]) => void;
+  onOpenSavedTrades?: () => void;
 }
 
 const PRESETS = [
@@ -40,9 +49,48 @@ const PRESETS = [
 export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   watchlist,
   onUpdateWatchlist,
+  onOpenSavedTrades,
 }) => {
+  const { user, signIn, syncCloudWatchlist, loadCloudWatchlist, savedTrades } = useAuth();
   const [newTicker, setNewTicker] = useState("");
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+
+  const handleManualCloudPush = async () => {
+    if (!user) {
+      await signIn();
+      return;
+    }
+    setCloudSyncing(true);
+    try {
+      await syncCloudWatchlist(watchlist);
+      setSaveStatus("Synced to Cloud Firestore");
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch (e) {
+      setSaveStatus("Failed to sync to cloud");
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
+
+  const handleManualCloudPull = async () => {
+    if (!user) return;
+    setCloudSyncing(true);
+    try {
+      const cloudList = await loadCloudWatchlist();
+      if (cloudList && cloudList.length > 0) {
+        onUpdateWatchlist(cloudList);
+        setSaveStatus(`Restored ${cloudList.length} tickers from Firestore`);
+      } else {
+        setSaveStatus("No saved cloud watchlist found");
+      }
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch (e) {
+      setSaveStatus("Error pulling from cloud");
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
 
   const handleAdd = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -118,6 +166,83 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
             Add Ticker
           </button>
         </form>
+      </div>
+
+      {/* Cloud Firestore Persistence & Account Sync Banner */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className={`p-2.5 rounded-xl border shrink-0 ${
+              user ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+            }`}>
+              <Cloud className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white font-display">
+                  Firebase Cloud Firestore Persistence
+                </h3>
+                {user ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-semibold flex items-center gap-1">
+                    <Check className="w-2.5 h-2.5" />
+                    Connected as {user.email?.split("@")[0]}
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-semibold">
+                    Guest Mode (Local Only)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
+                {user
+                  ? "Your watchlists and bookmarked options recommendations are continuously backed up to your Google account via Cloud Firestore."
+                  : "Sign in with Google to enable real-time cloud sync, saving your custom watchlists and bookmarked trades securely to Firestore across all devices."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {user ? (
+              <>
+                <button
+                  onClick={handleManualCloudPush}
+                  disabled={cloudSyncing}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                  title="Push current watchlist state to Cloud Firestore"
+                >
+                  <CloudUpload className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Push to Cloud</span>
+                </button>
+                <button
+                  onClick={handleManualCloudPull}
+                  disabled={cloudSyncing}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                  title="Restore watchlist stored in Cloud Firestore"
+                >
+                  <CloudDownload className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Restore from Cloud</span>
+                </button>
+                {onOpenSavedTrades && (
+                  <button
+                    onClick={onOpenSavedTrades}
+                    className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Bookmark className="w-3.5 h-3.5" />
+                    <span>Saved Puts ({savedTrades.length})</span>
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                onClick={signIn}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-md cursor-pointer transition"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign in with Google</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Active Watchlist Grid */}

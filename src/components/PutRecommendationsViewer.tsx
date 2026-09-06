@@ -26,8 +26,10 @@ import {
   Download,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Bookmark
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 import {
   LineChart,
   Line,
@@ -84,6 +86,37 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [aiStrategy, setAiStrategy] = useState<AiPortfolioStrategy | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Firestore Authentication & Persistence
+  const { user, savedTrades, saveTrade, removeTrade } = useAuth();
+
+  const isTradeSaved = (trade: RecommendedPut) => {
+    const safeId = trade.id || `${trade.ticker}_${trade.expiration}_${trade.strike}P`;
+    return savedTrades.some((t) => (t.id || `${t.ticker}_${t.expiration}_${t.strike}P`) === safeId);
+  };
+
+  const handleToggleSaveTrade = async (trade: RecommendedPut) => {
+    const safeId = trade.id || `${trade.ticker}_${trade.expiration}_${trade.strike}P`;
+    if (isTradeSaved(trade)) {
+      await removeTrade(safeId);
+    } else {
+      await saveTrade({
+        id: safeId,
+        ticker: trade.ticker,
+        strike: trade.strike,
+        expiration: trade.expiration,
+        dte: trade.dte,
+        bid: trade.bid,
+        ask: trade.ask,
+        premium: trade.premium_per_contract,
+        annualizedReturn: trade.annualized_return_cash_secured,
+        downsideBuffer: trade.cushion_to_strike_pct,
+        tier: trade.risk_tier,
+        score: trade.score,
+        rationale: trade.rationale,
+      });
+    }
+  };
 
   // Determine DTE range from horizon selection
   const dteRange = useMemo(() => {
@@ -940,14 +973,28 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       </div>
                     </div>
 
-                    {/* Composite Score Circle */}
-                    <div className="text-right">
-                      <div className={`px-2.5 py-1 rounded-xl border font-mono font-bold text-xs inline-flex items-center gap-1 shadow-inner ${scoreColor}`}>
-                        <Target className="w-3.5 h-3.5" />
-                        <span>Score {item.score}</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {item.probability_of_profit}% POP
+                    {/* Composite Score & Cloud Bookmark */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleToggleSaveTrade(item)}
+                        className={`p-2 rounded-xl border transition cursor-pointer ${
+                          isTradeSaved(item)
+                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-md shadow-cyan-500/20"
+                            : "bg-slate-950/70 text-slate-400 hover:text-cyan-300 hover:bg-slate-900 border-slate-800"
+                        }`}
+                        title={isTradeSaved(item) ? "Saved in Firestore (Click to remove)" : "Save to Cloud Firestore"}
+                      >
+                        <Bookmark className={`w-4 h-4 ${isTradeSaved(item) ? "fill-cyan-400" : ""}`} />
+                      </button>
+
+                      <div className="text-right">
+                        <div className={`px-2.5 py-1 rounded-xl border font-mono font-bold text-xs inline-flex items-center gap-1 shadow-inner ${scoreColor}`}>
+                          <Target className="w-3.5 h-3.5" />
+                          <span>Score {item.score}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {item.probability_of_profit}% POP
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1367,6 +1414,17 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       </td>
                       <td className="py-3 px-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleToggleSaveTrade(item)}
+                            className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                              isTradeSaved(item)
+                                ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                                : "bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-cyan-300 border-slate-700"
+                            }`}
+                            title={isTradeSaved(item) ? "Saved in Firestore" : "Save to Cloud"}
+                          >
+                            <Bookmark className={`w-3.5 h-3.5 ${isTradeSaved(item) ? "fill-cyan-400" : ""}`} />
+                          </button>
                           <button
                             onClick={() => handleCopyTrade(item)}
                             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"

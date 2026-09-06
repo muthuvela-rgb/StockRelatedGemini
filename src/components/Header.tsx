@@ -15,6 +15,8 @@ import {
   ChevronRight
 } from "lucide-react";
 
+import { UserAuthButton } from "./UserAuthButton";
+
 export type ActiveTab =
   | "put-recommendations"
   | "options-scanner"
@@ -31,12 +33,14 @@ interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   watchlistCount: number;
+  onOpenSavedTrades?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   watchlistCount,
+  onOpenSavedTrades,
 }) => {
   const navRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -112,11 +116,15 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 font-mono">
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Live Yahoo & SEC Data
             </span>
+            <UserAuthButton
+              watchlistCount={watchlistCount}
+              onOpenSavedTrades={onOpenSavedTrades}
+            />
           </div>
         </div>
 

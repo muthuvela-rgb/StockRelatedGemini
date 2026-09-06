@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "UserProfile": {
+      "path": "users/{userId}",
+      "description": "User profile with personal watchlist and preferences",
+      "fields": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "watchlist": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
+      }
+    },
+    "SavedTrade": {
+      "path": "users/{userId}/savedTrades/{tradeId}",
+      "description": "Bookmarked options recommendations and research items",
+      "fields": {
+        "ticker": { "type": "string" },
+        "strike": { "type": "number" },
+        "expiration": { "type": "string" },
+        "premium": { "type": "number" },
+        "annualizedReturn": { "type": "number" },
+        "downsideBuffer": { "type": "number" },
+        "tier": { "type": "string" },
+        "rationale": { "type": "string" },
+        "savedAt": { "type": "string" }
+      }
+    }
+  }
+}
