@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { logAccessEvent } from "../lib/firebase";
 import {
   LineChart,
   ShieldCheck,
@@ -17,6 +18,18 @@ import {
 export const LoginPortal: React.FC = () => {
   const { signIn, authError, clearAuthError } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    const visitKey = `visit_gate_${new Date().toDateString()}`;
+    if (!sessionStorage.getItem(visitKey)) {
+      sessionStorage.setItem(visitKey, "1");
+      logAccessEvent({
+        eventType: "PAGE_VISIT",
+        status: "GUEST",
+        details: "Visitor attempted access at Login Portal",
+      });
+    }
+  }, []);
 
   const handleSignIn = async () => {
     setSigningIn(true);

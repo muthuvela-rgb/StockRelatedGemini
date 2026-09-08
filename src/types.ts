@@ -735,3 +735,28 @@ export interface TickerSentimentHistory {
   summary_overview: string;
 }
 
+export type AccessEventType =
+  | "PAGE_VISIT"
+  | "LOGIN_SUCCESS"
+  | "LOGIN_FAILED"
+  | "RESTRICTED_ATTEMPT"
+  | "SIGNOUT";
+
+export interface AccessLogEntry {
+  id?: string;
+  timestamp: string; // ISO 8601 string
+  userEmail: string;
+  userName: string;
+  userPhoto?: string;
+  userId?: string;
+  eventType: AccessEventType;
+  status: "AUTHORIZED" | "GUEST" | "ADMIN" | "BLOCKED";
+  ip: string;
+  userAgent: string;
+  path: string;
+  referrer?: string;
+  device?: string;
+  details?: string;
+}
+
+

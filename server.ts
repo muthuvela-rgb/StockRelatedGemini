@@ -553,12 +553,183 @@ async function getTechnicalsForTicker(ticker: string) {
 }
 
 // ==========================================
+// ACCESS AUDIT & ACCESS LOG STORAGE (Admin: muthu.vela@gmail.com)
+// ==========================================
+const SUPERADMIN_EMAIL = "muthu.vela@gmail.com";
+const ACCESS_LOGS_FILE = path.join(process.cwd(), "access_logs.json");
+
+interface ServerAccessLog {
+  id: string;
+  timestamp: string;
+  userEmail: string;
+  userName: string;
+  userPhoto?: string;
+  userId?: string;
+  eventType: string;
+  status: "AUTHORIZED" | "GUEST" | "ADMIN" | "BLOCKED";
+  ip: string;
+  userAgent: string;
+  path: string;
+  referrer?: string;
+  device?: string;
+  details?: string;
+}
+
+let serverAccessLogs: ServerAccessLog[] = [];
+
+function loadAccessLogsFromDisk() {
+  try {
+    if (fs.existsSync(ACCESS_LOGS_FILE)) {
+      const content = fs.readFileSync(ACCESS_LOGS_FILE, "utf-8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        serverAccessLogs = parsed.slice(-500);
+      }
+    }
+  } catch (e) {
+    console.warn("Could not read access_logs.json from disk:", e);
+  }
+}
+
+function saveAccessLogsToDisk() {
+  try {
+    fs.writeFileSync(ACCESS_LOGS_FILE, JSON.stringify(serverAccessLogs.slice(-500), null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Could not save access_logs.json to disk:", e);
+  }
+}
+
+// Initial load
+loadAccessLogsFromDisk();
+
+// ==========================================
 // API ROUTES
 // ==========================================
 
 // Health
 app.get("/api/health", (req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Access Logging: Record any visit, login attempt, or page access
+app.post("/api/log-access", (req: Request, res: Response) => {
+  try {
+    const rawIp =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      (req.headers["x-real-ip"] as string) ||
+      req.socket.remoteAddress ||
+      "127.0.0.1";
+
+    // Clean ipv6 localhost
+    const ip = rawIp.replace(/^::ffff:/, "");
+
+    const body = req.body || {};
+    const email = (body.userEmail || "Anonymous / Unauthenticated").trim();
+    const isSuperAdmin = email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+
+    let computedStatus = body.status || "GUEST";
+    if (isSuperAdmin) {
+      computedStatus = "ADMIN";
+    } else if (body.status === "BLOCKED" || body.eventType === "RESTRICTED_ATTEMPT") {
+      computedStatus = "BLOCKED";
+    } else if (email.includes("@")) {
+      computedStatus = "AUTHORIZED";
+    }
+
+    const newLog: ServerAccessLog = {
+      id: body.id || `log_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      timestamp: body.timestamp || new Date().toISOString(),
+      userEmail: email,
+      userName: body.userName || (email.includes("@") ? email.split("@")[0] : "Guest Visitor"),
+      userPhoto: body.userPhoto || "",
+      userId: body.userId || "",
+      eventType: body.eventType || "PAGE_VISIT",
+      status: computedStatus,
+      ip,
+      userAgent: body.userAgent || (req.headers["user-agent"] as string) || "Unknown",
+      path: body.path || (req.headers["referer"] ? new URL(req.headers["referer"]).pathname : "/"),
+      referrer: body.referrer || (req.headers["referer"] as string) || "direct",
+      device: body.device || "Web Client",
+      details: body.details || (isSuperAdmin ? "Superadmin action" : "Web access event"),
+    };
+
+    serverAccessLogs.unshift(newLog);
+    if (serverAccessLogs.length > 500) {
+      serverAccessLogs = serverAccessLogs.slice(0, 500);
+    }
+    saveAccessLogsToDisk();
+
+    res.json({ success: true, ip, logId: newLog.id });
+  } catch (e: any) {
+    console.error("Error saving access log:", e);
+    res.status(500).json({ error: "Failed to record access log" });
+  }
+});
+
+// Retrieve Access Logs: Strictly guarded for muthu.vela@gmail.com
+app.get("/api/access-logs", (req: Request, res: Response) => {
+  const reqEmail = (
+    (req.query.email as string) ||
+    (req.headers["x-user-email"] as string) ||
+    ""
+  ).trim().toLowerCase();
+
+  if (reqEmail !== SUPERADMIN_EMAIL.toLowerCase()) {
+    // Audit unauthorized attempt
+    const rawIp =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      (req.headers["x-real-ip"] as string) ||
+      req.socket.remoteAddress ||
+      "127.0.0.1";
+
+    const blockedAttempt: ServerAccessLog = {
+      id: `viol_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      userEmail: reqEmail || "Anonymous Intruder",
+      userName: reqEmail || "Unauthorized Requester",
+      eventType: "RESTRICTED_ATTEMPT",
+      status: "BLOCKED",
+      ip: rawIp.replace(/^::ffff:/, ""),
+      userAgent: (req.headers["user-agent"] as string) || "Unknown",
+      path: "/api/access-logs",
+      details: `UNAUTHORIZED ACCESS TO AUDIT LOGS. Restricted to ${SUPERADMIN_EMAIL}`,
+    };
+    serverAccessLogs.unshift(blockedAttempt);
+    saveAccessLogsToDisk();
+
+    return res.status(403).json({
+      error: "Access Banned. This audit tab and data are strictly restricted to muthu.vela@gmail.com",
+      status: 403,
+      banned: true,
+    });
+  }
+
+  res.json({
+    success: true,
+    superadmin: SUPERADMIN_EMAIL,
+    count: serverAccessLogs.length,
+    logs: serverAccessLogs,
+  });
+});
+
+// Clear Access Logs: Strictly guarded for muthu.vela@gmail.com
+app.delete("/api/access-logs", (req: Request, res: Response) => {
+  const reqEmail = (
+    (req.query.email as string) ||
+    (req.headers["x-user-email"] as string) ||
+    ""
+  ).trim().toLowerCase();
+
+  if (reqEmail !== SUPERADMIN_EMAIL.toLowerCase()) {
+    return res.status(403).json({
+      error: "Access Banned. This action is strictly restricted to muthu.vela@gmail.com",
+      status: 403,
+    });
+  }
+
+  serverAccessLogs = [];
+  saveAccessLogsToDisk();
+  res.json({ success: true, message: "Audit logs purged successfully" });
 });
 
 // Watchlist endpoints

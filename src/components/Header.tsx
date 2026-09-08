@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
+import { useAuth } from "../context/AuthContext";
+import { SUPERADMIN_EMAIL } from "../lib/firebase";
 
 export type ActiveTab =
   | "put-recommendations"
@@ -27,7 +29,8 @@ export type ActiveTab =
   | "premium-curves"
   | "sec-earnings"
   | "earnings-transcripts"
-  | "watchlist";
+  | "watchlist"
+  | "access-audit";
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -42,11 +45,16 @@ export const Header: React.FC<HeaderProps> = ({
   watchlistCount,
   onOpenSavedTrades,
 }) => {
+  const { user } = useAuth();
   const navRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  const tabs = [
+  const isSuperAdmin = Boolean(
+    user?.email && user.email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase()
+  );
+
+  const baseTabs = [
     { id: "options-scanner" as ActiveTab, label: "Put Scanner", icon: LineChart, badge: "OCC TIMS" },
     { id: "put-recommendations" as ActiveTab, label: "Put Recommendations", icon: ShieldCheck, badge: "3 Risk Tiers" },
     { id: "fall-detector" as ActiveTab, label: "Fall Detector", icon: TrendingDown, badge: "Context" },
@@ -58,6 +66,19 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "earnings-transcripts" as ActiveTab, label: "Earnings Transcripts", icon: MessageSquareQuote, badge: "Alpha Vantage" },
     { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount },
   ];
+
+  // The Access Audit tab is ONLY visible to muthu.vela@gmail.com
+  const tabs = isSuperAdmin
+    ? [
+        ...baseTabs,
+        {
+          id: "access-audit" as ActiveTab,
+          label: "Access Audit",
+          icon: ShieldCheck,
+          badge: "Admin",
+        },
+      ]
+    : baseTabs;
 
   const checkScroll = () => {
     if (!navRef.current) return;

@@ -11,11 +11,14 @@ import {
   fetchSavedTradesFromCloud,
   saveTradeToCloud,
   removeSavedTradeFromCloud,
+  logAccessEvent,
+  SUPERADMIN_EMAIL,
 } from "../lib/firebase";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isAdmin: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   authError: string | null;
@@ -38,11 +41,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authError, setAuthError] = useState<string | null>(null);
   const [savedTrades, setSavedTrades] = useState<SavedTradeItem[]>([]);
 
+  const isAdmin = Boolean(
+    user?.email && user.email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase()
+  );
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setLoading(false);
       if (currentUser) {
+        // Log access for authenticated user session
+        const sessionKey = `logged_session_${currentUser.uid}_${new Date().toDateString()}`;
+        if (!sessionStorage.getItem(sessionKey)) {
+          sessionStorage.setItem(sessionKey, "1");
+          logAccessEvent({
+            eventType: "LOGIN_SUCCESS",
+            email: currentUser.email || "",
+            name: currentUser.displayName || "",
+            photo: currentUser.photoURL || "",
+            uid: currentUser.uid,
+            details: currentUser.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase()
+              ? "Superadmin session established"
+              : "User signed in via Google account",
+          });
+        }
+
         try {
           const trades = await fetchSavedTradesFromCloud(currentUser.uid);
           setSavedTrades(trades);
@@ -60,21 +83,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSignIn = async () => {
     setAuthError(null);
     try {
-      await signInWithGoogle();
+      const signedInUser = await signInWithGoogle();
+      logAccessEvent({
+        eventType: "LOGIN_SUCCESS",
+        email: signedInUser.email || "",
+        name: signedInUser.displayName || "",
+        photo: signedInUser.photoURL || "",
+        uid: signedInUser.uid,
+        details: signedInUser.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase()
+          ? "Superadmin Google Sign-In"
+          : "Google Sign-In completed",
+      });
     } catch (err: any) {
-      if (err?.code === "auth/popup-closed-by-user") {
-        setAuthError("Sign-in cancelled.");
-      } else if (err?.code === "auth/popup-blocked") {
-        setAuthError("Sign-in popup blocked by browser. Please allow popups or open in a new tab.");
-      } else {
-        setAuthError(err?.message || "Failed to sign in with Google.");
-      }
+      const errMsg = err?.code === "auth/popup-closed-by-user"
+        ? "Sign-in cancelled by user."
+        : err?.code === "auth/popup-blocked"
+        ? "Sign-in popup blocked by browser. Please allow popups or open in a new tab."
+        : err?.message || "Failed to sign in with Google.";
+
+      setAuthError(errMsg);
+      logAccessEvent({
+        eventType: "LOGIN_FAILED",
+        status: "BLOCKED",
+        details: `Google sign-in attempt failed: ${errMsg}`,
+      });
     }
   };
 
   const handleSignOut = async () => {
     setAuthError(null);
+    const prevEmail = user?.email;
     try {
+      logAccessEvent({
+        eventType: "SIGNOUT",
+        email: prevEmail || undefined,
+        details: "User initiated sign out",
+      });
       await signOutUser();
     } catch (err: any) {
       setAuthError(err?.message || "Failed to sign out.");
@@ -134,6 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         loading,
+        isAdmin,
         signIn: handleSignIn,
         signOut: handleSignOut,
         authError,

@@ -27,6 +27,25 @@
         "rationale": { "type": "string" },
         "savedAt": { "type": "string" }
       }
+    },
+    "AccessLog": {
+      "path": "access_logs/{logId}",
+      "description": "Audit records of all users and visitors attempting or accessing the webapp, restricted to superadmin muthu.vela@gmail.com",
+      "fields": {
+        "timestamp": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhoto": { "type": "string" },
+        "userId": { "type": "string" },
+        "eventType": { "type": "string" },
+        "status": { "type": "string" },
+        "ip": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "path": { "type": "string" },
+        "referrer": { "type": "string" },
+        "device": { "type": "string" },
+        "details": { "type": "string" }
+      }
     }
   }
 }

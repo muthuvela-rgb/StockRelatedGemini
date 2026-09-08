@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { SUPERADMIN_EMAIL } from "../lib/firebase";
 import {
   LogIn,
   LogOut,
@@ -142,7 +143,14 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-white truncate text-xs">{user.displayName || "Trader"}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-bold text-white truncate text-xs">{user.displayName || "Trader"}</p>
+                  {user.email?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase() && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[9px] font-bold">
+                      ADMIN
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
               </div>
             </div>

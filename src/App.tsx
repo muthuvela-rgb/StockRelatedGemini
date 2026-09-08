@@ -13,6 +13,7 @@ import { EarningsTranscriptsViewer } from "./components/EarningsTranscriptsViewe
 import { WatchlistManager } from "./components/WatchlistManager";
 import { SavedTradesModal } from "./components/SavedTradesModal";
 import { LoginPortal } from "./components/LoginPortal";
+import { AccessAuditViewer } from "./components/AccessAuditViewer";
 import { LineChart } from "lucide-react";
 
 const AppContent: React.FC = () => {
@@ -164,6 +165,9 @@ const AppContent: React.FC = () => {
             onUpdateWatchlist={handleUpdateWatchlist}
             onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
           />
+        )}
+        {activeTab === "access-audit" && (
+          <AccessAuditViewer />
         )}
       </main>
 

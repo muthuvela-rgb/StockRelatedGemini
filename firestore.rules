@@ -9,12 +9,25 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        request.auth.token.email.lower() == 'muthu.vela@gmail.com';
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
       match /{allSubcollections=**} {
         allow read, write: if isOwner(userId);
       }
+    }
+
+    // Access Logs: anyone can record an access attempt (audit trail), but ONLY superadmin can read or delete
+    match /access_logs/{logId} {
+      allow create: if true;
+      allow read, delete: if isSuperAdmin();
+      allow update: if false;
     }
   }
 }

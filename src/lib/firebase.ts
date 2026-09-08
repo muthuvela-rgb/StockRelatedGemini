@@ -16,9 +16,17 @@ import {
   collection,
   getDocs,
   deleteDoc,
+  addDoc,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
+import { AccessLogEntry, AccessEventType } from "../types";
+
+export const SUPERADMIN_EMAIL = "muthu.vela@gmail.com";
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -183,5 +191,207 @@ export async function removeSavedTradeFromCloud(uid: string, tradeId: string): P
   await deleteDoc(tradeRef);
 }
 
+// ----------------------------------------------------
+// ACCESS AUDIT & ATTEMPT LOGGING (Admin: muthu.vela@gmail.com)
+// ----------------------------------------------------
+
+export function parseUserAgent(ua: string): { browser: string; os: string; device: string } {
+  let browser = "Unknown Browser";
+  let os = "Unknown OS";
+  let device = "Desktop";
+
+  if (/iPhone/i.test(ua)) {
+    device = "iPhone";
+    os = "iOS";
+  } else if (/iPad/i.test(ua)) {
+    device = "iPad";
+    os = "iPadOS";
+  } else if (/Android/i.test(ua)) {
+    device = /Mobile/i.test(ua) ? "Android Phone" : "Android Tablet";
+    os = "Android";
+  } else if (/Macintosh|Mac OS X/i.test(ua)) {
+    os = "macOS";
+  } else if (/Windows NT/i.test(ua)) {
+    os = "Windows";
+  } else if (/Linux/i.test(ua)) {
+    os = "Linux";
+  }
+
+  if (/Edg\//i.test(ua)) {
+    browser = "Microsoft Edge";
+  } else if (/Chrome\//i.test(ua) && !/Chromium|OPR|Edg/i.test(ua)) {
+    browser = "Google Chrome";
+  } else if (/Safari\//i.test(ua) && !/Chrome|Chromium/i.test(ua)) {
+    browser = "Apple Safari";
+  } else if (/Firefox\//i.test(ua)) {
+    browser = "Mozilla Firefox";
+  } else if (/OPR|Opera/i.test(ua)) {
+    browser = "Opera";
+  }
+
+  return { browser, os, device };
+}
+
+export async function logAccessEvent(params: {
+  eventType: AccessEventType;
+  email?: string;
+  name?: string;
+  photo?: string;
+  uid?: string;
+  details?: string;
+  status?: "AUTHORIZED" | "GUEST" | "ADMIN" | "BLOCKED";
+}): Promise<void> {
+  try {
+    const currentUser = auth.currentUser;
+    const email = (params.email || currentUser?.email || "Anonymous / Unauthenticated").trim();
+    const name = params.name || currentUser?.displayName || (email.includes("@") ? email.split("@")[0] : "Guest Visitor");
+    const photo = params.photo || currentUser?.photoURL || "";
+    const uid = params.uid || currentUser?.uid || "";
+    const nowIso = new Date().toISOString();
+
+    const isSuperAdmin = email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+
+    let computedStatus: "AUTHORIZED" | "GUEST" | "ADMIN" | "BLOCKED" = params.status || "GUEST";
+    if (params.status) {
+      computedStatus = params.status;
+    } else if (isSuperAdmin) {
+      computedStatus = "ADMIN";
+    } else if (currentUser || (params.email && params.email.includes("@"))) {
+      computedStatus = "AUTHORIZED";
+    } else {
+      computedStatus = "GUEST";
+    }
+
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "Server/Backend";
+    const { browser, os, device } = parseUserAgent(ua);
+    const path = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
+    const referrer = typeof document !== "undefined" ? document.referrer || "direct" : "direct";
+
+    const logEntry: AccessLogEntry = {
+      timestamp: nowIso,
+      userEmail: email,
+      userName: name,
+      userPhoto: photo,
+      userId: uid,
+      eventType: params.eventType,
+      status: computedStatus,
+      ip: "Detecting...", // will be enriched by server proxy or IP resolver
+      userAgent: `${browser} on ${os} (${device})`,
+      path,
+      referrer,
+      device: `${device} • ${os}`,
+      details: params.details || (isSuperAdmin ? "Superadmin access" : "Standard session access"),
+    };
+
+    // 1. Send to server proxy to record real client IP & server audit log
+    try {
+      const res = await fetch("/api/log-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(logEntry),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ip) {
+          logEntry.ip = data.ip;
+        }
+      }
+    } catch {
+      // server call failure is non-blocking
+    }
+
+    // 2. Persist to Firestore access_logs collection
+    try {
+      const colRef = collection(db, "access_logs");
+      await addDoc(colRef, logEntry);
+    } catch (fsErr) {
+      console.warn("Could not write access log to Firestore:", fsErr);
+    }
+  } catch (err) {
+    console.error("Failed to log access event:", err);
+  }
+}
+
+export async function fetchAccessLogsFromCloud(): Promise<AccessLogEntry[]> {
+  try {
+    const colRef = collection(db, "access_logs");
+    const q = query(colRef, orderBy("timestamp", "desc"), limit(300));
+    const snap = await getDocs(q);
+    const logs: AccessLogEntry[] = [];
+    snap.forEach((d) => {
+      logs.push({ id: d.id, ...(d.data() as AccessLogEntry) });
+    });
+    return logs;
+  } catch (err) {
+    console.warn("Firestore fetchAccessLogsFromCloud failed, attempting server fallback:", err);
+    // Fallback to server API
+    try {
+      const currentUser = auth.currentUser;
+      const res = await fetch(`/api/access-logs?email=${encodeURIComponent(currentUser?.email || "")}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.logs || [];
+      }
+    } catch (srvErr) {
+      console.error("Server access-logs fallback failed:", srvErr);
+    }
+    return [];
+  }
+}
+
+export function subscribeAccessLogs(
+  onUpdate: (logs: AccessLogEntry[]) => void,
+  onError?: (err: any) => void
+): () => void {
+  try {
+    const colRef = collection(db, "access_logs");
+    const q = query(colRef, orderBy("timestamp", "desc"), limit(300));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const logs: AccessLogEntry[] = [];
+        snap.forEach((d) => {
+          logs.push({ id: d.id, ...(d.data() as AccessLogEntry) });
+        });
+        onUpdate(logs);
+      },
+      (err) => {
+        console.warn("Firestore access_logs snapshot listener error:", err);
+        if (onError) onError(err);
+      }
+    );
+  } catch (err) {
+    console.error("Error setting up access_logs listener:", err);
+    return () => {};
+  }
+}
+
+export async function clearAccessLogsFromCloud(): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser || currentUser.email?.toLowerCase() !== SUPERADMIN_EMAIL.toLowerCase()) {
+    throw new Error(`Unauthorized: Only ${SUPERADMIN_EMAIL} can clear access logs.`);
+  }
+
+  // 1. Clear in Firestore
+  try {
+    const colRef = collection(db, "access_logs");
+    const snap = await getDocs(query(colRef, limit(300)));
+    const deletePromises = snap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deletePromises);
+  } catch (e) {
+    console.warn("Failed to batch delete Firestore access logs:", e);
+  }
+
+  // 2. Clear on server
+  try {
+    await fetch(`/api/access-logs?email=${encodeURIComponent(currentUser.email)}`, {
+      method: "DELETE",
+    });
+  } catch (e) {
+    console.warn("Failed to clear server access logs:", e);
+  }
+}
+
 export { onAuthStateChanged };
 export type { User };
+
