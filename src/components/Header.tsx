@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
-  GraduationCap
+  GraduationCap,
+  BookOpen
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -39,6 +40,7 @@ interface HeaderProps {
   setActiveTab: (tab: ActiveTab) => void;
   watchlistCount: number;
   onOpenSavedTrades?: () => void;
+  onOpenUserGuide?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   watchlistCount,
   onOpenSavedTrades,
+  onOpenUserGuide,
 }) => {
   const { user } = useAuth();
   const navRef = useRef<HTMLDivElement>(null);
@@ -140,11 +143,19 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 font-mono">
+          <div className="flex items-center gap-2.5 text-xs text-slate-400">
+            <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Live Yahoo & SEC Data
             </span>
+            <button
+              onClick={onOpenUserGuide}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
+              title="Open StockRelated User Guide & Tab Documentation"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>User Guide</span>
+            </button>
             <UserAuthButton
               watchlistCount={watchlistCount}
               onOpenSavedTrades={onOpenSavedTrades}

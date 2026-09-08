@@ -12,10 +12,11 @@ import { SecEarningsViewer } from "./components/SecEarningsViewer";
 import { EarningsTranscriptsViewer } from "./components/EarningsTranscriptsViewer";
 import { WatchlistManager } from "./components/WatchlistManager";
 import { SavedTradesModal } from "./components/SavedTradesModal";
+import { UserGuideModal } from "./components/UserGuideModal";
 import { LoginPortal } from "./components/LoginPortal";
 import { AccessAuditViewer } from "./components/AccessAuditViewer";
 import { JuniorInvestorAcademy } from "./components/JuniorInvestorAcademy";
-import { LineChart } from "lucide-react";
+import { LineChart, BookOpen } from "lucide-react";
 
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("options-scanner");
@@ -23,6 +24,7 @@ const AppContent: React.FC = () => {
     "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"
   ]);
   const [isSavedTradesOpen, setIsSavedTradesOpen] = useState<boolean>(false);
+  const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
 
   const { user, loading, syncCloudWatchlist, loadCloudWatchlist } = useAuth();
 
@@ -130,6 +132,7 @@ const AppContent: React.FC = () => {
         setActiveTab={setActiveTab}
         watchlistCount={watchlist.length}
         onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
+        onOpenUserGuide={() => setIsUserGuideOpen(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -182,9 +185,28 @@ const AppContent: React.FC = () => {
         onSelectTicker={handleSelectTickerFromModal}
       />
 
+      {/* Comprehensive User Guide & Tab Documentation Modal */}
+      <UserGuideModal
+        isOpen={isUserGuideOpen}
+        onClose={() => setIsUserGuideOpen(false)}
+        onNavigateTab={(tab) => {
+          setActiveTab(tab);
+          setIsUserGuideOpen(false);
+        }}
+      />
+
       <footer className="border-t border-slate-800/80 bg-slate-900/40 py-4 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>StockRelated • Quantitative Options & Technical Analysis Suite</span>
+          <div className="flex items-center gap-3">
+            <span>StockRelated • Quantitative Options & Technical Analysis Suite</span>
+            <button
+              onClick={() => setIsUserGuideOpen(true)}
+              className="text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer flex items-center gap-1"
+            >
+              <BookOpen className="w-3 h-3" />
+              <span>User Guide & Reference</span>
+            </button>
+          </div>
           <span className="text-[11px] text-slate-500">
             Firebase Auth & Firestore Persistent Storage • OCC TIMS • SEC EDGAR XBRL
           </span>
