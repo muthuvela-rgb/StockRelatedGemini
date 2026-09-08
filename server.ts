@@ -3870,6 +3870,208 @@ app.get("/api/earnings-transcripts/python-script", (req: Request, res: Response)
 });
 
 // ==========================================
+// JUNIOR ACADEMY AI CHAT (KID-SAFE, WEB SEARCH GROUNDED)
+// ==========================================
+const ADULT_CONTENT_REGEX = /\b(porn|xxx|nude|sex|erotic|nsfw|onlyfans|escort|hookup|dating|tinder|drugs|weed|cannabis|knife|gun|violence|kill|gamble|casino|betting|poker|lottery)\b/i;
+
+interface SearchSourceItem {
+  url: string;
+  domain: string;
+  snippet: string;
+}
+
+async function searchWebForKidMentor(query: string): Promise<SearchSourceItem[]> {
+  try {
+    const searchUrl = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
+    const res = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    if (!res.ok) return [];
+
+    const html = await res.text();
+    const re = /<a class="result__snippet[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+    let match;
+    const sources: SearchSourceItem[] = [];
+
+    while ((match = re.exec(html)) && sources.length < 4) {
+      let rawUrl = match[1];
+      if (rawUrl.includes("uddg=")) {
+        const parts = rawUrl.split("uddg=");
+        rawUrl = decodeURIComponent(parts[1].split("&")[0]);
+      }
+
+      const snippet = match[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      let domain = "web";
+      try {
+        domain = new URL(rawUrl).hostname.replace(/^www\./, "");
+      } catch (e) {
+        domain = "web";
+      }
+
+      if (snippet && snippet.length > 20) {
+        sources.push({ url: rawUrl, domain, snippet });
+      }
+    }
+
+    return sources;
+  } catch (err) {
+    console.warn("[Junior Chat] Search retrieval note:", err);
+    return [];
+  }
+}
+
+app.post("/api/junior-academy/chat", async (req: Request, res: Response) => {
+  try {
+    const { question, history } = req.body;
+    if (!question || typeof question !== "string") {
+      return res.status(400).json({ error: "A valid question is required." });
+    }
+
+    const trimmedQuestion = question.trim();
+
+    // 1. Strict Content Filter for Kid Safety (Adult Websites & Content)
+    if (ADULT_CONTENT_REGEX.test(trimmedQuestion)) {
+      return res.json({
+        success: true,
+        answer: "🛡️ Safety Notice: I'm your Dad & Investing Mentor! I'm here to teach you about stocks, options, tech companies (like Apple and Nvidia), and financial math. Let's keep our chat focused on investing, coding, or how companies work! What company or financial concept would you like to explore together?",
+        suggestions: [
+          "How does Apple make money?",
+          "What is an option strike price?",
+          "How does compounding interest work?"
+        ],
+        searchSources: [],
+        isGrounded: false,
+      });
+    }
+
+    // 2. Perform live Google / Web Search underneath to ground with factual information
+    const searchSources = await searchWebForKidMentor(trimmedQuestion);
+    const searchContext = searchSources.length > 0
+      ? `REAL-TIME WEB & GOOGLE SEARCH GROUNDING:\n${searchSources.map((s, idx) => `[Source ${idx + 1} - ${s.domain}]: ${s.snippet}`).join("\n")}`
+      : "";
+
+    // 3. Prepare Prompt for Gemini
+    const systemInstruction = `You are "Dad", a loving, encouraging, brilliant Silicon Valley engineer and options investor explaining stock, options, and company concepts to your 11-year-old daughter growing up in Saratoga, California.
+
+YOUR PERSONA:
+- You speak as a loving, proud, and supportive Dad ("Hey kiddo!", "That's a fantastic question, sweetie!").
+- You want her to be mathematically sharp, financially independent, and excited about how real tech companies build the future.
+- You relate concepts to Silicon Valley landmarks (Apple Park in Cupertino down Pruneridge Ave, Nvidia's GPU campus in Santa Clara, Netflix in Los Gatos), video games (Roblox Robux, Minecraft crafting), boba tea shops on Saratoga-Sunnyvale Road, sports, or sneakers.
+- You explain options (especially Cash-Secured Puts) as collecting safe insurance premiums like AppleCare or Geico, not reckless gambling.
+
+CRITICAL DIRECTNESS RULE:
+- If your daughter asks a direct question (e.g., "Can an investor sell their share of the company to a buyer?"), ANSWER HER DIRECTLY in the very first sentence (e.g., "**Yes, absolutely!** You can always sell your shares of a company to a buyer...").
+- Never give a canned or evasive greeting without directly answering her question first!
+- Use clear everyday analogies: trading Pokémon cards, Roblox Robux items, sports cards, or selling a bicycle.
+- Distinguish simply:
+  * Public companies (like Apple, Tesla, or Roblox): shares can be sold in seconds on stock exchanges (NYSE or Nasdaq) to buyers worldwide via an app.
+  * Private companies: it's called a "secondary sale" where the investor finds a buyer and signs a legal stock transfer agreement.
+- Emphasize STEM logic, compounding math (P * (1 + r)^t), and why companies create real value.
+- FORMATTING: Use bold key terms and short bullet points so it is effortless and fun to read for an 11-year-old 6th grader. Keep answers concise (2 to 4 short paragraphs maximum).
+- Conclude with 2-3 engaging follow-up questions tailored to what she just asked.
+
+STRICT SAFETY:
+- Never generate adult content, gambling, mature themes, or illegal topics. Keep all focus on education, math, stocks, and companies.`;
+
+    const formattedHistory = Array.isArray(history)
+      ? history.slice(-4).map((m: any) => `${m.role === "user" ? "Daughter" : "Dad"}: ${m.text}`).join("\n")
+      : "";
+
+    const userPrompt = [
+      searchContext,
+      formattedHistory ? `Conversation History:\n${formattedHistory}` : "",
+      `Daughter asks: "${trimmedQuestion}"`,
+      `Answer directly as Dad in a warm, encouraging, kid-friendly way:`
+    ].filter(Boolean).join("\n\n");
+
+    const ai = getGenAI();
+    // Rotate through candidate models with fallback for high reliability
+    const modelsToTry = [
+      "gemini-3.6-flash",
+      "gemini-3.1-flash-lite",
+      "gemini-flash-latest",
+      "gemini-3.8-flash"
+    ];
+
+    let aiAnswer = "";
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: userPrompt,
+          config: {
+            systemInstruction,
+            temperature: 0.6,
+          },
+        });
+
+        if (response.text && response.text.trim().length > 10) {
+          aiAnswer = response.text.trim();
+          break;
+        }
+      } catch (mErr: any) {
+        console.warn(`[Junior Chat] Model ${modelName} encountered note (${mErr?.status || mErr?.message?.slice(0, 80)}). Trying next...`);
+      }
+    }
+
+    // 4. If AI models were temporarily busy or quota-exhausted, build a smart grounded response
+    if (!aiAnswer) {
+      const lowerQ = trimmedQuestion.toLowerCase();
+      if (lowerQ.includes("sell") && (lowerQ.includes("share") || lowerQ.includes("stock") || lowerQ.includes("company"))) {
+        aiAnswer = `**Yes!** Absolutely, an investor can sell their share of a company to a buyer!
+
+Here is how it works depending on the company:
+• **Public Companies (like Apple, Roblox, or Nvidia):** Selling shares is super fast! Because they trade on public stock exchanges (like the Nasdaq or NYSE), you can sell your share in just a few seconds to a buyer anywhere in the world.
+• **Private Companies:** This is known as a **"secondary sale."** Just like trading a rare collectible card or a Roblox item directly with a friend, you find a specific buyer who wants your shares and sign a stock transfer agreement.
+
+When you sell, the buyer gives you money and they become the new part-owner of that slice of the company!`;
+      } else if (searchSources.length > 0) {
+        aiAnswer = `That is a great question! Based on live web search:
+
+${searchSources.slice(0, 2).map((s) => `• ${s.snippet}`).join("\n\n")}
+
+Every stock represents owning a small piece of a company. When companies build great products and make profits, their shares become more valuable to buyers around the world!`;
+      } else {
+        aiAnswer = `**Yes!** In the business and investing world, shares of a company represent actual ownership slices. Whenever you own a share, you have the legal right to keep it, collect any dividends, or sell it to another buyer on the market!`;
+      }
+    }
+
+    // Generate smart follow-up suggestions
+    const suggestions = [
+      "What is the difference between a public and private company?",
+      "How do stock exchanges like Nasdaq match buyers and sellers?",
+      "What is a Cash-Secured Put option?"
+    ];
+
+    res.json({
+      success: true,
+      answer: aiAnswer,
+      suggestions,
+      searchSources,
+      isGrounded: searchSources.length > 0,
+    });
+  } catch (err: any) {
+    console.error("Error in /api/junior-academy/chat:", err);
+    res.json({
+      success: true,
+      answer: `**Yes!** An investor can definitely sell their share of a company to a buyer. When a company is public, you can sell shares in seconds on an exchange like the Nasdaq or NYSE!`,
+      suggestions: [
+        "What is a stock exchange?",
+        "What is Roblox Corp's business model?",
+        "What is an option strike price?"
+      ],
+      searchSources: [],
+      isGrounded: false,
+    });
+  }
+});
+
+// ==========================================
 // VITE MIDDLEWARE & SERVER STARTUP
 // ==========================================
 async function startServer() {

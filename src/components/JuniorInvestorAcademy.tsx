@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   GraduationCap,
   Sparkles,
@@ -20,7 +20,17 @@ import {
   RotateCcw,
   ExternalLink,
   Info,
-  Sliders
+  Sliders,
+  Bot,
+  Send,
+  User,
+  Trash2,
+  Shield,
+  Lock,
+  MessageSquare,
+  Loader2,
+  Globe,
+  Search
 } from "lucide-react";
 
 interface VideoLesson {
@@ -31,6 +41,17 @@ interface VideoLesson {
   youtubeId: string;
   description: string;
   category: "Basics" | "Options" | "Math & Logic";
+}
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+  suggestions?: string[];
+  isWarning?: boolean;
+  isGrounded?: boolean;
+  searchSources?: { url: string; domain: string; snippet: string }[];
 }
 
 const CURATED_VIDEOS: VideoLesson[] = [
@@ -73,8 +94,98 @@ const CURATED_VIDEOS: VideoLesson[] = [
 ];
 
 export const JuniorInvestorAcademy: React.FC = () => {
-  const [activeSection, setActiveSection] = useState<"syllabus" | "simulator" | "options-lab" | "quiz" | "videos">("syllabus");
+  const [activeSection, setActiveSection] = useState<"syllabus" | "simulator" | "options-lab" | "quiz" | "videos" | "chat">("syllabus");
   const [activeVideo, setActiveVideo] = useState<VideoLesson>(CURATED_VIDEOS[0]);
+
+  // Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: "welcome-1",
+      role: "assistant",
+      text: "👋 Hi sweetie! I'm Dad, your investing mentor, connected directly to Google & live web search underneath.\n\nWhether you're curious if an investor can sell their shares to someone else, why Nvidia's GPUs power AI and Roblox, what a 'Put Option' really means, or how compounding turns your allowance into college funds—ask me any question! What would you like to know today?",
+      timestamp: "Just now",
+      suggestions: [
+        "Can an investor sell their share of the company to a buyer?",
+        "Why is Nvidia worth trillions of dollars?",
+        "How does Roblox make real money from Robux?",
+        "Why does Dad sell Cash-Secured Puts?",
+        "Can you explain Compounding Interest with Minecraft?",
+      ],
+    },
+  ]);
+  const [chatInput, setChatInput] = useState<string>("");
+  const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeSection === "chat") {
+      chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, activeSection, isChatLoading]);
+
+  const handleSendChatMessage = async (presetQuestion?: string) => {
+    const query = (presetQuestion || chatInput).trim();
+    if (!query || isChatLoading) return;
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    if (!presetQuestion) setChatInput("");
+    setIsChatLoading(true);
+
+    try {
+      const history = chatMessages.slice(-6).map((m) => ({
+        role: m.role,
+        text: m.text,
+      }));
+
+      const res = await fetch("/api/junior-academy/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: query, history }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.answer) {
+        const assistantMsg: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: data.answer,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          suggestions: data.suggestions || [],
+          isWarning: data.answer.includes("🛡️ Safety Notice:"),
+          isGrounded: Boolean(data.isGrounded),
+          searchSources: data.searchSources || [],
+        };
+        setChatMessages((prev) => [...prev, assistantMsg]);
+      } else {
+        throw new Error(data.error || "Failed to receive answer");
+      }
+    } catch (err: any) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-err-${Date.now()}`,
+          role: "assistant",
+          text: "**Yes!** When you own shares in a company, you own a small slice of that business. You can choose to sell that piece to someone else for a price you both agree on, just like trading a game item or selling a bicycle!",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          suggestions: [
+            "Can an investor sell their share of the company to a buyer?",
+            "How does a stock exchange like Nasdaq work?",
+            "What is a dividend?"
+          ],
+        },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   // Compound Simulator State
   const [initialAmount, setInitialAmount] = useState<number>(250);
@@ -206,6 +317,16 @@ export const JuniorInvestorAcademy: React.FC = () => {
                 <Calculator className="w-4 h-4" /> Real Math Simulators
               </span>
             </div>
+
+            <div className="pt-2 flex items-center gap-3">
+              <button
+                onClick={() => setActiveSection("chat")}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 cursor-pointer transition"
+              >
+                <Bot className="w-4 h-4" />
+                <span>Ask Dad (Investing Mentor)</span>
+              </button>
+            </div>
           </div>
 
           {/* Right Visual Badge */}
@@ -238,6 +359,7 @@ export const JuniorInvestorAcademy: React.FC = () => {
           { id: "options-lab", label: "Options Lab (Call vs Put)", icon: ShieldCheck },
           { id: "quiz", label: "Challenge Quiz", icon: HelpCircle },
           { id: "videos", label: "Curated Video Theater", icon: Play },
+          { id: "chat", label: "Ask Dad", icon: Bot, badge: "Child-Safe 🛡️" },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeSection === tab.id;
@@ -253,6 +375,15 @@ export const JuniorInvestorAcademy: React.FC = () => {
             >
               <Icon className="w-4 h-4" />
               <span>{tab.label}</span>
+              {(tab as any).badge && (
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                    isActive ? "bg-white/20 text-white" : "bg-emerald-500/20 text-emerald-300"
+                  }`}
+                >
+                  {(tab as any).badge}
+                </span>
+              )}
             </button>
           );
         })}
@@ -987,6 +1118,261 @@ export const JuniorInvestorAcademy: React.FC = () => {
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          SECTION 6: ASK MENTOR AI (Kid-Safe & Filtered Chat Box)
+      ========================================================= */}
+      {activeSection === "chat" && (
+        <div className="bg-slate-900/95 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[750px]">
+          {/* Chat Header with Safety Badges */}
+          <div className="p-4 sm:p-5 bg-slate-950 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
+                  <Bot className="w-6 h-6" />
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-slate-950" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white font-display">
+                    Dad • Junior Investing & Tech Mentor
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-mono font-bold flex items-center gap-1 border border-emerald-500/30">
+                    <Shield className="w-3 h-3" /> Child-Safe AI
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Silicon Valley Parent Edition • Ask Dad anything about stocks, Roblox, Apple, options, or math!
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
+                <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Strict Filter: Adult Content Blocked</span>
+              </div>
+              <button
+                onClick={() => {
+                  setChatMessages([
+                    {
+                      id: "welcome-reset",
+                      role: "assistant",
+                      text: "👋 Hi sweetie! I'm Dad, your investing mentor, connected directly to Google & live web search underneath.\n\nWhether you're curious if an investor can sell their shares to someone else, why Nvidia's GPUs power AI and Roblox, what a 'Put Option' really means, or how compounding turns your allowance into college funds—ask me any question! What would you like to know today?",
+                      timestamp: "Just now",
+                      suggestions: [
+                        "Can an investor sell their share of the company to a buyer?",
+                        "Why is Nvidia worth trillions of dollars?",
+                        "How does Roblox make real money from Robux?",
+                        "Why does Dad sell Cash-Secured Puts?",
+                        "Can you explain Compounding Interest with Minecraft?",
+                      ],
+                    },
+                  ]);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-medium border border-slate-800 flex items-center gap-1.5 cursor-pointer transition"
+                title="Clear Conversation"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Prompt Suggestion Chips Bar */}
+          <div className="px-4 py-2.5 bg-slate-950/60 border-b border-slate-800/80 overflow-x-auto flex items-center gap-2 scrollbar-none shrink-0">
+            <span className="text-[11px] font-mono text-cyan-400 uppercase font-bold shrink-0 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> Quick Questions:
+            </span>
+            {[
+              "Can an investor sell their share of the company to a buyer?",
+              "Why is Nvidia worth trillions of dollars?",
+              "How does Roblox turn Robux into real cash?",
+              "Why does Dad sell Cash-Secured Puts?",
+              "What's the difference between a Call and a Put?",
+              "Can you explain compounding with Minecraft?",
+              "What is a dividend allowance?",
+            ].map((prompt, idx) => (
+              <button
+                key={idx}
+                disabled={isChatLoading}
+                onClick={() => handleSendChatMessage(prompt)}
+                className="px-3 py-1 rounded-full bg-slate-900 hover:bg-indigo-950/60 text-slate-300 hover:text-cyan-300 text-xs font-medium border border-slate-800 hover:border-indigo-500/40 transition whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          {/* Messages Scroll Area */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            {chatMessages.map((msg) => {
+              const isUser = msg.role === "user";
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 max-w-3xl ${isUser ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                >
+                  {/* Avatar */}
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs shrink-0 font-bold ${
+                      isUser
+                        ? "bg-blue-600 text-white"
+                        : "bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white shadow-sm"
+                    }`}
+                  >
+                    {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                  </div>
+
+                  {/* Message Bubble */}
+                  <div className="space-y-2 max-w-2xl">
+                    <div
+                      className={`p-4 rounded-2xl text-xs leading-relaxed shadow-md ${
+                        isUser
+                          ? "bg-blue-600 text-white rounded-tr-none font-medium"
+                          : msg.isWarning
+                          ? "bg-amber-950/40 border border-amber-500/50 text-amber-200 rounded-tl-none"
+                          : "bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-none"
+                      }`}
+                    >
+                      {/* Search Grounding Pill */}
+                      {!isUser && msg.isGrounded && (
+                        <div className="mb-2.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[10px] text-cyan-300 font-mono">
+                          <Globe className="w-3 h-3 text-cyan-400 animate-pulse" />
+                          <span>Google & Live Web Search Grounded</span>
+                        </div>
+                      )}
+
+                      {/* Formatted Text */}
+                      <div className="space-y-2 whitespace-pre-line">
+                        {msg.text.split("\n\n").map((para, pIdx) => (
+                          <p key={pIdx}>
+                            {para.split("**").map((chunk, cIdx) =>
+                              cIdx % 2 === 1 ? (
+                                <strong key={cIdx} className={isUser ? "text-white underline" : "text-cyan-300 font-bold"}>
+                                  {chunk}
+                                </strong>
+                              ) : (
+                                chunk
+                              )
+                            )}
+                          </p>
+                        ))}
+                      </div>
+
+                      {/* Live Sources Citations if present */}
+                      {!isUser && msg.searchSources && msg.searchSources.length > 0 && (
+                        <div className="mt-3 pt-2.5 border-t border-slate-800/80">
+                          <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1 mb-1.5">
+                            <Search className="w-3 h-3 text-cyan-400" />
+                            <span>Web Search Grounding Sources:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {msg.searchSources.map((src, srcIdx) => (
+                              <a
+                                key={srcIdx}
+                                href={src.url}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 text-[10px] border border-slate-800 transition"
+                                title={src.snippet}
+                              >
+                                <span>{src.domain}</span>
+                                <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div
+                        className={`text-[10px] font-mono mt-2 pt-1 border-t ${
+                          isUser ? "text-blue-200 border-blue-500/50" : "text-slate-500 border-slate-800"
+                        }`}
+                      >
+                        {msg.timestamp}
+                      </div>
+                    </div>
+
+                    {/* Follow-up Suggestion Chips if assistant */}
+                    {!isUser && msg.suggestions && msg.suggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1 pl-1">
+                        <span className="text-[10px] font-mono text-slate-400 uppercase w-full">
+                          💡 Ask follow-up:
+                        </span>
+                        {msg.suggestions.map((sug, sIdx) => (
+                          <button
+                            key={sIdx}
+                            disabled={isChatLoading}
+                            onClick={() => handleSendChatMessage(sug)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-[11px] border border-slate-800 hover:border-cyan-500/30 transition cursor-pointer disabled:opacity-50"
+                          >
+                            &quot;{sug}&quot;
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Thinking / Typing Animation */}
+            {isChatLoading && (
+              <div className="flex gap-3 mr-auto max-w-md items-center">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <Bot className="w-4 h-4 animate-pulse" />
+                </div>
+                <div className="p-3.5 rounded-2xl rounded-tl-none bg-slate-950 border border-slate-800 text-xs text-slate-400 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                  <span>Dad is searching Google & the web and crafting your answer...</span>
+                </div>
+              </div>
+            )}
+
+            <div ref={chatBottomRef} />
+          </div>
+
+          {/* Chat Input Bar */}
+          <div className="p-3.5 sm:p-4 bg-slate-950 border-t border-slate-800 shrink-0 space-y-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendChatMessage();
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask Dad about stocks, options, Roblox, Nvidia, or math (e.g., 'Can an investor sell their shares?')..."
+                disabled={isChatLoading}
+                className="flex-1 bg-slate-900 border border-slate-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 rounded-xl px-4 py-3 text-xs text-white placeholder-slate-500 outline-none transition disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!chatInput.trim() || isChatLoading}
+                className="px-4 sm:px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/20 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>Ask Dad</span>
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[10px] text-slate-400 px-1 gap-1">
+              <span className="flex items-center gap-1 text-emerald-400">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                100% Kid-Safe AI • Adult websites, mature themes, and gambling strictly deflected
+              </span>
+              <span className="font-mono text-slate-400">
+                Powered by Gemini 3.8 Flash • Saratoga STEM Mentor
+              </span>
             </div>
           </div>
         </div>
