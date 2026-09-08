@@ -12,7 +12,8 @@ import {
   Sparkles,
   ShieldCheck,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  GraduationCap
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -30,6 +31,7 @@ export type ActiveTab =
   | "sec-earnings"
   | "earnings-transcripts"
   | "watchlist"
+  | "junior-academy"
   | "access-audit";
 
 interface HeaderProps {
@@ -65,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "sec-earnings" as ActiveTab, label: "SEC Earnings", icon: FileSpreadsheet },
     { id: "earnings-transcripts" as ActiveTab, label: "Earnings Transcripts", icon: MessageSquareQuote, badge: "Alpha Vantage" },
     { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount },
+    { id: "junior-academy" as ActiveTab, label: "Junior Academy", icon: GraduationCap, badge: "Age 11+" },
   ];
 
   // The Access Audit tab is ONLY visible to muthu.vela@gmail.com

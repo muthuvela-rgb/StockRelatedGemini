@@ -14,6 +14,7 @@ import { WatchlistManager } from "./components/WatchlistManager";
 import { SavedTradesModal } from "./components/SavedTradesModal";
 import { LoginPortal } from "./components/LoginPortal";
 import { AccessAuditViewer } from "./components/AccessAuditViewer";
+import { JuniorInvestorAcademy } from "./components/JuniorInvestorAcademy";
 import { LineChart } from "lucide-react";
 
 const AppContent: React.FC = () => {
@@ -168,6 +169,9 @@ const AppContent: React.FC = () => {
         )}
         {activeTab === "access-audit" && (
           <AccessAuditViewer />
+        )}
+        {activeTab === "junior-academy" && (
+          <JuniorInvestorAcademy />
         )}
       </main>
 
