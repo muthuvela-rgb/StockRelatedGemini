@@ -71,9 +71,16 @@ export const OptionPointDetailInspector: React.FC<OptionPointDetailInspectorProp
   const dte = contract.days_to_expiration || 1;
   const expiration = contract.expiration || "";
 
-  const bid = contract.bid || contract.lastPrice || 0;
-  const ask = contract.ask || contract.lastPrice || 0;
-  const mid = contract.bid && contract.ask ? Number(((contract.bid + contract.ask) / 2).toFixed(2)) : contract.lastPrice || bid;
+  // For sell put options, use last price ONLY IF bid is zero
+  const bid = contract.bid > 0
+    ? contract.bid
+    : (contract.lastPrice > 0 ? (contract.ask > 0 ? Math.min(contract.lastPrice, contract.ask) : contract.lastPrice) : 0);
+  const ask = contract.ask > 0
+    ? contract.ask
+    : (contract.lastPrice > 0 ? (contract.bid > 0 ? Math.max(contract.lastPrice, contract.bid) : contract.lastPrice) : 0);
+  const mid = contract.bid > 0 && contract.ask > 0
+    ? Number(((contract.bid + contract.ask) / 2).toFixed(2))
+    : (bid > 0 && ask > 0 ? Number(((bid + ask) / 2).toFixed(2)) : (bid > 0 ? bid : (ask > 0 ? ask : (contract.lastPrice || 0))));
   const last = contract.lastPrice || 0;
   const iv = contract.impliedVolatility || 0;
 

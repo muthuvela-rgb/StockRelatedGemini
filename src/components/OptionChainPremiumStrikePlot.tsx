@@ -202,7 +202,10 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     isPut: boolean,
     fallbackExp?: string
   ): number => {
-    const premium = c.bid > 0 ? c.bid : c.lastPrice || 0;
+    // For sell put options, use last price ONLY IF bid is zero
+    const premium = c.bid > 0
+      ? c.bid
+      : (c.lastPrice > 0 ? (c.ask > 0 ? Math.min(c.lastPrice, c.ask) : c.lastPrice) : 0);
     if (!premium || premium <= 0) return 0;
     let dte = c.days_to_expiration;
     if (!dte || dte <= 0) {
@@ -223,11 +226,22 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const getMetricValue = (c: OptionGreeks, m: typeof metric): number => {
     switch (m) {
       case "bid":
-        return c.bid || (c.lastPrice > 0 ? c.lastPrice : 0);
+        // Use last price ONLY IF bid is zero
+        return c.bid > 0
+          ? c.bid
+          : (c.lastPrice > 0 ? (c.ask > 0 ? Math.min(c.lastPrice, c.ask) : c.lastPrice) : 0);
       case "ask":
-        return c.ask || (c.lastPrice > 0 ? c.lastPrice : 0);
+        return c.ask > 0
+          ? c.ask
+          : (c.lastPrice > 0 ? (c.bid > 0 ? Math.max(c.lastPrice, c.bid) : c.lastPrice) : 0);
       case "mid":
-        return c.bid && c.ask ? Number(((c.bid + c.ask) / 2).toFixed(2)) : c.lastPrice || 0;
+        if (c.bid > 0 && c.ask > 0) {
+          return Number(((c.bid + c.ask) / 2).toFixed(2));
+        }
+        if (c.bid <= 0 && c.lastPrice > 0) {
+          return c.ask > 0 ? Number(((Math.min(c.lastPrice, c.ask) + c.ask) / 2).toFixed(2)) : c.lastPrice;
+        }
+        return c.bid > 0 ? c.bid : (c.ask > 0 ? c.ask : (c.lastPrice || 0));
       case "last":
         return c.lastPrice || 0;
       case "iv":
@@ -237,7 +251,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       case "return":
         return computeCashSecuredReturn(c, currentPrice, tab === "puts", selectedExp);
       default:
-        return c.bid || 0;
+        return c.bid > 0 ? c.bid : (c.lastPrice > 0 ? c.lastPrice : 0);
     }
   };
 
@@ -254,7 +268,9 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
 
     filteredContracts.forEach((c) => {
       const existing = strikeMap.get(c.strike) || { strike: c.strike };
-      const mid = c.bid && c.ask ? (c.bid + c.ask) / 2 : c.lastPrice;
+      const mid = c.bid > 0 && c.ask > 0
+        ? (c.bid + c.ask) / 2
+        : (c.bid > 0 ? c.bid : (c.lastPrice > 0 ? (c.ask > 0 ? Math.min(c.lastPrice, c.ask) : c.lastPrice) : (c.ask || 0)));
       const annReturn = computeCashSecuredReturn(c, currentPrice, tab === "puts", selectedExp);
       strikeMap.set(c.strike, {
         ...existing,

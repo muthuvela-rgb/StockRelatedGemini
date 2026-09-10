@@ -1478,9 +1478,9 @@ export const PremiumCurvesViewer: React.FC = () => {
                   .filter((r) => r.expiration === (optimizerExp || expirations[0]))
                   .map((r) => ({
                     strike: r.strike,
-                    bid: r.bid || r.lastPrice || 0,
-                    ask: r.ask || r.lastPrice || 0,
-                    premium: r.bid || r.lastPrice || 0,
+                    bid: r.bid > 0 ? r.bid : (r.lastPrice > 0 ? (r.ask > 0 ? Math.min(r.lastPrice, r.ask) : r.lastPrice) : 0),
+                    ask: r.ask > 0 ? r.ask : (r.lastPrice > 0 ? (r.bid > 0 ? Math.max(r.lastPrice, r.bid) : r.lastPrice) : 0),
+                    premium: r.bid > 0 ? r.bid : (r.lastPrice > 0 ? (r.ask > 0 ? Math.min(r.lastPrice, r.ask) : r.lastPrice) : 0),
                     days_to_expiration: getDteFromExp(r.expiration),
                     current_price: analysis.current_price || 0,
                   }))}

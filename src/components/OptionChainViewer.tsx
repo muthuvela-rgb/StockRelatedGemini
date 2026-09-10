@@ -112,7 +112,10 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     isPut: boolean,
     fallbackExp?: string
   ): number => {
-    const premium = contract.bid > 0 ? contract.bid : contract.lastPrice || 0;
+    // For sell put options, use last price ONLY IF bid is zero
+    const premium = contract.bid > 0
+      ? contract.bid
+      : (contract.lastPrice > 0 ? (contract.ask > 0 ? Math.min(contract.lastPrice, contract.ask) : contract.lastPrice) : 0);
     if (!premium || premium <= 0) return 0;
 
     let dte = contract.days_to_expiration;
@@ -208,8 +211,8 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           break;
         }
         case "bid":
-          valA = a.bid ?? a.lastPrice ?? 0;
-          valB = b.bid ?? b.lastPrice ?? 0;
+          valA = a.bid > 0 ? a.bid : (a.lastPrice > 0 ? (a.ask > 0 ? Math.min(a.lastPrice, a.ask) : a.lastPrice) : 0);
+          valB = b.bid > 0 ? b.bid : (b.lastPrice > 0 ? (b.ask > 0 ? Math.min(b.lastPrice, b.ask) : b.lastPrice) : 0);
           break;
         case "lastPrice":
           valA = a.lastPrice ?? 0;
@@ -839,7 +842,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
                                     ? "text-slate-300"
                                     : "text-slate-500"
                                 }`}
-                                title={`Annualized Return: ${annReturn.toFixed(2)}%/yr (Premium $${(r.bid || r.lastPrice).toFixed(2)} on $${r.strike.toFixed(2)} collateral)`}
+                                title={`Annualized Return: ${annReturn.toFixed(2)}%/yr (Premium $${(r.bid > 0 ? r.bid : (r.lastPrice > 0 ? (r.ask > 0 ? Math.min(r.lastPrice, r.ask) : r.lastPrice) : 0)).toFixed(2)} on $${r.strike.toFixed(2)} collateral)`}
                               >
                                 {annReturn > 0 ? `${annReturn.toFixed(1)}%` : "—"}
                               </span>

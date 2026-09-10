@@ -2062,12 +2062,14 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
 
           let bidFallback = false;
           let askFallback = false;
-          if (bid === 0 && last > 0 && !noFallback) {
-            bid = last;
+          // For selling puts: use last price ONLY IF bid is zero (or <= 0)
+          if (bid <= 0 && last > 0 && !noFallback) {
+            // Guard against stale last price exceeding current ask
+            bid = ask > 0 ? Math.min(last, ask) : last;
             bidFallback = true;
           }
-          if (ask === 0 && last > 0 && !noFallback) {
-            ask = last;
+          if (ask <= 0 && last > 0 && !noFallback) {
+            ask = bid > 0 ? Math.max(last, bid) : last;
             askFallback = true;
           }
 
@@ -2465,9 +2467,17 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
         let premium = priceType === "ask" ? ask : bid;
         let usedFallback = false;
 
-        if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
-          premium = last;
-          usedFallback = true;
+        // Use last price ONLY IF bid is zero for sell put / bid option pricing
+        if (priceType === "bid") {
+          if (bid <= 0 && last > 0 && !noFallback) {
+            premium = ask > 0 ? Math.min(last, ask) : last;
+            usedFallback = true;
+          }
+        } else {
+          if (ask <= 0 && last > 0 && !noFallback) {
+            premium = bid > 0 ? Math.max(last, bid) : last;
+            usedFallback = true;
+          }
         }
 
         let strikeBbPos: any = null;
@@ -2855,9 +2865,16 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
 
         let premium = priceType === "ask" ? ask : bid;
         let usedFallback = false;
-        if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
-          premium = last;
-          usedFallback = true;
+        if (priceType === "bid") {
+          if (bid <= 0 && last > 0 && !noFallback) {
+            premium = ask > 0 ? Math.min(last, ask) : last;
+            usedFallback = true;
+          }
+        } else {
+          if (ask <= 0 && last > 0 && !noFallback) {
+            premium = bid > 0 ? Math.max(last, bid) : last;
+            usedFallback = true;
+          }
         }
 
         const marginBasis = estimatePortfolioMargin(currentPrice, nearest.strike, premium, 15.0, 0.375, 5.0, 0.0);
@@ -3114,9 +3131,16 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
 
             let premium = priceType === "ask" ? ask : bid;
             let usedFallback = false;
-            if (bid === 0 && ask === 0 && last > 0 && !noFallback) {
-              premium = last;
-              usedFallback = true;
+            if (priceType === "bid") {
+              if (bid <= 0 && last > 0 && !noFallback) {
+                premium = ask > 0 ? Math.min(last, ask) : last;
+                usedFallback = true;
+              }
+            } else {
+              if (ask <= 0 && last > 0 && !noFallback) {
+                premium = bid > 0 ? Math.max(last, bid) : last;
+                usedFallback = true;
+              }
             }
 
             const dte = Math.max(1, exp.dte);
@@ -4112,10 +4136,11 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                 const oi = put.openInterest || 0;
                 const volume = put.volume || 0;
 
-                // Price selection
+                // Price selection: for sell put options, use last price ONLY IF bid is zero (or <= 0)
                 let execBid = bid;
-                if (execBid <= 0 && last > 0 && last >= minBid) {
-                  execBid = last;
+                if (execBid <= 0 && last > 0) {
+                  // Guard against stale trades: if current ask exists, bid cannot exceed ask
+                  execBid = ask > 0 ? Math.min(last, ask) : last;
                 }
                 if (execBid < minBid) continue;
                 if (oi < minOpenInterest && volume < minOpenInterest) continue;
