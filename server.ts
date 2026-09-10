@@ -2232,6 +2232,8 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
     const mapOptionContracts = (contracts: any[], isCall: boolean, dteDays: number, expStr: string) => {
       return contracts.map((c: any) => {
         const greeks = calculateGreeks(c.strike, currentPrice, c.impliedVolatility || 0.3, dteDays, isCall);
+        const bidFallback = (!c.bid || c.bid <= 0) && (c.lastPrice || 0) > 0;
+        const usedFallback = Boolean(c.bid_used_fallback || c.used_fallback || bidFallback);
         return {
           strike: c.strike,
           contractSymbol: c.contractSymbol,
@@ -2244,6 +2246,8 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
           inTheMoney: c.inTheMoney || false,
           expiration: expStr,
           days_to_expiration: dteDays,
+          bid_used_fallback: usedFallback,
+          used_fallback: usedFallback,
           ...greeks,
         };
       });
@@ -3304,6 +3308,9 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
             bollinger: pt.bollinger,
             fibonacci: pt.fibonacci,
             strike_bollinger_position: pt.strike_bollinger_position,
+            used_fallback: pt.used_fallback,
+            bid_used_fallback: pt.used_fallback,
+            last_price: pt.last_price,
             fifty_two_week_high: item.fifty_two_week_high,
             fifty_two_week_low: item.fifty_two_week_low,
           };
@@ -4306,6 +4313,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   daily_theta_decay: Number(dailyTheta.toFixed(2)),
                   probability_of_profit: pop,
                   probability_of_assignment: probAssignment,
+                  bid_used_fallback: bid <= 0 && last > 0,
+                  used_fallback: bid <= 0 && last > 0,
                   greeks: {
                     delta: greeks.delta,
                     gamma: greeks.gamma,

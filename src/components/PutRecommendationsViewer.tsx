@@ -429,10 +429,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-white font-display flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold text-white font-display flex flex-wrap items-center gap-2">
                   Sell Put Options Recommender
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono font-medium">
                     3 Risk Tiers
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium bg-cyan-950/80 text-cyan-300 border border-cyan-600/40 shadow-sm shadow-cyan-950/50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>Tradier Live Data</span>
                   </span>
                 </h1>
                 <p className="text-xs text-slate-400 mt-1">

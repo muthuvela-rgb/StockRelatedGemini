@@ -26,6 +26,8 @@ export interface PutOptionRecord {
   annualized_return_pct_cash_secured: number;
   bid_used_fallback: boolean;
   ask_used_fallback: boolean;
+  used_fallback?: boolean;
+  usedFallback?: boolean;
   market_cap?: number;
   fifty_two_week_high?: number | null;
   fifty_two_week_low?: number | null;
@@ -140,6 +142,8 @@ export interface OptionGreeks {
   rho: number | null;
   expiration?: string;
   days_to_expiration?: number;
+  bid_used_fallback?: boolean;
+  used_fallback?: boolean;
 }
 
 export interface ExpirationChainData {

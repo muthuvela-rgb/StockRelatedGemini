@@ -605,10 +605,14 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+        <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 mb-2 gap-2">
           <span className="flex items-center gap-1.5 text-indigo-400">
             <Sparkles className="w-3.5 h-3.5" />
             Click any dot on the chart to inspect full contract strike, Greeks, RSI, and Bollinger Bands
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+            Amber Dot = Fallback / Last Price
           </span>
         </div>
 
@@ -715,6 +719,11 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
 
                         const pointId = `cmp-${t}-${payload.expiration}`;
                         const isSelected = selectedPointKey === pointId;
+                        const isFallback = Boolean(
+                          stockObj.used_fallback ||
+                          stockObj.bid_used_fallback ||
+                          (stockObj.premium === stockObj.last_price && stockObj.premium > 0 && !stockObj.bid)
+                        );
 
                         return (
                           <g
@@ -732,21 +741,24 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                                 annualized_return_margin: stockObj.returnMargin,
                                 implied_volatility: stockObj.iv,
                                 cushion_to_strike_pct: stockObj.cushion,
-                                themeColor: color,
+                                themeColor: isFallback ? "#f59e0b" : color,
                               });
                             }}
                           >
                             <circle cx={cx} cy={cy} r={14} fill="transparent" />
                             {isSelected && (
-                              <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                              <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                            )}
+                            {isFallback && (
+                              <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                             )}
                             <circle
                               cx={cx}
                               cy={cy}
-                              r={isSelected ? 6 : 4}
-                              fill={isSelected ? "#ffffff" : color}
-                              stroke={isSelected ? color : "#0f172a"}
-                              strokeWidth={isSelected ? 2.5 : 1.5}
+                              r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
+                              fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color}
+                              stroke={isSelected ? (isFallback ? "#f59e0b" : color) : isFallback ? "#fef08a" : "#0f172a"}
+                              strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                               className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                             />
                           </g>

@@ -98,6 +98,15 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
         fifty_two_week_high: r.fifty_two_week_high,
         fifty_two_week_low: r.fifty_two_week_low,
         strike_bollinger_position: r.strike_bollinger_position,
+        isFallback: Boolean(
+          r.used_fallback ||
+          r.bid_used_fallback ||
+          (r as any).usedFallback ||
+          (r.bid <= 0 && r.last_price > 0) ||
+          (r.bid === r.last_price && r.bid > 0 && !r.ask)
+        ),
+        bid_used_fallback: r.bid_used_fallback,
+        used_fallback: r.used_fallback,
       }));
   } else {
     // Sorted by Strike Price ($)
@@ -124,6 +133,15 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
         fifty_two_week_high: r.fifty_two_week_high,
         fifty_two_week_low: r.fifty_two_week_low,
         strike_bollinger_position: r.strike_bollinger_position,
+        isFallback: Boolean(
+          r.used_fallback ||
+          r.bid_used_fallback ||
+          (r as any).usedFallback ||
+          (r.bid <= 0 && r.last_price > 0) ||
+          (r.bid === r.last_price && r.bid > 0 && !r.ask)
+        ),
+        bid_used_fallback: r.bid_used_fallback,
+        used_fallback: r.used_fallback,
       }));
   }
 
@@ -167,6 +185,11 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
 
         {/* Right Header Controls: Y-Axis Selector & Filters */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+            Amber Dot = Fallback / Last Price
+          </span>
+
           {/* X-Axis Mode Switcher */}
           <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[10px]">
             <span className="text-slate-500 font-medium px-1.5">X-Axis:</span>
@@ -468,6 +491,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                   const isSelected = selectedPoint && (
                     selectedPoint.strike === payload.strike && selectedPoint.expiration === payload.expiration
                   );
+                  const isFallback = Boolean(payload?.isFallback);
                   return (
                     <g
                       key={fallbackKey}
@@ -479,15 +503,18 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                     >
                       <circle cx={cx} cy={cy} r={14} fill="transparent" />
                       {isSelected && (
-                        <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                        <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#34d399"} strokeWidth={2.5} className="animate-pulse" />
+                      )}
+                      {isFallback && (
+                        <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                       )}
                       <circle
                         cx={cx}
                         cy={cy}
-                        r={isSelected ? 6 : 4}
-                        fill={isSelected ? "#ffffff" : "#10b981"}
-                        stroke={isSelected ? "#10b981" : "#0f172a"}
-                        strokeWidth={isSelected ? 2.5 : 1.5}
+                        r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
+                        fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
+                        stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
+                        strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                         className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                       />
                     </g>
@@ -518,6 +545,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                   );
                   const isSellStrike = !isXAxisExpiration && selectedSpread && selectedSpread.sellStrike === payload.strike;
                   const isBuyStrike = !isXAxisExpiration && selectedSpread && selectedSpread.buyStrike === payload.strike;
+                  const isFallback = Boolean(payload?.isFallback);
 
                   return (
                     <g
@@ -536,15 +564,18 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                         <circle cx={cx} cy={cy} r={10} fill="none" stroke="#f59e0b" strokeWidth={2.5} className="animate-pulse" />
                       )}
                       {isSelected && !isSellStrike && !isBuyStrike && (
-                        <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                        <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                      )}
+                      {isFallback && !isSellStrike && !isBuyStrike && (
+                        <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                       )}
                       <circle
                         cx={cx}
                         cy={cy}
-                        r={isSelected || isSellStrike || isBuyStrike ? 6 : 4}
-                        fill={isSellStrike ? "#10b981" : isBuyStrike ? "#f59e0b" : isSelected ? "#ffffff" : themeColor}
-                        stroke={isSellStrike ? "#ffffff" : isBuyStrike ? "#ffffff" : isSelected ? themeColor : "#0f172a"}
-                        strokeWidth={isSelected || isSellStrike || isBuyStrike ? 2.5 : 1.5}
+                        r={isSelected || isSellStrike || isBuyStrike ? 6 : (isFallback ? 4.5 : 4)}
+                        fill={isSellStrike ? "#10b981" : isBuyStrike ? "#f59e0b" : isSelected ? "#ffffff" : isFallback ? "#f59e0b" : themeColor}
+                        stroke={isSellStrike ? "#ffffff" : isBuyStrike ? "#ffffff" : isSelected ? (isFallback ? "#f59e0b" : themeColor) : isFallback ? "#fef08a" : "#0f172a"}
+                        strokeWidth={isSelected || isSellStrike || isBuyStrike ? 2.5 : (isFallback ? 2 : 1.5)}
                         className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                       />
                     </g>
@@ -587,6 +618,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                   const isSelected = selectedPoint && (
                     selectedPoint.strike === payload.strike && selectedPoint.expiration === payload.expiration
                   );
+                  const isFallback = Boolean(payload?.isFallback);
                   return (
                     <g
                       key={fallbackKey}
@@ -598,15 +630,18 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                     >
                       <circle cx={cx} cy={cy} r={14} fill="transparent" />
                       {isSelected && (
-                        <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                        <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#34d399"} strokeWidth={2.5} className="animate-pulse" />
+                      )}
+                      {isFallback && (
+                        <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                       )}
                       <circle
                         cx={cx}
                         cy={cy}
-                        r={isSelected ? 6 : 3.5}
-                        fill={isSelected ? "#ffffff" : "#10b981"}
-                        stroke={isSelected ? "#10b981" : "#0f172a"}
-                        strokeWidth={isSelected ? 2.5 : 1.5}
+                        r={isSelected ? 6 : (isFallback ? 4.5 : 3.5)}
+                        fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
+                        stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
+                        strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                         className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                       />
                     </g>

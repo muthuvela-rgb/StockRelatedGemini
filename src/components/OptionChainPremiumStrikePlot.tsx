@@ -30,6 +30,7 @@ import {
   EyeOff,
   Crosshair,
   Percent,
+  Sparkles,
 } from "lucide-react";
 
 interface OptionChainPremiumStrikePlotProps {
@@ -290,6 +291,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
         inTheMoney: c.inTheMoney,
         contractSymbol: c.contractSymbol,
         contract: c,
+        isFallback: Boolean(c.used_fallback || c.bid_used_fallback || (c.bid <= 0 && c.lastPrice > 0)),
       });
     });
 
@@ -664,8 +666,20 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
         </div>
       )}
 
+      {/* Visual Subheader with Fallback Indicator Badge */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-2 pb-1 text-xs">
+        <span className="text-slate-400 flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Click curve points to inspect Greeks, execution pricing & risk tiering</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+          <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+          Amber Dot = Fallback / Last Price
+        </span>
+      </div>
+
       {/* Main Plot Area */}
-      <div className="h-80 sm:h-96 w-full pt-2">
+      <div className="h-80 sm:h-96 w-full pt-1">
         {isAllExp ? (
           /* ================= ALL EXPIRATIONS MULTI-LINE OVERLAY ================= */
           <ResponsiveContainer width="100%" height="100%">
@@ -806,7 +820,22 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                     stroke={color}
                     strokeWidth={isHighlighted ? 3.5 : 1.75}
                     strokeOpacity={highlightedExp && !isHighlighted ? 0.3 : 0.9}
-                    dot={false}
+                    dot={((props: any): any => {
+                      const { cx, cy, payload } = props;
+                      if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return null;
+                      const contract = payload?.[`${exp}_contract`];
+                      if (!contract) return null;
+                      const isFallback = Boolean(contract.used_fallback || contract.bid_used_fallback || (contract.bid <= 0 && contract.lastPrice > 0));
+                      if (isFallback) {
+                        return (
+                          <g key={`fb-dot-${exp}-${payload.strike}`} className="cursor-pointer" onClick={() => onSelectContract && onSelectContract(contract)}>
+                            <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
+                            <circle cx={cx} cy={cy} r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
+                          </g>
+                        );
+                      }
+                      return null;
+                    }) as any}
                     activeDot={{
                       r: 6,
                       fill: color,
@@ -982,6 +1011,22 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 stroke={tab === "puts" ? "#f43f5e" : "#10b981"}
                 strokeWidth={2.5}
                 fill="url(#premiumGrad)"
+                dot={((props: any): any => {
+                  const { cx, cy, payload } = props;
+                  if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return null;
+                  const isFallback = Boolean(payload?.isFallback || (payload?.bid <= 0 && payload?.lastPrice > 0));
+                  if (isFallback) {
+                    return (
+                      <g key={`fb-bid-${payload.strike}`} className="cursor-pointer" onClick={() => payload?.contract && onSelectContract && onSelectContract(payload.contract)}>
+                        <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" className="animate-pulse" />
+                        <circle cx={cx} cy={cy} r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
+                      </g>
+                    );
+                  }
+                  return (
+                    <circle key={`norm-bid-${payload.strike}`} cx={cx} cy={cy} r={2.5} fill={tab === "puts" ? "#f43f5e" : "#10b981"} opacity={0.6} />
+                  );
+                }) as any}
                 activeDot={{
                   r: 6,
                   fill: "#ffffff",
@@ -1018,7 +1063,20 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                   name="% Ann. Cash Secured Return"
                   stroke="#10b981"
                   strokeWidth={2.5}
-                  dot={false}
+                  dot={((props: any): any => {
+                    const { cx, cy, payload } = props;
+                    if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return null;
+                    const isFallback = Boolean(payload?.isFallback || (payload?.bid <= 0 && payload?.lastPrice > 0));
+                    if (isFallback) {
+                      return (
+                        <g key={`fb-ann-${payload.strike}`} className="cursor-pointer" onClick={() => payload?.contract && onSelectContract && onSelectContract(payload.contract)}>
+                          <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
+                          <circle cx={cx} cy={cy} r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
+                        </g>
+                      );
+                    }
+                    return null;
+                  }) as any}
                   activeDot={{
                     r: 6,
                     fill: "#10b981",

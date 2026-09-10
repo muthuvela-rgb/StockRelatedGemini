@@ -176,11 +176,11 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-2.5 text-xs text-slate-400">
             <button
               onClick={() => setShowProviderModal(true)}
-              className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-mono text-xs transition border cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md font-mono text-[11px] sm:text-xs transition border cursor-pointer ${
                 providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
-                  ? "bg-cyan-950/60 text-cyan-300 border-cyan-700/50 hover:bg-cyan-900/60 shadow-sm"
+                  ? "bg-cyan-950/70 text-cyan-300 border-cyan-600/50 hover:bg-cyan-900/70 shadow-sm"
                   : providerStatus?.tradierInCooldown
-                  ? "bg-amber-950/60 text-amber-300 border-amber-700/50 hover:bg-amber-900/60 shadow-sm"
+                  ? "bg-amber-950/70 text-amber-300 border-amber-600/50 hover:bg-amber-900/70 shadow-sm"
                   : "bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800"
               }`}
               title="Click to view Market Data Feed status (Tradier Brokerage & SEC)"
@@ -194,12 +194,12 @@ export const Header: React.FC<HeaderProps> = ({
                     : "bg-emerald-500"
                 }`}
               ></span>
-              <span>
+              <span className="font-semibold">
                 {providerStatus?.isTradierConfigured
                   ? providerStatus?.tradierInCooldown
-                    ? "Yahoo Active (Tradier Cooldown)"
-                    : "Live Tradier & SEC Data"
-                  : "Live Yahoo (Tradier Ready)"}
+                    ? "Tradier Cooldown"
+                    : "Live Tradier Data"
+                  : "Live Yahoo"}
               </span>
             </button>
             <button

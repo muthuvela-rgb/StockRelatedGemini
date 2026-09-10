@@ -273,6 +273,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       returnCashSecured: r.annualized_return_pct_cash_secured,
       capitalBasis: r.capital_basis,
       iv: r.implied_volatility,
+      usedFallback: Boolean(r.bid_used_fallback || (r.bid <= 0 && r.last_price > 0)),
+      bid_used_fallback: r.bid_used_fallback,
       rsi_14: r.rsi_14,
       bollinger: r.bollinger,
       fibonacci: r.fibonacci,
@@ -298,7 +300,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       returnCashSecured: r.annualized_return_pct_cash_secured,
       capitalBasis: r.capital_basis,
       iv: r.implied_volatility,
-      usedFallback: r.bid_used_fallback,
+      usedFallback: Boolean(r.bid_used_fallback || (r.bid <= 0 && r.last_price > 0)),
+      bid_used_fallback: r.bid_used_fallback,
       rsi_14: r.rsi_14,
       bollinger: r.bollinger,
       fibonacci: r.fibonacci,
@@ -313,6 +316,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     moneyness: Number(r.moneyness_pct.toFixed(2)),
     premium: r.bid,
     ask: r.ask,
+    lastPrice: r.last_price,
     returnCashSecured: Number(r.annualized_return_pct_cash_secured.toFixed(1)),
     returnMargin: Number(r.annualized_return_pct.toFixed(1)),
     strike: r.strike,
@@ -320,6 +324,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     dte: r.days_to_expiration,
     expiration: r.expiration,
     iv: r.implied_volatility,
+    usedFallback: Boolean(r.bid_used_fallback || (r.bid <= 0 && r.last_price > 0)),
+    bid_used_fallback: r.bid_used_fallback,
     rsi_14: r.rsi_14,
     bollinger: r.bollinger,
     fibonacci: r.fibonacci,
@@ -343,10 +349,16 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-800">
           <div>
-            <h2 className="text-xl font-bold text-white font-display flex items-center gap-2">
-              <Sliders className="w-5 h-5 text-blue-400" />
-              Put Options Annualized Return Scanner
-            </h2>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-xl font-bold text-white font-display flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-blue-400" />
+                Put Options Annualized Return Scanner
+              </h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium bg-cyan-950/80 text-cyan-300 border border-cyan-600/40 shadow-sm shadow-cyan-950/50">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span>Tradier Live Feed</span>
+              </span>
+            </div>
             <p className="text-xs text-slate-400 mt-1">
               Computes annualized return over OCC TIMS portfolio margin stress test (downside shock floor) or full cash-secured collateral.
             </p>
@@ -931,10 +943,14 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               /* VIEW MODE 3: SINGLE STOCK PLOT */
               /* When a single strike is selected, X-Axis is Expiration Date and Y-Axis is Option Premium ($) */
               <div>
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 mb-2 gap-2">
                   <span className="flex items-center gap-1.5 text-cyan-400">
                     <Sparkles className="w-3.5 h-3.5" />
                     Click any specific dot on the curve to inspect its contract specifications, yield & technical indicators
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+                    Amber Dot = Fallback / Last Price
                   </span>
                 </div>
 
@@ -1070,6 +1086,11 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           );
                           const isSellLeg = !isSingleStrikeSelected && singleStockSelectedSpread && singleStockSelectedSpread.sellStrike === payload.strike;
                           const isBuyLeg = !isSingleStrikeSelected && singleStockSelectedSpread && singleStockSelectedSpread.buyStrike === payload.strike;
+                          const isFallback = Boolean(
+                            payload.usedFallback ||
+                            payload.bid_used_fallback ||
+                            (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                          );
 
                           return (
                             <g
@@ -1079,7 +1100,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                 e.stopPropagation();
                                 setInspectedChartPoint({
                                   ...payload,
-                                  themeColor: "#06b6d4",
+                                  themeColor: isFallback ? "#f59e0b" : "#06b6d4",
                                 });
                               }}
                             >
@@ -1091,15 +1112,18 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                 <circle cx={cx} cy={cy} r={10} fill="none" stroke="#f59e0b" strokeWidth={2.5} className="animate-pulse" />
                               )}
                               {isSelected && !isSellLeg && !isBuyLeg && (
-                                <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                                <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                              )}
+                              {isFallback && !isSellLeg && !isBuyLeg && (
+                                <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                               )}
                               <circle
                                 cx={cx}
                                 cy={cy}
-                                r={isSelected || isSellLeg || isBuyLeg ? 6 : 4}
-                                fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : "#06b6d4"}
-                                stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? "#06b6d4" : "#0f172a"}
-                                strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : 1.5}
+                                r={isSelected || isSellLeg || isBuyLeg ? 6 : (isFallback ? 4.5 : 4)}
+                                fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#06b6d4"}
+                                stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? (isFallback ? "#f59e0b" : "#06b6d4") : isFallback ? "#fef08a" : "#0f172a"}
+                                strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : (isFallback ? 2 : 1.5)}
                                 className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                               />
                             </g>
@@ -1138,6 +1162,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                             const isSelected = inspectedChartPoint && (
                               inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
                             );
+                            const isFallback = Boolean(
+                              payload.usedFallback ||
+                              payload.bid_used_fallback ||
+                              (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                            );
+
                             return (
                               <g
                                 key={fallbackKey}
@@ -1146,21 +1176,24 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                   e.stopPropagation();
                                   setInspectedChartPoint({
                                     ...payload,
-                                    themeColor: "#10b981",
+                                    themeColor: isFallback ? "#f59e0b" : "#10b981",
                                   });
                                 }}
                               >
                                 <circle cx={cx} cy={cy} r={14} fill="transparent" />
                                 {isSelected && (
-                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#34d399"} strokeWidth={2.5} className="animate-pulse" />
+                                )}
+                                {isFallback && (
+                                  <circle cx={cx} cy={cy} r={7} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                                 )}
                                 <circle
                                   cx={cx}
                                   cy={cy}
-                                  r={isSelected ? 6 : 3.5}
-                                  fill={isSelected ? "#ffffff" : "#10b981"}
-                                  stroke={isSelected ? "#10b981" : "#0f172a"}
-                                  strokeWidth={isSelected ? 2.5 : 1.5}
+                                  r={isSelected ? 6 : (isFallback ? 4 : 3.5)}
+                                  fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
+                                  stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
+                                  strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                                   className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                                 />
                               </g>
@@ -1265,10 +1298,14 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             ) : (
               /* VIEW MODE 4: MULTI-STOCK UNIVERSE PLOT (X-AXIS = % MONEYNESS, LEFT Y-AXIS = OPTION PREMIUM ($), RIGHT Y-AXIS = CASH-SECURED RETURN (%)) */
               <div>
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 mb-2 gap-2">
                   <span className="flex items-center gap-1.5 text-emerald-400">
                     <Sparkles className="w-3.5 h-3.5" />
                     Click any specific dot in the universe plot to inspect its contract specifications, yield & technical indicators
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+                    Amber Dot = Fallback / Last Price
                   </span>
                 </div>
 
@@ -1331,6 +1368,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                             inspectedChartPoint.strike === payload.strike &&
                             inspectedChartPoint.expiration === payload.expiration
                           );
+                          const isFallback = Boolean(
+                            payload.usedFallback ||
+                            payload.bid_used_fallback ||
+                            (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                          );
+
                           return (
                             <g
                               key={fallbackKey}
@@ -1339,21 +1382,24 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                 e.stopPropagation();
                                 setInspectedChartPoint({
                                   ...payload,
-                                  themeColor: "#06b6d4",
+                                  themeColor: isFallback ? "#f59e0b" : "#06b6d4",
                                 });
                               }}
                             >
                               <circle cx={cx} cy={cy} r={14} fill="transparent" />
                               {isSelected && (
-                                <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                                <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                              )}
+                              {isFallback && (
+                                <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                               )}
                               <circle
                                 cx={cx}
                                 cy={cy}
-                                r={isSelected ? 6 : 4}
-                                fill={isSelected ? "#ffffff" : "#06b6d4"}
-                                stroke={isSelected ? "#06b6d4" : "#0f172a"}
-                                strokeWidth={isSelected ? 2.5 : 1.5}
+                                r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
+                                fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#06b6d4"}
+                                stroke={isSelected ? (isFallback ? "#f59e0b" : "#06b6d4") : isFallback ? "#fef08a" : "#0f172a"}
+                                strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                                 className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                               />
                             </g>
@@ -1379,6 +1425,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                               inspectedChartPoint.strike === payload.strike &&
                               inspectedChartPoint.expiration === payload.expiration
                             );
+                            const isFallback = Boolean(
+                              payload.usedFallback ||
+                              payload.bid_used_fallback ||
+                              (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                            );
+
                             return (
                               <g
                                 key={fallbackKey}
@@ -1387,21 +1439,24 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                   e.stopPropagation();
                                   setInspectedChartPoint({
                                     ...payload,
-                                    themeColor: "#10b981",
+                                    themeColor: isFallback ? "#f59e0b" : "#10b981",
                                   });
                                 }}
                               >
                                 <circle cx={cx} cy={cy} r={14} fill="transparent" />
                                 {isSelected && (
-                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#34d399"} strokeWidth={2.5} className="animate-pulse" />
+                                )}
+                                {isFallback && (
+                                  <circle cx={cx} cy={cy} r={7} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                                 )}
                                 <circle
                                   cx={cx}
                                   cy={cy}
-                                  r={isSelected ? 6 : 3.5}
-                                  fill={isSelected ? "#ffffff" : "#10b981"}
-                                  stroke={isSelected ? "#10b981" : "#0f172a"}
-                                  strokeWidth={isSelected ? 2.5 : 1.5}
+                                  r={isSelected ? 6 : (isFallback ? 4 : 3.5)}
+                                  fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
+                                  stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
+                                  strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                                   className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                                 />
                               </g>

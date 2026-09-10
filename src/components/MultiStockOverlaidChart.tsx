@@ -86,6 +86,15 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
           fifty_two_week_high: contract.fifty_two_week_high,
           fifty_two_week_low: contract.fifty_two_week_low,
           strike_bollinger_position: contract.strike_bollinger_position,
+          isFallback: Boolean(
+            contract.used_fallback ||
+            contract.bid_used_fallback ||
+            (contract as any).usedFallback ||
+            (contract.bid <= 0 && contract.last_price > 0) ||
+            (contract.bid === contract.last_price && contract.bid > 0 && !contract.ask)
+          ),
+          bid_used_fallback: contract.bid_used_fallback,
+          used_fallback: contract.used_fallback,
         };
       }
     });
@@ -95,6 +104,12 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+          <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+          Amber Dot = Fallback / Last Price
+        </span>
+      </div>
       <div className="h-72 sm:h-96 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
@@ -185,6 +200,7 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                     const isSelected = selectedPoint && (
                       selectedPoint.ticker === t && selectedPoint.expiration === payload.expiration
                     );
+                    const isFallback = Boolean(st.isFallback);
 
                     return (
                       <g
@@ -196,21 +212,24 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                             ...st,
                             expiration: payload.expiration,
                             dte: payload.dte,
-                            themeColor: color,
+                            themeColor: isFallback ? "#f59e0b" : color,
                           });
                         }}
                       >
                         <circle cx={cx} cy={cy} r={14} fill="transparent" />
                         {isSelected && (
-                          <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                          <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                        )}
+                        {isFallback && (
+                          <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                         )}
                         <circle
                           cx={cx}
                           cy={cy}
-                          r={isSelected ? 6 : 4}
-                          fill={isSelected ? "#ffffff" : color}
-                          stroke={isSelected ? color : "#0f172a"}
-                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
+                          fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color}
+                          stroke={isSelected ? (isFallback ? "#f59e0b" : color) : isFallback ? "#fef08a" : "#0f172a"}
+                          strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                           className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                         />
                       </g>

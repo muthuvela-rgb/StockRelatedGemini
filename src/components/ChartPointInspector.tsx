@@ -102,32 +102,45 @@ export const ChartPointInspector: React.FC<ChartPointInspectorProps> = ({
   const isITM = spot > 0 ? (isPut ? strike > spot : strike < spot) : false;
   const downsideBufferPct = spot > 0 ? Math.max(0, ((spot - strike) / spot) * 100) : 0;
 
+  const isFallback = Boolean(
+    point.usedFallback ||
+    point.used_fallback ||
+    point.bid_used_fallback ||
+    point.isFallback ||
+    ((point.bid === undefined || point.bid <= 0) && (point.lastPrice || point.last_price || 0) > 0)
+  );
+
   const copySummary = () => {
-    const text = `${ticker} $${strike.toFixed(2)} ${optionType} (${expiration}, ${dte}d) | Spot: $${spot.toFixed(2)} | Bid: $${bid.toFixed(2)} | Cash Yield: ${cashYield.toFixed(1)}% | IV: ${iv.toFixed(1)}% | RSI(14): ${point.rsi_14?.toFixed(1) || "N/A"}`;
+    const text = `${ticker} $${strike.toFixed(2)} ${optionType} (${expiration}, ${dte}d) | Spot: $${spot.toFixed(2)} | Bid: $${bid.toFixed(2)}${isFallback ? " (Fallback/Last Price)" : ""} | Cash Yield: ${cashYield.toFixed(1)}% | IV: ${iv.toFixed(1)}% | RSI(14): ${point.rsi_14?.toFixed(1) || "N/A"}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="mt-3 bg-slate-900/98 backdrop-blur-md border-2 border-cyan-500/40 rounded-xl p-3.5 sm:p-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+    <div className={`mt-3 bg-slate-900/98 backdrop-blur-md border-2 ${isFallback ? "border-amber-500/50" : "border-cyan-500/40"} rounded-xl p-3.5 sm:p-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150`}>
       {/* Top Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5 mb-3">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isFallback ? "bg-amber-400" : "bg-cyan-400"} opacity-75`}></span>
+            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isFallback ? "bg-amber-500" : "bg-cyan-500"}`}></span>
           </span>
           <div className="flex items-center gap-2">
-            <Crosshair className="w-4 h-4 text-cyan-400" />
+            <Crosshair className={`w-4 h-4 ${isFallback ? "text-amber-400" : "text-cyan-400"}`} />
             <h4 className="text-sm font-bold text-white font-display flex items-center gap-2">
               <span>{ticker} ${strike.toFixed(2)} {optionType}</span>
               <span
                 className="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider"
-                style={{ backgroundColor: `${themeColor}22`, color: themeColor, borderColor: `${themeColor}44`, borderWidth: 1 }}
+                style={{ backgroundColor: `${isFallback ? "#f59e0b" : themeColor}22`, color: isFallback ? "#f59e0b" : themeColor, borderColor: `${isFallback ? "#f59e0b" : themeColor}44`, borderWidth: 1 }}
               >
                 Selected Point
               </span>
+              {isFallback && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                  ⚠️ Fallback / Last Price
+                </span>
+              )}
             </h4>
           </div>
           {expiration && (
@@ -156,6 +169,20 @@ export const ChartPointInspector: React.FC<ChartPointInspectorProps> = ({
         </div>
       </div>
 
+      {/* Fallback Pricing Alert Banner */}
+      {isFallback && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+            <span className="font-semibold text-amber-300">Fallback Pricing Active:</span>
+            <span>Bid was $0.00 or unavailable. Calculated using last traded price (${(point.lastPrice || point.last_price || bid).toFixed(2)}).</span>
+          </span>
+          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+            Fallback Dot (#f59e0b)
+          </span>
+        </div>
+      )}
+
       {/* Main Grid: Metrics & Indicators */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs mb-3 font-mono">
         {/* Spot & Moneyness */}
@@ -183,8 +210,8 @@ export const ChartPointInspector: React.FC<ChartPointInspectorProps> = ({
             <span>Option Premium</span>
             <TrendingUp className="w-3 h-3 text-cyan-400" />
           </div>
-          <div className="font-bold text-sm" style={{ color: themeColor }}>
-            Bid: ${bid.toFixed(2)}
+          <div className="font-bold text-sm" style={{ color: isFallback ? "#f59e0b" : themeColor }}>
+            Bid: ${bid.toFixed(2)} {isFallback && <span className="text-[10px] text-amber-400 font-normal">(Last Trade)</span>}
             {ask > 0 && <span className="text-xs text-slate-400 font-normal ml-1">| Ask: ${ask.toFixed(2)}</span>}
           </div>
           <div className="text-[10px] text-slate-400">

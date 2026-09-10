@@ -789,10 +789,14 @@ export const PremiumCurvesViewer: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
             <span className="flex items-center gap-1.5 text-cyan-400">
               <Sparkles className="w-3.5 h-3.5" />
               Click any dot on the curves to inspect full contract specifications, Greeks & technical indicators
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+              Amber Dot = Fallback / Last Price
             </span>
           </div>
 
@@ -923,6 +927,12 @@ export const PremiumCurvesViewer: React.FC = () => {
 
                             const pointId = `range-${key}-${payload.expiration}`;
                             const isSelected = selectedPointId === pointId;
+                            const isFallback = Boolean(
+                              strikePoint.used_fallback ||
+                              strikePoint.usedFallback ||
+                              strikePoint.bid_used_fallback ||
+                              (strikePoint.premium === strikePoint.last_price && strikePoint.premium > 0 && !strikePoint.bid)
+                            );
 
                             return (
                               <g
@@ -944,7 +954,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                                     fibonacci: expAnalysis.fibonacci,
                                     fiftyTwoWeekHigh: expAnalysis.fifty_two_week_high,
                                     fiftyTwoWeekLow: expAnalysis.fifty_two_week_low,
-                                    themeColor: color,
+                                    themeColor: isFallback ? "#f59e0b" : color,
                                   });
                                 }}
                               >
@@ -955,18 +965,29 @@ export const PremiumCurvesViewer: React.FC = () => {
                                     cy={cy}
                                     r={9}
                                     fill="none"
-                                    stroke={color}
+                                    stroke={isFallback ? "#f59e0b" : color}
                                     strokeWidth={2.5}
                                     className="animate-pulse"
+                                  />
+                                )}
+                                {isFallback && (
+                                  <circle
+                                    cx={cx}
+                                    cy={cy}
+                                    r={7.5}
+                                    fill="none"
+                                    stroke="#f59e0b"
+                                    strokeWidth={1.5}
+                                    strokeDasharray="2 2"
                                   />
                                 )}
                                 <circle
                                   cx={cx}
                                   cy={cy}
-                                  r={isSelected ? 6 : 3.5}
-                                  fill={isSelected ? "#ffffff" : color}
-                                  stroke={isSelected ? color : "#0f172a"}
-                                  strokeWidth={isSelected ? 2.5 : 1.5}
+                                  r={isSelected ? 6 : (isFallback ? 4.5 : 3.5)}
+                                  fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color}
+                                  stroke={isSelected ? (isFallback ? "#f59e0b" : color) : isFallback ? "#fef08a" : "#0f172a"}
+                                  strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                                   className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                                 />
                               </g>
@@ -1199,6 +1220,13 @@ export const PremiumCurvesViewer: React.FC = () => {
                       }
                       const pointId = `exp-prem-${payload.expiration}`;
                       const isSelected = selectedPointId === pointId;
+                      const isFallback = Boolean(
+                        payload?.used_fallback ||
+                        payload?.usedFallback ||
+                        payload?.bid_used_fallback ||
+                        (payload?.premium === payload?.last_price && payload?.premium > 0 && !payload?.bid)
+                      );
+
                       return (
                         <g
                           key={fallbackKey}
@@ -1208,21 +1236,24 @@ export const PremiumCurvesViewer: React.FC = () => {
                             setSelectedPointId(pointId);
                             setInspectedCurvePoint({
                               ...payload,
-                              themeColor: "#06b6d4",
+                              themeColor: isFallback ? "#f59e0b" : "#06b6d4",
                             });
                           }}
                         >
                           <circle cx={cx} cy={cy} r={14} fill="transparent" />
                           {isSelected && (
-                            <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                            <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                          )}
+                          {isFallback && (
+                            <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                           )}
                           <circle
                             cx={cx}
                             cy={cy}
-                            r={isSelected ? 6 : 4}
-                            fill={isSelected ? "#ffffff" : "#06b6d4"}
-                            stroke={isSelected ? "#06b6d4" : "#0f172a"}
-                            strokeWidth={isSelected ? 2.5 : 1.5}
+                            r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
+                            fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#06b6d4"}
+                            stroke={isSelected ? (isFallback ? "#f59e0b" : "#06b6d4") : isFallback ? "#fef08a" : "#0f172a"}
+                            strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                             className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                           />
                         </g>
@@ -1245,6 +1276,13 @@ export const PremiumCurvesViewer: React.FC = () => {
                       }
                       const pointId = `exp-ret-${payload.expiration}`;
                       const isSelected = selectedPointId === pointId;
+                      const isFallback = Boolean(
+                        payload?.used_fallback ||
+                        payload?.usedFallback ||
+                        payload?.bid_used_fallback ||
+                        (payload?.premium === payload?.last_price && payload?.premium > 0 && !payload?.bid)
+                      );
+
                       return (
                         <g
                           key={fallbackKey}
@@ -1254,21 +1292,24 @@ export const PremiumCurvesViewer: React.FC = () => {
                             setSelectedPointId(pointId);
                             setInspectedCurvePoint({
                               ...payload,
-                              themeColor: "#10b981",
+                              themeColor: isFallback ? "#f59e0b" : "#10b981",
                             });
                           }}
                         >
                           <circle cx={cx} cy={cy} r={14} fill="transparent" />
                           {isSelected && (
-                            <circle cx={cx} cy={cy} r={9} fill="none" stroke="#34d399" strokeWidth={2.5} className="animate-pulse" />
+                            <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#34d399"} strokeWidth={2.5} className="animate-pulse" />
+                          )}
+                          {isFallback && (
+                            <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                           )}
                           <circle
                             cx={cx}
                             cy={cy}
-                            r={isSelected ? 6 : 4}
-                            fill={isSelected ? "#ffffff" : "#10b981"}
-                            stroke={isSelected ? "#10b981" : "#0f172a"}
-                            strokeWidth={isSelected ? 2.5 : 1.5}
+                            r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
+                            fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
+                            stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
+                            strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
                             className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                           />
                         </g>
@@ -1311,10 +1352,14 @@ export const PremiumCurvesViewer: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+          <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 mb-2 gap-2">
             <span className="flex items-center gap-1.5 text-blue-400">
               <Sparkles className="w-3.5 h-3.5" />
               Click any specific dot on any expiration curve to inspect its contract specifications, yield & technical indicators
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-medium shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_#f59e0b]"></span>
+              Amber Dot = Fallback / Last Price
             </span>
           </div>
 
@@ -1402,6 +1447,12 @@ export const PremiumCurvesViewer: React.FC = () => {
                         const isSelected = selectedPointId === pointId;
                         const isSellLeg = isActiveExp && selectedVerticalPutSpread && selectedVerticalPutSpread.sellStrike === payload.strike;
                         const isBuyLeg = isActiveExp && selectedVerticalPutSpread && selectedVerticalPutSpread.buyStrike === payload.strike;
+                        const isFallback = Boolean(
+                          rec?.used_fallback ||
+                          rec?.usedFallback ||
+                          rec?.bid_used_fallback ||
+                          (rec?.premium === rec?.last_price && rec?.premium > 0 && !rec?.bid)
+                        );
 
                         return (
                           <g
@@ -1423,7 +1474,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                                 fibonacci: analysis.fibonacci,
                                 fiftyTwoWeekHigh: analysis.fifty_two_week_high,
                                 fiftyTwoWeekLow: analysis.fifty_two_week_low,
-                                themeColor: color,
+                                themeColor: isFallback ? "#f59e0b" : color,
                               });
                             }}
                           >
@@ -1435,15 +1486,18 @@ export const PremiumCurvesViewer: React.FC = () => {
                               <circle cx={cx} cy={cy} r={10} fill="none" stroke="#f59e0b" strokeWidth={2.5} className="animate-pulse" />
                             )}
                             {isSelected && !isSellLeg && !isBuyLeg && (
-                              <circle cx={cx} cy={cy} r={9} fill="none" stroke="#38bdf8" strokeWidth={2.5} className="animate-pulse" />
+                              <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                            )}
+                            {isFallback && !isSellLeg && !isBuyLeg && (
+                              <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                             )}
                             <circle
                               cx={cx}
                               cy={cy}
-                              r={isSelected || isSellLeg || isBuyLeg ? 6 : 4}
-                              fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : color}
-                              stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? color : "#0f172a"}
-                              strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : 1.5}
+                              r={isSelected || isSellLeg || isBuyLeg ? 6 : (isFallback ? 4.5 : 4)}
+                              fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color}
+                              stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? (isFallback ? "#f59e0b" : color) : isFallback ? "#fef08a" : "#0f172a"}
+                              strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : (isFallback ? 2 : 1.5)}
                               className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
                             />
                           </g>
