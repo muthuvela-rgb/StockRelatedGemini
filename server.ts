@@ -278,6 +278,350 @@ function computeHistoricalVol(closes: number[]) {
   };
 }
 
+// --- TRADIER & FINANCIAL DATA FETCHERS ---
+export interface TradierQuote {
+  symbol: string;
+  description?: string;
+  exch?: string;
+  type?: string;
+  last: number;
+  change?: number;
+  change_percentage?: number;
+  volume?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  prevclose?: number;
+  bid?: number;
+  ask?: number;
+  week_52_high?: number;
+  week_52_low?: number;
+  trade_date?: number;
+  provider?: string;
+  [key: string]: any;
+}
+
+function getTradierConfig() {
+  const token = (process.env.TRADIER_API_TOKEN || process.env.TRADIER_ACCESS_TOKEN || "").trim();
+  const rawBase = (process.env.TRADIER_BASE_URL || (process.env.TRADIER_ENV === "sandbox" ? "https://sandbox.tradier.com/v1" : "https://api.tradier.com/v1")).trim();
+  const baseUrl = rawBase.replace(/\/+$/, "");
+  return {
+    token,
+    baseUrl,
+    isConfigured: Boolean(token),
+  };
+}
+
+let hasLoggedTradierStatus = false;
+function logTradierStatusOnce() {
+  if (hasLoggedTradierStatus) return;
+  hasLoggedTradierStatus = true;
+  const cfg = getTradierConfig();
+  if (cfg.isConfigured) {
+    console.log(`[Tradier] Active market data provider connected via: ${cfg.baseUrl}`);
+  } else {
+    console.log(`[Tradier] TRADIER_API_TOKEN not set in environment. Running with Yahoo Finance fallback. Provide TRADIER_API_TOKEN in Settings to enable direct Tradier brokerage quotes.`);
+  }
+}
+
+function getMarketDataProviderInfo() {
+  const config = getTradierConfig();
+  return {
+    provider: config.isConfigured ? "tradier" : "yahoo",
+    primaryProvider: "tradier",
+    isTradierConfigured: config.isConfigured,
+    tradierBaseUrl: config.baseUrl,
+    fallbackAvailable: true,
+    fallbackProvider: "yahoo",
+    description: config.isConfigured
+      ? "Live Tradier Brokerage Market Data (Real-time Equities & Options with ORATS Greeks)"
+      : "Tradier is the primary provider; operating with Yahoo Finance fallback (TRADIER_API_TOKEN not set in environment)",
+  };
+}
+
+// Fetch multiple quotes from Tradier
+async function fetchTradierQuotes(symbols: string[]): Promise<Record<string, TradierQuote>> {
+  const config = getTradierConfig();
+  if (!config.isConfigured || symbols.length === 0) return {};
+
+  try {
+    const symbolStr = symbols.map((s) => s.trim().toUpperCase()).filter(Boolean).join(",");
+    const url = `${config.baseUrl}/markets/quotes?symbols=${encodeURIComponent(symbolStr)}&greeks=false`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(`[Tradier] Quote request failed: ${res.status} ${res.statusText}`);
+      return {};
+    }
+
+    const data = await res.json();
+    const rawQuotes = data?.quotes?.quote;
+    if (!rawQuotes) return {};
+
+    const quotesArr: any[] = Array.isArray(rawQuotes) ? rawQuotes : [rawQuotes];
+    const map: Record<string, TradierQuote> = {};
+
+    for (const q of quotesArr) {
+      if (!q || !q.symbol) continue;
+      const sym = String(q.symbol).toUpperCase();
+      map[sym] = {
+        symbol: sym,
+        description: q.description || "",
+        exch: q.exch || "",
+        type: q.type || "stock",
+        last: Number(q.last ?? q.close ?? q.prevclose ?? 0),
+        change: Number(q.change ?? 0),
+        change_percentage: Number(q.change_percentage ?? 0),
+        volume: Number(q.volume ?? 0),
+        open: q.open !== null && q.open !== undefined ? Number(q.open) : undefined,
+        high: q.high !== null && q.high !== undefined ? Number(q.high) : undefined,
+        low: q.low !== null && q.low !== undefined ? Number(q.low) : undefined,
+        close: q.close !== null && q.close !== undefined ? Number(q.close) : undefined,
+        prevclose: q.prevclose !== null && q.prevclose !== undefined ? Number(q.prevclose) : undefined,
+        bid: Number(q.bid ?? 0),
+        ask: Number(q.ask ?? 0),
+        week_52_high: q.week_52_high !== null && q.week_52_high !== undefined ? Number(q.week_52_high) : undefined,
+        week_52_low: q.week_52_low !== null && q.week_52_low !== undefined ? Number(q.week_52_low) : undefined,
+        trade_date: q.trade_date,
+        provider: "tradier",
+      };
+    }
+    return map;
+  } catch (err) {
+    console.error("[Tradier] Error fetching quotes:", err);
+    return {};
+  }
+}
+
+// Fetch single quote from Tradier
+async function fetchTradierQuote(symbol: string): Promise<TradierQuote | null> {
+  const map = await fetchTradierQuotes([symbol]);
+  return map[symbol.toUpperCase()] || null;
+}
+
+// Fetch historical daily bars from Tradier (converted to standard chart format)
+async function fetchTradierHistory(ticker: string, range = "1y"): Promise<any> {
+  const config = getTradierConfig();
+  if (!config.isConfigured) return null;
+
+  try {
+    const now = new Date();
+    let daysBack = 365;
+    if (range === "3mo") daysBack = 95;
+    else if (range === "6mo") daysBack = 185;
+    else if (range === "1mo") daysBack = 35;
+    else if (range === "5d") daysBack = 10;
+    else if (range === "2y") daysBack = 730;
+    else if (range === "5y") daysBack = 1825;
+
+    const startDateObj = new Date(now.getTime() - daysBack * 86400000);
+    const startStr = startDateObj.toISOString().split("T")[0];
+
+    const url = `${config.baseUrl}/markets/history?symbol=${encodeURIComponent(ticker.toUpperCase())}&interval=daily&start=${startStr}`;
+    const [historyRes, quote] = await Promise.all([
+      fetch(url, {
+        headers: {
+          Authorization: `Bearer ${config.token}`,
+          Accept: "application/json",
+        },
+      }),
+      fetchTradierQuote(ticker).catch(() => null),
+    ]);
+
+    if (!historyRes.ok) return null;
+    const json = await historyRes.json();
+    const rawDays = json?.history?.day;
+    if (!rawDays) return null;
+
+    const days: any[] = Array.isArray(rawDays) ? rawDays : [rawDays];
+    if (days.length === 0) return null;
+
+    const timestamps: number[] = [];
+    const closes: number[] = [];
+    const opens: number[] = [];
+    const highs: number[] = [];
+    const lows: number[] = [];
+    const volumes: number[] = [];
+
+    for (const d of days) {
+      if (!d || !d.date || d.close === undefined || d.close === null) continue;
+      const ts = Math.floor(new Date(`${d.date}T16:00:00Z`).getTime() / 1000);
+      timestamps.push(ts);
+      closes.push(Number(d.close));
+      opens.push(Number(d.open ?? d.close));
+      highs.push(Number(d.high ?? d.close));
+      lows.push(Number(d.low ?? d.close));
+      volumes.push(Number(d.volume ?? 0));
+    }
+
+    const lastClose = closes[closes.length - 1];
+    const prevClose = closes.length > 1 ? closes[closes.length - 2] : lastClose;
+    const max52 = quote?.week_52_high ?? (highs.length > 0 ? Math.max(...highs) : lastClose);
+    const min52 = quote?.week_52_low ?? (lows.length > 0 ? Math.min(...lows) : lastClose);
+
+    return {
+      meta: {
+        currency: "USD",
+        symbol: ticker.toUpperCase(),
+        regularMarketPrice: quote?.last ?? lastClose,
+        chartPreviousClose: quote?.prevclose ?? prevClose,
+        fiftyTwoWeekHigh: max52,
+        fiftyTwoWeekLow: min52,
+        provider: "tradier",
+      },
+      timestamp: timestamps,
+      indicators: {
+        quote: [
+          {
+            close: closes,
+            open: opens,
+            high: highs,
+            low: lows,
+            volume: volumes,
+          },
+        ],
+      },
+    };
+  } catch (e) {
+    console.error(`[Tradier] Error fetching history for ${ticker}:`, e);
+    return null;
+  }
+}
+
+// Fetch Tradier options chain with ORATS Greeks
+async function fetchTradierOptions(ticker: string, dateTimestamp?: number): Promise<any> {
+  const config = getTradierConfig();
+  if (!config.isConfigured) return null;
+
+  try {
+    const symbol = ticker.toUpperCase();
+    const expUrl = `${config.baseUrl}/markets/options/expirations?symbol=${encodeURIComponent(symbol)}&includeAllRoots=true`;
+    const [expRes, quote] = await Promise.all([
+      fetch(expUrl, {
+        headers: {
+          Authorization: `Bearer ${config.token}`,
+          Accept: "application/json",
+        },
+      }),
+      fetchTradierQuote(symbol).catch(() => null),
+    ]);
+
+    if (!expRes.ok) return null;
+    const expJson = await expRes.json();
+    const rawDates = expJson?.expirations?.date;
+    if (!rawDates) return null;
+
+    const dateList: string[] = Array.isArray(rawDates) ? rawDates : [rawDates];
+    if (dateList.length === 0) return null;
+
+    const expirationTimestamps = dateList.map((dStr) =>
+      Math.floor(new Date(`${dStr}T16:00:00Z`).getTime() / 1000)
+    );
+
+    let targetDateStr = dateList[0];
+    if (dateTimestamp) {
+      const matchDateStr = new Date(dateTimestamp * 1000).toISOString().split("T")[0];
+      if (dateList.includes(matchDateStr)) {
+        targetDateStr = matchDateStr;
+      }
+    }
+
+    const chainUrl = `${config.baseUrl}/markets/options/chains?symbol=${encodeURIComponent(symbol)}&expiration=${targetDateStr}&greeks=true`;
+    const chainRes = await fetch(chainUrl, {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!chainRes.ok) return null;
+    const chainJson = await chainRes.json();
+    const rawOptions = chainJson?.options?.option;
+    if (!rawOptions) return null;
+
+    const optList: any[] = Array.isArray(rawOptions) ? rawOptions : [rawOptions];
+    const calls: any[] = [];
+    const puts: any[] = [];
+    const strikesSet = new Set<number>();
+
+    const underlyingPrice = quote?.last || 100;
+
+    for (const opt of optList) {
+      if (!opt) continue;
+      const strike = Number(opt.strike);
+      strikesSet.add(strike);
+
+      const isCall = opt.option_type?.toLowerCase() === "call";
+      const iv = opt.greeks?.mid_iv || opt.greeks?.smv_vol || opt.greeks?.bid_iv || 0;
+
+      const contract = {
+        contractSymbol: opt.symbol,
+        strike,
+        currency: "USD",
+        lastPrice: Number(opt.last ?? 0),
+        change: Number(opt.change ?? 0),
+        percentChange: Number(opt.change_percentage ?? 0),
+        volume: Number(opt.volume ?? 0),
+        openInterest: Number(opt.open_interest ?? 0),
+        bid: Number(opt.bid ?? 0),
+        ask: Number(opt.ask ?? 0),
+        impliedVolatility: iv,
+        inTheMoney: isCall ? strike < underlyingPrice : strike > underlyingPrice,
+        expirationDate: targetDateStr,
+        greeks: {
+          delta: opt.greeks?.delta ?? 0,
+          gamma: opt.greeks?.gamma ?? 0,
+          theta: opt.greeks?.theta ?? 0,
+          vega: opt.greeks?.vega ?? 0,
+        },
+      };
+
+      if (isCall) calls.push(contract);
+      else puts.push(contract);
+    }
+
+    calls.sort((a, b) => a.strike - b.strike);
+    puts.sort((a, b) => a.strike - b.strike);
+    const strikes = Array.from(strikesSet).sort((a, b) => a - b);
+
+    return {
+      underlyingSymbol: symbol,
+      expirationDates: expirationTimestamps,
+      strikes,
+      hasMiniOptions: false,
+      quote: {
+        symbol,
+        regularMarketPrice: quote?.last ?? underlyingPrice,
+        regularMarketChange: quote?.change ?? 0,
+        regularMarketChangePercent: quote?.change_percentage ?? 0,
+        regularMarketVolume: quote?.volume ?? 0,
+        bid: quote?.bid ?? 0,
+        ask: quote?.ask ?? 0,
+        fiftyTwoWeekHigh: quote?.week_52_high,
+        fiftyTwoWeekLow: quote?.week_52_low,
+      },
+      options: [
+        {
+          expirationDate: Math.floor(new Date(`${targetDateStr}T16:00:00Z`).getTime() / 1000),
+          hasMiniOptions: false,
+          calls,
+          puts,
+        },
+      ],
+      provider: "tradier",
+    };
+  } catch (err) {
+    console.error(`[Tradier] Error fetching options for ${ticker}:`, err);
+    return null;
+  }
+}
+
 // --- YAHOO & FINANCIAL DATA FETCHERS ---
 const HTTP_HEADERS: Record<string, string> = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -441,15 +785,84 @@ async function fetchStockTwits(ticker: string) {
   }
 }
 
+// --- UNIFIED MARKET DATA ROUTER (TRADIER PRIMARY -> YAHOO FALLBACK) ---
+async function fetchMarketChart(ticker: string, range = "1y", interval = "1d"): Promise<any> {
+  logTradierStatusOnce();
+  const tradierConfig = getTradierConfig();
+  if (tradierConfig.isConfigured) {
+    const tradierChart = await fetchTradierHistory(ticker, range);
+    if (tradierChart) return tradierChart;
+  }
+  return fetchYahooChart(ticker, range, interval);
+}
+
+async function fetchMarketOptions(ticker: string, dateTimestamp?: number): Promise<any> {
+  logTradierStatusOnce();
+  const tradierConfig = getTradierConfig();
+  if (tradierConfig.isConfigured) {
+    const tradierOpts = await fetchTradierOptions(ticker, dateTimestamp);
+    if (tradierOpts) return tradierOpts;
+  }
+  return fetchYahooOptions(ticker, dateTimestamp);
+}
+
+async function fetchMarketQuote(ticker: string): Promise<TradierQuote | null> {
+  logTradierStatusOnce();
+  const tradierConfig = getTradierConfig();
+  if (tradierConfig.isConfigured) {
+    const q = await fetchTradierQuote(ticker);
+    if (q) return q;
+  }
+
+  // Fallback quote extraction via Yahoo chart
+  try {
+    const chart = await fetchYahooChart(ticker, "5d", "1d");
+    const meta = chart?.meta;
+    if (meta) {
+      return {
+        symbol: ticker.toUpperCase(),
+        last: meta.regularMarketPrice || meta.chartPreviousClose || 0,
+        prevclose: meta.chartPreviousClose || 0,
+        week_52_high: meta.fiftyTwoWeekHigh,
+        week_52_low: meta.fiftyTwoWeekLow,
+        provider: "yahoo",
+      };
+    }
+  } catch (e) {}
+  return null;
+}
+
+async function fetchMarketQuotes(tickers: string[]): Promise<Record<string, TradierQuote>> {
+  logTradierStatusOnce();
+  const tradierConfig = getTradierConfig();
+  if (tradierConfig.isConfigured) {
+    const quotes = await fetchTradierQuotes(tickers);
+    if (Object.keys(quotes).length > 0) return quotes;
+  }
+
+  // Fallback: fetch quotes via Yahoo chart meta
+  const result: Record<string, TradierQuote> = {};
+  await Promise.all(
+    tickers.map(async (t) => {
+      try {
+        const q = await fetchMarketQuote(t);
+        if (q) result[t.toUpperCase()] = q;
+      } catch (e) {}
+    })
+  );
+  return result;
+}
+
 // --- FULL TECHNICALS FETCHER ---
 async function getTechnicalsForTicker(ticker: string) {
-  const chart = await fetchYahooChart(ticker, "1y", "1d");
+  const chart = await fetchMarketChart(ticker, "1y", "1d");
   const quoteSummary = await fetchYahooQuoteSummary(ticker);
+  const tradierQuote = await fetchMarketQuote(ticker).catch(() => null);
 
   const meta = chart?.meta || {};
-  const currentPrice = meta.regularMarketPrice || meta.chartPreviousClose || null;
-  const fiftyTwoWeekHigh = meta.fiftyTwoWeekHigh || null;
-  const fiftyTwoWeekLow = meta.fiftyTwoWeekLow || null;
+  const currentPrice = tradierQuote?.last || meta.regularMarketPrice || meta.chartPreviousClose || null;
+  const fiftyTwoWeekHigh = tradierQuote?.week_52_high || meta.fiftyTwoWeekHigh || null;
+  const fiftyTwoWeekLow = tradierQuote?.week_52_low || meta.fiftyTwoWeekLow || null;
 
   const timestamps = chart?.timestamp || [];
   const rawCloses = chart?.indicators?.quote?.[0]?.close || [];
@@ -494,14 +907,14 @@ async function getTechnicalsForTicker(ticker: string) {
   // Implied volatility from options chain nearest ATM
   let impliedVol: number | null = null;
   try {
-    const opt = await fetchYahooOptions(ticker);
+    const opt = await fetchMarketOptions(ticker);
     const puts = opt?.options?.[0]?.puts || [];
     if (puts.length > 0 && currentPrice) {
       const atmPut = puts.reduce((prev: any, curr: any) =>
         Math.abs(curr.strike - currentPrice) < Math.abs(prev.strike - currentPrice) ? curr : prev
       );
       if (atmPut?.impliedVolatility) {
-        impliedVol = Number((atmPut.impliedVolatility * 100).toFixed(2));
+        impliedVol = Number((atmPut.impliedVolatility * (atmPut.impliedVolatility > 1 ? 1 : 100)).toFixed(2));
       }
     }
   } catch (e) {}
@@ -759,6 +1172,53 @@ app.get("/api/universes", (req: Request, res: Response) => {
   });
 });
 
+// Market Data Provider Status
+app.get("/api/market-data-status", (req: Request, res: Response) => {
+  const info = getMarketDataProviderInfo();
+  res.json(info);
+});
+
+// Batch Real-Time Stock Quotes (Tradier with fallback)
+app.get("/api/quotes", async (req: Request, res: Response) => {
+  try {
+    const symbolsParam = (req.query.symbols || req.query.tickers || "") as string;
+    const symbols = symbolsParam
+      ? symbolsParam.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
+      : getWatchlist();
+
+    const quotes = await fetchMarketQuotes(symbols);
+    const providerInfo = getMarketDataProviderInfo();
+    res.json({
+      provider: providerInfo.provider,
+      isTradierConfigured: providerInfo.isTradierConfigured,
+      symbols,
+      quotes,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Single Real-Time Stock Quote (Tradier with fallback)
+app.get("/api/quote", async (req: Request, res: Response) => {
+  try {
+    const symbol = ((req.query.symbol || req.query.ticker || "") as string).trim().toUpperCase();
+    if (!symbol) {
+      return res.status(400).json({ error: "symbol query parameter is required" });
+    }
+    const quote = await fetchMarketQuote(symbol);
+    const providerInfo = getMarketDataProviderInfo();
+    res.json({
+      provider: providerInfo.provider,
+      isTradierConfigured: providerInfo.isTradierConfigured,
+      symbol,
+      quote,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Technicals Screen
 app.get("/api/technicals", async (req: Request, res: Response) => {
   try {
@@ -796,7 +1256,7 @@ app.get("/api/fall-detector", async (req: Request, res: Response) => {
     const fallenStocks: any[] = [];
 
     for (const ticker of tickers) {
-      const chart = await fetchYahooChart(ticker, "3mo", "1d");
+      const chart = await fetchMarketChart(ticker, "3mo", "1d");
       if (!chart) continue;
 
       const timestamps = chart.timestamp || [];
@@ -926,7 +1386,7 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
     const today = new Date();
 
     for (const ticker of tickerList) {
-      const optData = await fetchYahooOptions(ticker);
+      const optData = await fetchMarketOptions(ticker);
       if (!optData) continue;
 
       const meta = optData.quote || {};
@@ -934,7 +1394,7 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       if (!currentPrice || currentPrice <= 0) continue;
 
       // Compute underlying stock RSI(14) and 20-period Bollinger Bands & Fibonacci levels
-      const chart = await fetchYahooChart(ticker, "3mo", "1d");
+      const chart = await fetchMarketChart(ticker, "3mo", "1d");
       const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
         (c: any) => c !== null && c !== undefined
       );
@@ -983,7 +1443,7 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       for (const exp of validExpirations) {
         let chain = optData;
         if (optData.expirationDates?.[0] !== exp.timestamp) {
-          const fetched = await fetchYahooOptions(ticker, exp.timestamp);
+          const fetched = await fetchMarketOptions(ticker, exp.timestamp);
           if (fetched) chain = fetched;
         }
 
@@ -1145,7 +1605,7 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
       optData = cache.optData;
       rawExpirations = cache.rawExpirations;
     } else {
-      optData = await fetchYahooOptions(ticker);
+      optData = await fetchMarketOptions(ticker);
       if (!optData) {
         return res.status(404).json({ error: `No options data found for ${ticker}` });
       }
@@ -1204,7 +1664,7 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
     if (!isAllExps) {
       let chain = cache.expDataMap.get(targetExpTs);
       if (!chain) {
-        chain = targetExpTs === rawExpirations[0] ? optData : (await fetchYahooOptions(ticker, targetExpTs)) || optData;
+        chain = targetExpTs === rawExpirations[0] ? optData : (await fetchMarketOptions(ticker, targetExpTs)) || optData;
         cache.expDataMap.set(targetExpTs, chain);
       }
       singleCalls = mapOptionContracts(chain.options?.[0]?.calls || [], true, singleDte, singleExpDateStr);
@@ -1223,7 +1683,7 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
         for (let i = 0; i < missingTs.length; i += 8) {
           const chunk = missingTs.slice(i, i + 8);
           const chunkResults = await Promise.all(
-            chunk.map((ts) => fetchYahooOptions(ticker, ts).catch(() => null))
+            chunk.map((ts) => fetchMarketOptions(ticker, ts).catch(() => null))
           );
           chunk.forEach((ts, idx) => {
             const resData = chunkResults[idx];
@@ -1252,7 +1712,7 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
 
     // Technicals and earnings for underlying stock
     const [chart, quoteSummary] = await Promise.all([
-      fetchYahooChart(ticker, "3mo", "1d"),
+      fetchMarketChart(ticker, "3mo", "1d"),
       fetchYahooQuoteSummary(ticker).catch(() => null),
     ]);
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
@@ -1340,7 +1800,7 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const noStrikeRange = req.query.noStrikeRange === "true";
     const noFallback = req.query.noFallback === "true";
 
-    const optData = await fetchYahooOptions(ticker);
+    const optData = await fetchMarketOptions(ticker);
     if (!optData) {
       return res.status(404).json({ error: `No options data for ${ticker}` });
     }
@@ -1350,7 +1810,7 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const expDateStrs = rawExpirations.map((ts) => new Date(ts * 1000).toISOString().split("T")[0]);
 
     // Calculate RSI, Bollinger Bands, and Fibonacci for ticker
-    const chart = await fetchYahooChart(ticker, "3mo", "1d");
+    const chart = await fetchMarketChart(ticker, "3mo", "1d");
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
@@ -1399,7 +1859,7 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
       const ts = rawExpirations[idx];
 
       const chain =
-        ts === rawExpirations[0] ? optData : (await fetchYahooOptions(ticker, ts)) || optData;
+        ts === rawExpirations[0] ? optData : (await fetchMarketOptions(ticker, ts)) || optData;
 
       const contracts = optionType === "call" ? chain.options?.[0]?.calls || [] : chain.options?.[0]?.puts || [];
 
@@ -1632,7 +2092,7 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       : (req.query.pctOfPrice ? parseFloat(req.query.pctOfPrice as string) : null);
     const noFallback = req.query.noFallback === "true";
 
-    const optData = await fetchYahooOptions(ticker);
+    const optData = await fetchMarketOptions(ticker);
     if (!optData) {
       return res.status(404).json({ error: `No options data found for ${ticker}` });
     }
@@ -1643,7 +2103,7 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
     }
 
     // Compute RSI, Bollinger, & Fibonacci for underlying stock
-    const chart = await fetchYahooChart(ticker, "3mo", "1d");
+    const chart = await fetchMarketChart(ticker, "3mo", "1d");
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
@@ -1777,7 +2237,7 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
       const chain =
         exp.timestamp === rawExpirations[0]
           ? optData
-          : (await fetchYahooOptions(ticker, exp.timestamp)) || optData;
+          : (await fetchMarketOptions(ticker, exp.timestamp)) || optData;
 
       const contracts = optionType === "call" ? chain.options?.[0]?.calls || [] : chain.options?.[0]?.puts || [];
       if (contracts.length === 0) continue;
@@ -2000,13 +2460,13 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
     await Promise.all(
       tickers.map(async (t) => {
         try {
-          const optData = await fetchYahooOptions(t);
+          const optData = await fetchMarketOptions(t);
           if (!optData) return;
           const currentPrice = optData.quote?.regularMarketPrice;
           if (!currentPrice) return;
 
           // Technicals
-          const chart = await fetchYahooChart(t, "3mo", "1d");
+          const chart = await fetchMarketChart(t, "3mo", "1d");
           const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
             (c: any) => c !== null && c !== undefined
           );
@@ -2047,7 +2507,7 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
             const chain =
               exp.timestamp === rawExpirations[0]
                 ? optData
-                : (await fetchYahooOptions(t, exp.timestamp)) || optData;
+                : (await fetchMarketOptions(t, exp.timestamp)) || optData;
 
             const contracts = optionType === "call" ? chain.options?.[0]?.calls || [] : chain.options?.[0]?.puts || [];
             if (contracts.length === 0) continue;
@@ -2968,7 +3428,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
           try {
             // Concurrently fetch options chain, technicals, and SEC filing impact
             const [optData, technicals, secFilingImpact] = await Promise.all([
-              fetchYahooOptions(ticker),
+              fetchMarketOptions(ticker),
               getTechnicalsForTicker(ticker),
               evaluateSecFilingImpactForTicker(ticker),
             ]);
@@ -3020,7 +3480,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
             for (const exp of targetExpirations) {
               let chain = optData;
               if (optData.expirationDates?.[0] !== exp.timestamp) {
-                const fetched = await fetchYahooOptions(ticker, exp.timestamp);
+                const fetched = await fetchMarketOptions(ticker, exp.timestamp);
                 if (fetched) chain = fetched;
               }
 

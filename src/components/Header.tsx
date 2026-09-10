@@ -14,7 +14,13 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
-  BookOpen
+  BookOpen,
+  Database,
+  ExternalLink,
+  Key,
+  CheckCircle2,
+  AlertCircle,
+  X,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -54,6 +60,20 @@ export const Header: React.FC<HeaderProps> = ({
   const navRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [providerStatus, setProviderStatus] = useState<{
+    provider: string;
+    isTradierConfigured: boolean;
+    name: string;
+    description: string;
+  } | null>(null);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/market-data-status")
+      .then((r) => r.json())
+      .then((data) => setProviderStatus(data))
+      .catch(() => {});
+  }, []);
 
   const isSuperAdmin = Boolean(
     user?.email && user.email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase()
@@ -144,10 +164,26 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 text-xs text-slate-400">
-            <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Live Yahoo & SEC Data
-            </span>
+            <button
+              onClick={() => setShowProviderModal(true)}
+              className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-mono text-xs transition border cursor-pointer ${
+                providerStatus?.isTradierConfigured
+                  ? "bg-cyan-950/60 text-cyan-300 border-cyan-700/50 hover:bg-cyan-900/60 shadow-sm"
+                  : "bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800"
+              }`}
+              title="Click to view Market Data Feed status (Tradier Brokerage & SEC)"
+            >
+              <span
+                className={`w-2 h-2 rounded-full animate-pulse ${
+                  providerStatus?.isTradierConfigured ? "bg-cyan-400" : "bg-emerald-500"
+                }`}
+              ></span>
+              <span>
+                {providerStatus?.isTradierConfigured
+                  ? "Live Tradier & SEC Data"
+                  : "Live Yahoo (Tradier Ready)"}
+              </span>
+            </button>
             <button
               onClick={onOpenUserGuide}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
@@ -229,6 +265,108 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
       </div>
+
+      {/* Market Data Provider Status Modal */}
+      {showProviderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${
+                  providerStatus?.isTradierConfigured ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                }`}>
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Market Data Feed Provider</h3>
+                  <p className="text-xs text-slate-400">Real-time stock quotes, options chains & historical prices</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowProviderModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/70 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-slate-400">Active Provider</div>
+                  <div className="text-sm font-semibold text-white flex items-center gap-2 mt-0.5">
+                    {providerStatus?.isTradierConfigured ? (
+                      <>
+                        <span className="text-cyan-400">Tradier Brokerage API</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
+                          PRIMARY
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-emerald-400">Yahoo Finance (Fallback)</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
+                          TRADIER READY
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <span className={`w-3 h-3 rounded-full ${
+                  providerStatus?.isTradierConfigured ? "bg-cyan-400 animate-pulse" : "bg-emerald-500 animate-pulse"
+                }`} />
+              </div>
+
+              {providerStatus?.isTradierConfigured ? (
+                <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-800/50 space-y-2">
+                  <div className="flex items-center gap-2 text-cyan-300 text-xs font-semibold">
+                    <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                    Tradier Brokerage API Active
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Stock quotes, options expiration dates, full option chains, and technical historical candles are streaming directly from your configured Tradier API account.
+                  </p>
+                  <div className="pt-2 grid grid-cols-2 gap-2 text-[11px] font-mono">
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800 text-slate-300">
+                      Quotes: <span className="text-cyan-400 font-semibold">/markets/quotes</span>
+                    </div>
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800 text-slate-300">
+                      Chains: <span className="text-cyan-400 font-semibold">/options/chains</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-800/50 space-y-3">
+                  <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    Tradier Service Layer Implemented & Ready
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    The Tradier market data engine (quotes, history, option chains, and expirations) is fully wired into the backend router. To activate live data streaming from your Tradier account:
+                  </p>
+                  <ol className="text-xs text-slate-300 list-decimal list-inside space-y-1.5 bg-slate-900/80 p-3 rounded-lg border border-slate-800 font-mono">
+                    <li>Get your API token from <a href="https://developer.tradier.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline hover:text-cyan-300">developer.tradier.com</a></li>
+                    <li>Add <span className="text-amber-300 font-bold">TRADIER_API_TOKEN=&lt;your_token&gt;</span> to <span className="text-white font-bold">.env</span></li>
+                    <li>Optional: set <span className="text-slate-400">TRADIER_BASE_URL=https://api.tradier.com/v1</span> (defaults to prod)</li>
+                  </ol>
+                  <p className="text-[11px] text-slate-400">
+                    While the token is pending, the backend seamlessly falls back to Yahoo Finance with SEC EDGAR filings to maintain 100% app functionality.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowProviderModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };
