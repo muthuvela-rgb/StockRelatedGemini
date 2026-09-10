@@ -16,6 +16,7 @@ import { UserGuideModal } from "./components/UserGuideModal";
 import { LoginPortal } from "./components/LoginPortal";
 import { AccessAuditViewer } from "./components/AccessAuditViewer";
 import { JuniorInvestorAcademy } from "./components/JuniorInvestorAcademy";
+import { MarketSentiment } from "./components/MarketSentiment";
 import { LineChart, BookOpen } from "lucide-react";
 
 const AppContent: React.FC = () => {
@@ -137,10 +138,13 @@ const AppContent: React.FC = () => {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === "put-recommendations" && (
-          <PutRecommendationsViewer watchlist={watchlist} />
+          <PutRecommendationsViewer watchlist={watchlist} onNavigateTab={setActiveTab} />
         )}
         {activeTab === "options-scanner" && (
           <PutScanner watchlist={watchlist} />
+        )}
+        {activeTab === "market-sentiment" && (
+          <MarketSentiment onNavigateTab={setActiveTab} />
         )}
         {activeTab === "fall-detector" && (
           <FallDetector watchlist={watchlist} />

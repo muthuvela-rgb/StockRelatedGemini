@@ -759,4 +759,72 @@ export interface AccessLogEntry {
   details?: string;
 }
 
+export interface VixData {
+  current: number;
+  change: number;
+  change_pct: number;
+  prevclose: number;
+  week_52_high: number;
+  week_52_low: number;
+  percentile_52w: number;
+  regime: string;
+  regime_tier: "LOW" | "NORMAL" | "ELEVATED" | "HIGH" | "PANIC";
+  regime_color: string;
+  historical_30d: Array<{ date: string; close: number; high: number; low: number }>;
+}
+
+export interface FearAndGreedHistoricalPoint {
+  date: string;
+  timestamp: number;
+  score: number;
+  rating: string;
+}
+
+export interface SentimentSubIndicator {
+  id: string;
+  name: string;
+  score: number;
+  rating: string;
+  description: string;
+  latest_value?: string;
+}
+
+export interface StrategyGuideline {
+  strategy: string;
+  recommendation: "PREFERRED" | "FAVORABLE" | "NEUTRAL" | "DEFENSIVE" | "AVOID";
+  action_text: string;
+  rationale: string;
+  risk_note: string;
+}
+
+export interface OptionsImplications {
+  put_selling_environment: "FAVORABLE" | "HIGH_YIELD_OPPORTUNITY" | "BALANCED" | "CAUTION_REQUIRED";
+  environment_title: string;
+  environment_summary: string;
+  volatility_skew_bias: string;
+  recommended_delta: string;
+  recommended_dte: string;
+  recommended_strike_discount: string;
+  cash_buffer_guideline: string;
+  strategy_guidelines: StrategyGuideline[];
+  key_action_bullets: string[];
+}
+
+export interface MarketSentimentData {
+  timestamp: string;
+  source: string;
+  vix: VixData;
+  fear_and_greed: {
+    score: number;
+    rating: string;
+    previous_close: number;
+    previous_1_week: number;
+    previous_1_month: number;
+    previous_1_year: number;
+    historical: FearAndGreedHistoricalPoint[];
+    sub_indicators: SentimentSubIndicator[];
+  };
+  options_implications: OptionsImplications;
+}
+
 

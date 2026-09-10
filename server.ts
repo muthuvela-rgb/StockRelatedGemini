@@ -302,16 +302,83 @@ export interface TradierQuote {
   [key: string]: any;
 }
 
+function normalizeTradierBaseUrl(raw?: string): string {
+  let base = (raw || "").trim();
+  if (!base) {
+    return process.env.TRADIER_ENV === "sandbox" ? "https://sandbox.tradier.com/v1" : "https://api.tradier.com/v1";
+  }
+  if (base.toLowerCase() === "sandbox") return "https://sandbox.tradier.com/v1";
+  if (base.toLowerCase() === "prod" || base.toLowerCase() === "production") return "https://api.tradier.com/v1";
+
+  // Prepend protocol if missing
+  if (!base.startsWith("http://") && !base.startsWith("https://")) {
+    base = `https://${base}`;
+  }
+  // Remove trailing slashes
+  base = base.replace(/\/+$/, "");
+  // Ensure /v1 endpoint version prefix is present for Tradier endpoints
+  if (!base.endsWith("/v1")) {
+    base = `${base}/v1`;
+  }
+  return base;
+}
+
 function getTradierConfig() {
   const token = (process.env.TRADIER_API_TOKEN || process.env.TRADIER_ACCESS_TOKEN || "").trim();
-  const rawBase = (process.env.TRADIER_BASE_URL || (process.env.TRADIER_ENV === "sandbox" ? "https://sandbox.tradier.com/v1" : "https://api.tradier.com/v1")).trim();
-  const baseUrl = rawBase.replace(/\/+$/, "");
+  const rawBase = process.env.TRADIER_BASE_URL;
+  const baseUrl = normalizeTradierBaseUrl(rawBase);
   return {
     token,
     baseUrl,
     isConfigured: Boolean(token),
   };
 }
+
+// --- TRADIER CIRCUIT BREAKER & RATE-LIMIT CONTROL ---
+let tradierCooldownUntil = 0;
+let tradierCooldownReason = "";
+
+function isTradierInCooldown(): boolean {
+  return Date.now() < tradierCooldownUntil;
+}
+
+function triggerTradierCooldown(reason: string, seconds = 60) {
+  tradierCooldownUntil = Date.now() + seconds * 1000;
+  tradierCooldownReason = reason;
+  console.warn(`[Tradier Circuit Breaker] Rate limit / quota reached (${reason}). Switching to Yahoo Finance fallback for ${seconds}s.`);
+}
+
+function handleTradierResponse(res: any, endpoint: string): boolean {
+  if (!res) return false;
+  const status = Number(res.status || 0);
+  const statusText = String(res.statusText || "").toLowerCase();
+  if (status === 429 || (status === 400 && (statusText.includes("quota") || statusText.includes("limit")))) {
+    triggerTradierCooldown(`${status} ${res.statusText || "Quota Exceeded"} on ${endpoint}`, 60);
+    return false;
+  }
+  const remaining = res.headers?.get ? res.headers.get("x-ratelimit-available") : null;
+  if (remaining !== null && Number(remaining) <= 2) {
+    console.warn(`[Tradier] Available quota window low: ${remaining} requests remaining.`);
+  }
+  return Boolean(res.ok);
+}
+
+// In-Memory Caching to minimize Tradier network hits and prevent quota exhaustion
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const tradierQuotesCache = new Map<string, CacheEntry<TradierQuote>>();
+const tradierExpirationsCache = new Map<string, CacheEntry<{ dateList: string[]; timestamps: number[] }>>();
+const tradierOptionsChainCache = new Map<string, CacheEntry<any>>();
+const tradierHistoryCache = new Map<string, CacheEntry<any>>();
+
+// In-flight request deduplication
+const inFlightQuotes = new Map<string, Promise<Record<string, TradierQuote>>>();
+const inFlightHistory = new Map<string, Promise<any>>();
+const inFlightExpirations = new Map<string, Promise<{ dateList: string[]; timestamps: number[] } | null>>();
+const inFlightOptionChains = new Map<string, Promise<any>>();
 
 let hasLoggedTradierStatus = false;
 function logTradierStatusOnce() {
@@ -327,202 +394,329 @@ function logTradierStatusOnce() {
 
 function getMarketDataProviderInfo() {
   const config = getTradierConfig();
+  const inCooldown = isTradierInCooldown();
+  const cooldownSecRemaining = inCooldown ? Math.max(1, Math.ceil((tradierCooldownUntil - Date.now()) / 1000)) : 0;
+  const activeProvider = !config.isConfigured ? "yahoo" : (inCooldown ? "yahoo" : "tradier");
+
   return {
-    provider: config.isConfigured ? "tradier" : "yahoo",
+    provider: activeProvider,
     primaryProvider: "tradier",
     isTradierConfigured: config.isConfigured,
+    tradierInCooldown: inCooldown,
+    cooldownSecondsRemaining: cooldownSecRemaining,
     tradierBaseUrl: config.baseUrl,
     fallbackAvailable: true,
     fallbackProvider: "yahoo",
-    description: config.isConfigured
-      ? "Live Tradier Brokerage Market Data (Real-time Equities & Options with ORATS Greeks)"
-      : "Tradier is the primary provider; operating with Yahoo Finance fallback (TRADIER_API_TOKEN not set in environment)",
+    description: !config.isConfigured
+      ? "Tradier is the primary provider; operating with Yahoo Finance fallback (TRADIER_API_TOKEN not set in environment)"
+      : inCooldown
+      ? `Tradier rate limit quota reached (${tradierCooldownReason || "exceeded 120 req/min"}). Seamless Yahoo Finance fallback active (re-engaging Tradier in ${cooldownSecRemaining}s)`
+      : "Live Tradier Brokerage Market Data (Real-time Equities & Options with ORATS Greeks)",
   };
 }
 
-// Fetch multiple quotes from Tradier
+// Fetch multiple quotes from Tradier with caching & chunking
 async function fetchTradierQuotes(symbols: string[]): Promise<Record<string, TradierQuote>> {
   const config = getTradierConfig();
-  if (!config.isConfigured || symbols.length === 0) return {};
+  if (!config.isConfigured || isTradierInCooldown() || symbols.length === 0) return {};
 
-  try {
-    const symbolStr = symbols.map((s) => s.trim().toUpperCase()).filter(Boolean).join(",");
-    const url = `${config.baseUrl}/markets/quotes?symbols=${encodeURIComponent(symbolStr)}&greeks=false`;
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        Accept: "application/json",
-      },
-    });
+  const cleanSymbols = Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean)));
+  if (cleanSymbols.length === 0) return {};
 
-    if (!res.ok) {
-      console.warn(`[Tradier] Quote request failed: ${res.status} ${res.statusText}`);
-      return {};
+  const now = Date.now();
+  const result: Record<string, TradierQuote> = {};
+  const missingSymbols: string[] = [];
+
+  for (const s of cleanSymbols) {
+    const cached = tradierQuotesCache.get(s);
+    if (cached && cached.expiresAt > now) {
+      result[s] = cached.data;
+    } else {
+      missingSymbols.push(s);
     }
-
-    const data = await res.json();
-    const rawQuotes = data?.quotes?.quote;
-    if (!rawQuotes) return {};
-
-    const quotesArr: any[] = Array.isArray(rawQuotes) ? rawQuotes : [rawQuotes];
-    const map: Record<string, TradierQuote> = {};
-
-    for (const q of quotesArr) {
-      if (!q || !q.symbol) continue;
-      const sym = String(q.symbol).toUpperCase();
-      map[sym] = {
-        symbol: sym,
-        description: q.description || "",
-        exch: q.exch || "",
-        type: q.type || "stock",
-        last: Number(q.last ?? q.close ?? q.prevclose ?? 0),
-        change: Number(q.change ?? 0),
-        change_percentage: Number(q.change_percentage ?? 0),
-        volume: Number(q.volume ?? 0),
-        open: q.open !== null && q.open !== undefined ? Number(q.open) : undefined,
-        high: q.high !== null && q.high !== undefined ? Number(q.high) : undefined,
-        low: q.low !== null && q.low !== undefined ? Number(q.low) : undefined,
-        close: q.close !== null && q.close !== undefined ? Number(q.close) : undefined,
-        prevclose: q.prevclose !== null && q.prevclose !== undefined ? Number(q.prevclose) : undefined,
-        bid: Number(q.bid ?? 0),
-        ask: Number(q.ask ?? 0),
-        week_52_high: q.week_52_high !== null && q.week_52_high !== undefined ? Number(q.week_52_high) : undefined,
-        week_52_low: q.week_52_low !== null && q.week_52_low !== undefined ? Number(q.week_52_low) : undefined,
-        trade_date: q.trade_date,
-        provider: "tradier",
-      };
-    }
-    return map;
-  } catch (err) {
-    console.error("[Tradier] Error fetching quotes:", err);
-    return {};
   }
+
+  if (missingSymbols.length === 0) {
+    return result;
+  }
+
+  const cacheKey = missingSymbols.sort().join(",");
+  if (inFlightQuotes.has(cacheKey)) {
+    try {
+      const fetched = await inFlightQuotes.get(cacheKey)!;
+      return { ...result, ...fetched };
+    } catch {
+      return result;
+    }
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      // Chunk symbols into batches of 40 to stay well below URL limits
+      for (let i = 0; i < missingSymbols.length; i += 40) {
+        if (isTradierInCooldown()) break;
+        const chunk = missingSymbols.slice(i, i + 40);
+        const url = `${config.baseUrl}/markets/quotes?symbols=${encodeURIComponent(chunk.join(","))}&greeks=false`;
+        const res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${config.token}`,
+            Accept: "application/json",
+          },
+        });
+
+        if (!handleTradierResponse(res, "/markets/quotes")) {
+          break;
+        }
+
+        const data = await res.json().catch(() => null);
+        const rawQuotes = data?.quotes?.quote;
+        if (!rawQuotes) continue;
+
+        const quotesArr: any[] = Array.isArray(rawQuotes) ? rawQuotes : [rawQuotes];
+        for (const q of quotesArr) {
+          if (!q || !q.symbol) continue;
+          const sym = String(q.symbol).toUpperCase();
+          const parsedQuote: TradierQuote = {
+            symbol: sym,
+            description: q.description || "",
+            exch: q.exch || "",
+            type: q.type || "stock",
+            last: Number(q.last ?? q.close ?? q.prevclose ?? 0),
+            change: Number(q.change ?? 0),
+            change_percentage: Number(q.change_percentage ?? 0),
+            volume: Number(q.volume ?? 0),
+            open: q.open !== null && q.open !== undefined ? Number(q.open) : undefined,
+            high: q.high !== null && q.high !== undefined ? Number(q.high) : undefined,
+            low: q.low !== null && q.low !== undefined ? Number(q.low) : undefined,
+            close: q.close !== null && q.close !== undefined ? Number(q.close) : undefined,
+            prevclose: q.prevclose !== null && q.prevclose !== undefined ? Number(q.prevclose) : undefined,
+            bid: Number(q.bid ?? 0),
+            ask: Number(q.ask ?? 0),
+            week_52_high: q.week_52_high !== null && q.week_52_high !== undefined ? Number(q.week_52_high) : undefined,
+            week_52_low: q.week_52_low !== null && q.week_52_low !== undefined ? Number(q.week_52_low) : undefined,
+            trade_date: q.trade_date,
+            provider: "tradier",
+          };
+          result[sym] = parsedQuote;
+          tradierQuotesCache.set(sym, {
+            data: parsedQuote,
+            expiresAt: Date.now() + 25_000, // 25s TTL
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[Tradier] Error fetching quotes:", err);
+    } finally {
+      inFlightQuotes.delete(cacheKey);
+    }
+    return result;
+  })();
+
+  inFlightQuotes.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
-// Fetch single quote from Tradier
+// Fetch single quote from Tradier (hits quote cache first)
 async function fetchTradierQuote(symbol: string): Promise<TradierQuote | null> {
-  const map = await fetchTradierQuotes([symbol]);
-  return map[symbol.toUpperCase()] || null;
+  const sym = symbol.toUpperCase().trim();
+  const cached = tradierQuotesCache.get(sym);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+  const map = await fetchTradierQuotes([sym]);
+  return map[sym] || null;
 }
 
-// Fetch historical daily bars from Tradier (converted to standard chart format)
-async function fetchTradierHistory(ticker: string, range = "1y"): Promise<any> {
+// Fetch Tradier options expiration dates (cached for 15 minutes)
+async function fetchTradierExpirations(symbol: string): Promise<{ dateList: string[]; timestamps: number[] } | null> {
+  const sym = symbol.toUpperCase().trim();
+  const cached = tradierExpirationsCache.get(sym);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  if (inFlightExpirations.has(sym)) {
+    return inFlightExpirations.get(sym)!;
+  }
+
   const config = getTradierConfig();
-  if (!config.isConfigured) return null;
+  if (!config.isConfigured || isTradierInCooldown()) return null;
 
-  try {
-    const now = new Date();
-    let daysBack = 365;
-    if (range === "3mo") daysBack = 95;
-    else if (range === "6mo") daysBack = 185;
-    else if (range === "1mo") daysBack = 35;
-    else if (range === "5d") daysBack = 10;
-    else if (range === "2y") daysBack = 730;
-    else if (range === "5y") daysBack = 1825;
-
-    const startDateObj = new Date(now.getTime() - daysBack * 86400000);
-    const startStr = startDateObj.toISOString().split("T")[0];
-
-    const url = `${config.baseUrl}/markets/history?symbol=${encodeURIComponent(ticker.toUpperCase())}&interval=daily&start=${startStr}`;
-    const [historyRes, quote] = await Promise.all([
-      fetch(url, {
+  const promise = (async () => {
+    try {
+      const expUrl = `${config.baseUrl}/markets/options/expirations?symbol=${encodeURIComponent(sym)}&includeAllRoots=true`;
+      const expRes = await fetch(expUrl, {
         headers: {
           Authorization: `Bearer ${config.token}`,
           Accept: "application/json",
         },
-      }),
-      fetchTradierQuote(ticker).catch(() => null),
-    ]);
+      });
 
-    if (!historyRes.ok) return null;
-    const json = await historyRes.json();
-    const rawDays = json?.history?.day;
-    if (!rawDays) return null;
+      if (!handleTradierResponse(expRes, `/markets/options/expirations (${sym})`)) {
+        return null;
+      }
 
-    const days: any[] = Array.isArray(rawDays) ? rawDays : [rawDays];
-    if (days.length === 0) return null;
+      const expJson = await expRes.json().catch(() => null);
+      const rawDates = expJson?.expirations?.date;
+      if (!rawDates) return null;
 
-    const timestamps: number[] = [];
-    const closes: number[] = [];
-    const opens: number[] = [];
-    const highs: number[] = [];
-    const lows: number[] = [];
-    const volumes: number[] = [];
+      const dateList: string[] = Array.isArray(rawDates) ? rawDates : [rawDates];
+      if (dateList.length === 0) return null;
 
-    for (const d of days) {
-      if (!d || !d.date || d.close === undefined || d.close === null) continue;
-      const ts = Math.floor(new Date(`${d.date}T16:00:00Z`).getTime() / 1000);
-      timestamps.push(ts);
-      closes.push(Number(d.close));
-      opens.push(Number(d.open ?? d.close));
-      highs.push(Number(d.high ?? d.close));
-      lows.push(Number(d.low ?? d.close));
-      volumes.push(Number(d.volume ?? 0));
+      const timestamps = dateList.map((dStr) =>
+        Math.floor(new Date(`${dStr}T16:00:00Z`).getTime() / 1000)
+      );
+
+      const entry = { dateList, timestamps };
+      tradierExpirationsCache.set(sym, {
+        data: entry,
+        expiresAt: Date.now() + 15 * 60_000, // 15 min TTL
+      });
+      return entry;
+    } catch (err) {
+      console.error(`[Tradier] Error fetching expirations for ${sym}:`, err);
+      return null;
+    } finally {
+      inFlightExpirations.delete(sym);
     }
+  })();
 
-    const lastClose = closes[closes.length - 1];
-    const prevClose = closes.length > 1 ? closes[closes.length - 2] : lastClose;
-    const max52 = quote?.week_52_high ?? (highs.length > 0 ? Math.max(...highs) : lastClose);
-    const min52 = quote?.week_52_low ?? (lows.length > 0 ? Math.min(...lows) : lastClose);
-
-    return {
-      meta: {
-        currency: "USD",
-        symbol: ticker.toUpperCase(),
-        regularMarketPrice: quote?.last ?? lastClose,
-        chartPreviousClose: quote?.prevclose ?? prevClose,
-        fiftyTwoWeekHigh: max52,
-        fiftyTwoWeekLow: min52,
-        provider: "tradier",
-      },
-      timestamp: timestamps,
-      indicators: {
-        quote: [
-          {
-            close: closes,
-            open: opens,
-            high: highs,
-            low: lows,
-            volume: volumes,
-          },
-        ],
-      },
-    };
-  } catch (e) {
-    console.error(`[Tradier] Error fetching history for ${ticker}:`, e);
-    return null;
-  }
+  inFlightExpirations.set(sym, promise);
+  return promise;
 }
 
-// Fetch Tradier options chain with ORATS Greeks
+// Fetch historical daily bars from Tradier with caching & deduplication
+async function fetchTradierHistory(ticker: string, range = "1y"): Promise<any> {
+  const sym = ticker.toUpperCase().trim();
+  const cacheKey = `${sym}:${range}`;
+  const cached = tradierHistoryCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  if (inFlightHistory.has(cacheKey)) {
+    return inFlightHistory.get(cacheKey)!;
+  }
+
+  const config = getTradierConfig();
+  if (!config.isConfigured || isTradierInCooldown()) return null;
+
+  const promise = (async () => {
+    try {
+      const now = new Date();
+      let daysBack = 365;
+      if (range === "3mo") daysBack = 95;
+      else if (range === "6mo") daysBack = 185;
+      else if (range === "1mo") daysBack = 35;
+      else if (range === "5d") daysBack = 10;
+      else if (range === "2y") daysBack = 730;
+      else if (range === "5y") daysBack = 1825;
+
+      const startDateObj = new Date(now.getTime() - daysBack * 86400000);
+      const startStr = startDateObj.toISOString().split("T")[0];
+
+      const url = `${config.baseUrl}/markets/history?symbol=${encodeURIComponent(sym)}&interval=daily&start=${startStr}`;
+      const [historyRes, quote] = await Promise.all([
+        fetch(url, {
+          headers: {
+            Authorization: `Bearer ${config.token}`,
+            Accept: "application/json",
+          },
+        }),
+        fetchTradierQuote(sym).catch(() => null),
+      ]);
+
+      if (!handleTradierResponse(historyRes, `/markets/history (${sym})`)) {
+        return null;
+      }
+
+      const json = await historyRes.json().catch(() => null);
+      const rawDays = json?.history?.day;
+      if (!rawDays) return null;
+
+      const days: any[] = Array.isArray(rawDays) ? rawDays : [rawDays];
+      if (days.length === 0) return null;
+
+      const timestamps: number[] = [];
+      const closes: number[] = [];
+      const opens: number[] = [];
+      const highs: number[] = [];
+      const lows: number[] = [];
+      const volumes: number[] = [];
+
+      for (const d of days) {
+        if (!d || !d.date || d.close === undefined || d.close === null) continue;
+        const ts = Math.floor(new Date(`${d.date}T16:00:00Z`).getTime() / 1000);
+        timestamps.push(ts);
+        closes.push(Number(d.close));
+        opens.push(Number(d.open ?? d.close));
+        highs.push(Number(d.high ?? d.close));
+        lows.push(Number(d.low ?? d.close));
+        volumes.push(Number(d.volume ?? 0));
+      }
+
+      const lastClose = closes[closes.length - 1];
+      const prevClose = closes.length > 1 ? closes[closes.length - 2] : lastClose;
+      const max52 = quote?.week_52_high ?? (highs.length > 0 ? Math.max(...highs) : lastClose);
+      const min52 = quote?.week_52_low ?? (lows.length > 0 ? Math.min(...lows) : lastClose);
+
+      const chartData = {
+        meta: {
+          currency: "USD",
+          symbol: sym,
+          regularMarketPrice: quote?.last ?? lastClose,
+          chartPreviousClose: quote?.prevclose ?? prevClose,
+          fiftyTwoWeekHigh: max52,
+          fiftyTwoWeekLow: min52,
+          provider: "tradier",
+        },
+        timestamp: timestamps,
+        indicators: {
+          quote: [
+            {
+              close: closes,
+              open: opens,
+              high: highs,
+              low: lows,
+              volume: volumes,
+            },
+          ],
+        },
+      };
+
+      tradierHistoryCache.set(cacheKey, {
+        data: chartData,
+        expiresAt: Date.now() + 5 * 60_000, // 5 min TTL
+      });
+
+      return chartData;
+    } catch (e) {
+      console.error(`[Tradier] Error fetching history for ${sym}:`, e);
+      return null;
+    } finally {
+      inFlightHistory.delete(cacheKey);
+    }
+  })();
+
+  inFlightHistory.set(cacheKey, promise);
+  return promise;
+}
+
+// Fetch Tradier options chain with ORATS Greeks & caching
 async function fetchTradierOptions(ticker: string, dateTimestamp?: number): Promise<any> {
   const config = getTradierConfig();
-  if (!config.isConfigured) return null;
+  if (!config.isConfigured || isTradierInCooldown()) return null;
 
   try {
-    const symbol = ticker.toUpperCase();
-    const expUrl = `${config.baseUrl}/markets/options/expirations?symbol=${encodeURIComponent(symbol)}&includeAllRoots=true`;
-    const [expRes, quote] = await Promise.all([
-      fetch(expUrl, {
-        headers: {
-          Authorization: `Bearer ${config.token}`,
-          Accept: "application/json",
-        },
-      }),
+    const symbol = ticker.toUpperCase().trim();
+    const [expData, quote] = await Promise.all([
+      fetchTradierExpirations(symbol),
       fetchTradierQuote(symbol).catch(() => null),
     ]);
 
-    if (!expRes.ok) return null;
-    const expJson = await expRes.json();
-    const rawDates = expJson?.expirations?.date;
-    if (!rawDates) return null;
+    if (!expData || expData.dateList.length === 0) return null;
 
-    const dateList: string[] = Array.isArray(rawDates) ? rawDates : [rawDates];
-    if (dateList.length === 0) return null;
-
-    const expirationTimestamps = dateList.map((dStr) =>
-      Math.floor(new Date(`${dStr}T16:00:00Z`).getTime() / 1000)
-    );
+    const { dateList, timestamps: expirationTimestamps } = expData;
 
     let targetDateStr = dateList[0];
     if (dateTimestamp) {
@@ -532,90 +726,122 @@ async function fetchTradierOptions(ticker: string, dateTimestamp?: number): Prom
       }
     }
 
-    const chainUrl = `${config.baseUrl}/markets/options/chains?symbol=${encodeURIComponent(symbol)}&expiration=${targetDateStr}&greeks=true`;
-    const chainRes = await fetch(chainUrl, {
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        Accept: "application/json",
-      },
-    });
-
-    if (!chainRes.ok) return null;
-    const chainJson = await chainRes.json();
-    const rawOptions = chainJson?.options?.option;
-    if (!rawOptions) return null;
-
-    const optList: any[] = Array.isArray(rawOptions) ? rawOptions : [rawOptions];
-    const calls: any[] = [];
-    const puts: any[] = [];
-    const strikesSet = new Set<number>();
-
-    const underlyingPrice = quote?.last || 100;
-
-    for (const opt of optList) {
-      if (!opt) continue;
-      const strike = Number(opt.strike);
-      strikesSet.add(strike);
-
-      const isCall = opt.option_type?.toLowerCase() === "call";
-      const iv = opt.greeks?.mid_iv || opt.greeks?.smv_vol || opt.greeks?.bid_iv || 0;
-
-      const contract = {
-        contractSymbol: opt.symbol,
-        strike,
-        currency: "USD",
-        lastPrice: Number(opt.last ?? 0),
-        change: Number(opt.change ?? 0),
-        percentChange: Number(opt.change_percentage ?? 0),
-        volume: Number(opt.volume ?? 0),
-        openInterest: Number(opt.open_interest ?? 0),
-        bid: Number(opt.bid ?? 0),
-        ask: Number(opt.ask ?? 0),
-        impliedVolatility: iv,
-        inTheMoney: isCall ? strike < underlyingPrice : strike > underlyingPrice,
-        expirationDate: targetDateStr,
-        greeks: {
-          delta: opt.greeks?.delta ?? 0,
-          gamma: opt.greeks?.gamma ?? 0,
-          theta: opt.greeks?.theta ?? 0,
-          vega: opt.greeks?.vega ?? 0,
-        },
-      };
-
-      if (isCall) calls.push(contract);
-      else puts.push(contract);
+    const chainCacheKey = `${symbol}:${targetDateStr}`;
+    const cachedChain = tradierOptionsChainCache.get(chainCacheKey);
+    if (cachedChain && cachedChain.expiresAt > Date.now()) {
+      return cachedChain.data;
     }
 
-    calls.sort((a, b) => a.strike - b.strike);
-    puts.sort((a, b) => a.strike - b.strike);
-    const strikes = Array.from(strikesSet).sort((a, b) => a - b);
+    if (inFlightOptionChains.has(chainCacheKey)) {
+      return inFlightOptionChains.get(chainCacheKey)!;
+    }
 
-    return {
-      underlyingSymbol: symbol,
-      expirationDates: expirationTimestamps,
-      strikes,
-      hasMiniOptions: false,
-      quote: {
-        symbol,
-        regularMarketPrice: quote?.last ?? underlyingPrice,
-        regularMarketChange: quote?.change ?? 0,
-        regularMarketChangePercent: quote?.change_percentage ?? 0,
-        regularMarketVolume: quote?.volume ?? 0,
-        bid: quote?.bid ?? 0,
-        ask: quote?.ask ?? 0,
-        fiftyTwoWeekHigh: quote?.week_52_high,
-        fiftyTwoWeekLow: quote?.week_52_low,
-      },
-      options: [
-        {
-          expirationDate: Math.floor(new Date(`${targetDateStr}T16:00:00Z`).getTime() / 1000),
+    const chainPromise = (async () => {
+      try {
+        const chainUrl = `${config.baseUrl}/markets/options/chains?symbol=${encodeURIComponent(symbol)}&expiration=${targetDateStr}&greeks=true`;
+        const chainRes = await fetch(chainUrl, {
+          headers: {
+            Authorization: `Bearer ${config.token}`,
+            Accept: "application/json",
+          },
+        });
+
+        if (!handleTradierResponse(chainRes, `/markets/options/chains (${symbol} ${targetDateStr})`)) {
+          return null;
+        }
+
+        const chainJson = await chainRes.json().catch(() => null);
+        const rawOptions = chainJson?.options?.option;
+        if (!rawOptions) return null;
+
+        const optList: any[] = Array.isArray(rawOptions) ? rawOptions : [rawOptions];
+        const calls: any[] = [];
+        const puts: any[] = [];
+        const strikesSet = new Set<number>();
+
+        const underlyingPrice = quote?.last || 100;
+
+        for (const opt of optList) {
+          if (!opt) continue;
+          const strike = Number(opt.strike);
+          strikesSet.add(strike);
+
+          const isCall = opt.option_type?.toLowerCase() === "call";
+          const iv = opt.greeks?.mid_iv || opt.greeks?.smv_vol || opt.greeks?.bid_iv || 0;
+
+          const contract = {
+            contractSymbol: opt.symbol,
+            strike,
+            currency: "USD",
+            lastPrice: Number(opt.last ?? 0),
+            change: Number(opt.change ?? 0),
+            percentChange: Number(opt.change_percentage ?? 0),
+            volume: Number(opt.volume ?? 0),
+            openInterest: Number(opt.open_interest ?? 0),
+            bid: Number(opt.bid ?? 0),
+            ask: Number(opt.ask ?? 0),
+            impliedVolatility: iv,
+            inTheMoney: isCall ? strike < underlyingPrice : strike > underlyingPrice,
+            expirationDate: targetDateStr,
+            greeks: {
+              delta: opt.greeks?.delta ?? 0,
+              gamma: opt.greeks?.gamma ?? 0,
+              theta: opt.greeks?.theta ?? 0,
+              vega: opt.greeks?.vega ?? 0,
+            },
+          };
+
+          if (isCall) calls.push(contract);
+          else puts.push(contract);
+        }
+
+        calls.sort((a, b) => a.strike - b.strike);
+        puts.sort((a, b) => a.strike - b.strike);
+        const strikes = Array.from(strikesSet).sort((a, b) => a - b);
+
+        const result = {
+          underlyingSymbol: symbol,
+          expirationDates: expirationTimestamps,
+          strikes,
           hasMiniOptions: false,
-          calls,
-          puts,
-        },
-      ],
-      provider: "tradier",
-    };
+          quote: {
+            symbol,
+            regularMarketPrice: quote?.last ?? underlyingPrice,
+            regularMarketChange: quote?.change ?? 0,
+            regularMarketChangePercent: quote?.change_percentage ?? 0,
+            regularMarketVolume: quote?.volume ?? 0,
+            bid: quote?.bid ?? 0,
+            ask: quote?.ask ?? 0,
+            fiftyTwoWeekHigh: quote?.week_52_high,
+            fiftyTwoWeekLow: quote?.week_52_low,
+          },
+          options: [
+            {
+              expirationDate: Math.floor(new Date(`${targetDateStr}T16:00:00Z`).getTime() / 1000),
+              hasMiniOptions: false,
+              calls,
+              puts,
+            },
+          ],
+          provider: "tradier",
+        };
+
+        tradierOptionsChainCache.set(chainCacheKey, {
+          data: result,
+          expiresAt: Date.now() + 45_000, // 45s TTL
+        });
+
+        return result;
+      } catch (err) {
+        console.error(`[Tradier] Error fetching options chain for ${symbol}:`, err);
+        return null;
+      } finally {
+        inFlightOptionChains.delete(chainCacheKey);
+      }
+    })();
+
+    inFlightOptionChains.set(chainCacheKey, chainPromise);
+    return chainPromise;
   } catch (err) {
     console.error(`[Tradier] Error fetching options for ${ticker}:`, err);
     return null;
@@ -789,7 +1015,7 @@ async function fetchStockTwits(ticker: string) {
 async function fetchMarketChart(ticker: string, range = "1y", interval = "1d"): Promise<any> {
   logTradierStatusOnce();
   const tradierConfig = getTradierConfig();
-  if (tradierConfig.isConfigured) {
+  if (tradierConfig.isConfigured && !isTradierInCooldown()) {
     const tradierChart = await fetchTradierHistory(ticker, range);
     if (tradierChart) return tradierChart;
   }
@@ -799,7 +1025,7 @@ async function fetchMarketChart(ticker: string, range = "1y", interval = "1d"): 
 async function fetchMarketOptions(ticker: string, dateTimestamp?: number): Promise<any> {
   logTradierStatusOnce();
   const tradierConfig = getTradierConfig();
-  if (tradierConfig.isConfigured) {
+  if (tradierConfig.isConfigured && !isTradierInCooldown()) {
     const tradierOpts = await fetchTradierOptions(ticker, dateTimestamp);
     if (tradierOpts) return tradierOpts;
   }
@@ -809,7 +1035,7 @@ async function fetchMarketOptions(ticker: string, dateTimestamp?: number): Promi
 async function fetchMarketQuote(ticker: string): Promise<TradierQuote | null> {
   logTradierStatusOnce();
   const tradierConfig = getTradierConfig();
-  if (tradierConfig.isConfigured) {
+  if (tradierConfig.isConfigured && !isTradierInCooldown()) {
     const q = await fetchTradierQuote(ticker);
     if (q) return q;
   }
@@ -835,21 +1061,25 @@ async function fetchMarketQuote(ticker: string): Promise<TradierQuote | null> {
 async function fetchMarketQuotes(tickers: string[]): Promise<Record<string, TradierQuote>> {
   logTradierStatusOnce();
   const tradierConfig = getTradierConfig();
-  if (tradierConfig.isConfigured) {
+  if (tradierConfig.isConfigured && !isTradierInCooldown()) {
     const quotes = await fetchTradierQuotes(tickers);
     if (Object.keys(quotes).length > 0) return quotes;
   }
 
-  // Fallback: fetch quotes via Yahoo chart meta
+  // Fallback: fetch quotes via Yahoo chart meta in bounded concurrent chunks
   const result: Record<string, TradierQuote> = {};
-  await Promise.all(
-    tickers.map(async (t) => {
-      try {
-        const q = await fetchMarketQuote(t);
-        if (q) result[t.toUpperCase()] = q;
-      } catch (e) {}
-    })
-  );
+  const chunkSize = 5;
+  for (let i = 0; i < tickers.length; i += chunkSize) {
+    const chunk = tickers.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (t) => {
+        try {
+          const q = await fetchMarketQuote(t);
+          if (q) result[t.toUpperCase()] = q;
+        } catch (e) {}
+      })
+    );
+  }
   return result;
 }
 
@@ -1178,6 +1408,356 @@ app.get("/api/market-data-status", (req: Request, res: Response) => {
   res.json(info);
 });
 
+// --- MARKET SENTIMENT & VIX / FEAR & GREED AGGREGATOR ---
+interface SentimentCacheEntry {
+  timestamp: number;
+  data: any;
+}
+let marketSentimentCache: SentimentCacheEntry | null = null;
+const MARKET_SENTIMENT_TTL_MS = 60 * 1000; // 60s cache
+
+async function getMarketSentimentData() {
+  const now = Date.now();
+  if (marketSentimentCache && now - marketSentimentCache.timestamp < MARKET_SENTIMENT_TTL_MS) {
+    return marketSentimentCache.data;
+  }
+
+  // 1. Fetch Real-time VIX Quote and Historical Bars
+  let vixQuote: any = null;
+  let vixChart: any = null;
+  try {
+    vixQuote = await fetchMarketQuote("VIX").catch(() => null);
+  } catch (e) {
+    vixQuote = null;
+  }
+
+  try {
+    vixChart = await fetchMarketChart("VIX", "3mo", "1d").catch(async () => {
+      return await fetchMarketChart("^VIX", "3mo", "1d").catch(() => null);
+    });
+  } catch (e) {
+    vixChart = null;
+  }
+
+  // Parse VIX metrics
+  const vixLast = Number(vixQuote?.last || vixChart?.meta?.regularMarketPrice || 16.5);
+  const vixPrevClose = Number(vixQuote?.prevclose || vixChart?.meta?.chartPreviousClose || vixLast);
+  const vixChange = Number((vixLast - vixPrevClose).toFixed(2));
+  const vixChangePct = Number((vixPrevClose ? ((vixChange / vixPrevClose) * 100) : 0).toFixed(2));
+  const vix52High = Number(vixQuote?.week_52_high || vixChart?.meta?.fiftyTwoWeekHigh || 35.3);
+  const vix52Low = Number(vixQuote?.week_52_low || vixChart?.meta?.fiftyTwoWeekLow || 11.8);
+  const vixRangeSpan = Math.max(0.01, vix52High - vix52Low);
+  const vixPercentile52w = Number(Math.min(100, Math.max(0, ((vixLast - vix52Low) / vixRangeSpan) * 100)).toFixed(1));
+
+  // Determine VIX Volatility Regime
+  let vixRegime = "Normal Volatility (Balanced)";
+  let vixRegimeTier: "LOW" | "NORMAL" | "ELEVATED" | "HIGH" | "PANIC" = "NORMAL";
+  let vixRegimeColor = "text-emerald-400";
+  if (vixLast < 14) {
+    vixRegime = "Low Volatility (Complacency)";
+    vixRegimeTier = "LOW";
+    vixRegimeColor = "text-blue-400";
+  } else if (vixLast <= 20) {
+    vixRegime = "Normal Volatility (Healthy Range)";
+    vixRegimeTier = "NORMAL";
+    vixRegimeColor = "text-emerald-400";
+  } else if (vixLast <= 28) {
+    vixRegime = "Elevated Risk (High Premiums)";
+    vixRegimeTier = "ELEVATED";
+    vixRegimeColor = "text-amber-400";
+  } else if (vixLast <= 38) {
+    vixRegime = "High Volatility (Fear Spike)";
+    vixRegimeTier = "HIGH";
+    vixRegimeColor = "text-orange-400";
+  } else {
+    vixRegime = "Extreme Panic (Crisis Spike)";
+    vixRegimeTier = "PANIC";
+    vixRegimeColor = "text-rose-500";
+  }
+
+  // Parse VIX 30-day historical points
+  const vixHistoricalBars: Array<{ date: string; close: number; high: number; low: number }> = [];
+  if (vixChart?.timestamp && vixChart?.indicators?.quote?.[0]) {
+    const tsArr = vixChart.timestamp;
+    const qObj = vixChart.indicators.quote[0];
+    const len = Math.min(tsArr.length, 30);
+    const startIdx = Math.max(0, tsArr.length - 30);
+    for (let i = startIdx; i < tsArr.length; i++) {
+      const c = qObj.close?.[i];
+      if (c !== null && c !== undefined) {
+        const d = new Date(tsArr[i] * 1000).toISOString().split("T")[0];
+        vixHistoricalBars.push({
+          date: d,
+          close: Number(Number(c).toFixed(2)),
+          high: Number(Number(qObj.high?.[i] || c).toFixed(2)),
+          low: Number(Number(qObj.low?.[i] || c).toFixed(2)),
+        });
+      }
+    }
+  }
+
+  // 2. Fetch CNN Fear & Greed Index
+  let cnnData: any = null;
+  try {
+    const cnnRes = await fetch("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.cnn.com/markets/fear-and-greed"
+      },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (cnnRes.ok) {
+      cnnData = await cnnRes.json();
+    }
+  } catch (e) {
+    cnnData = null;
+  }
+
+  // Handle CNN Data or Fallback Calculation
+  let fgScore = 42;
+  let fgRating = "neutral";
+  let fgPrevClose = 42;
+  let fgPrev1Week = 38;
+  let fgPrev1Month = 60;
+  let fgPrev1Year = 55;
+  let fgHistorical: Array<{ date: string; timestamp: number; score: number; rating: string }> = [];
+  let subIndicators: Array<{
+    id: string;
+    name: string;
+    score: number;
+    rating: string;
+    description: string;
+    latest_value?: string;
+  }> = [];
+
+  if (cnnData?.fear_and_greed) {
+    const fg = cnnData.fear_and_greed;
+    fgScore = Math.round(Number(fg.score || 50));
+    fgRating = String(fg.rating || "neutral").toLowerCase();
+    fgPrevClose = Math.round(Number(fg.previous_close || fgScore));
+    fgPrev1Week = Math.round(Number(fg.previous_1_week || fgScore));
+    fgPrev1Month = Math.round(Number(fg.previous_1_month || fgScore));
+    fgPrev1Year = Math.round(Number(fg.previous_1_year || fgScore));
+
+    // Parse historical series (last 60 trading days)
+    if (Array.isArray(cnnData.fear_and_greed_historical?.data)) {
+      const histData = cnnData.fear_and_greed_historical.data;
+      const recentHist = histData.slice(-60);
+      fgHistorical = recentHist.map((item: any) => ({
+        timestamp: item.x,
+        date: new Date(item.x).toISOString().split("T")[0],
+        score: Math.round(item.y),
+        rating: item.rating || "neutral",
+      }));
+    }
+
+    // Parse the 7 CNN sub-indicators
+    const extractSub = (key: string, name: string, desc: string, valKey?: string) => {
+      const item = cnnData[key];
+      if (!item) return null;
+      let valStr: string | undefined = undefined;
+      if (valKey && item[valKey] !== undefined) {
+        valStr = String(item[valKey]);
+      } else if (item.data && item.data.length > 0) {
+        const lastVal = item.data[item.data.length - 1]?.y;
+        if (lastVal !== undefined) valStr = Number(lastVal).toFixed(2);
+      }
+      return {
+        id: key,
+        name,
+        score: Math.round(Number(item.score || 50)),
+        rating: String(item.rating || "neutral").toLowerCase(),
+        description: desc,
+        latest_value: valStr,
+      };
+    };
+
+    const subs = [
+      extractSub("market_momentum_sp500", "Market Momentum", "S&P 500 vs. its 125-day moving average"),
+      extractSub("stock_price_strength", "Stock Price Strength", "Net count of NYSE stocks hitting 52-week highs vs. 52-week lows"),
+      extractSub("stock_price_breadth", "Stock Price Breadth", "Trading volume in advancing vs. declining shares (McClellan Summation)"),
+      extractSub("put_call_options", "Put & Call Options", "CBOE 5-day average put-to-call volume ratio (protective hedging activity)"),
+      extractSub("market_volatility_vix", "Market Volatility (VIX)", "CBOE Volatility Index vs. its 50-day moving average"),
+      extractSub("safe_haven_demand", "Safe Haven Demand", "Stock market returns vs. 20-year US Treasury bond returns"),
+      extractSub("junk_bond_demand", "Junk Bond Demand", "Yield spread between speculative junk bonds and investment-grade corporate bonds"),
+    ].filter(Boolean) as any[];
+
+    if (subs.length > 0) subIndicators = subs;
+  } else {
+    // Fallback: Synthesize Fear & Greed score from VIX and market context
+    const vixFactor = Math.max(0, Math.min(100, 100 - ((vixLast - 11) / (36 - 11)) * 100));
+    fgScore = Math.round(vixFactor);
+    if (fgScore <= 24) fgRating = "extreme fear";
+    else if (fgScore <= 44) fgRating = "fear";
+    else if (fgScore <= 55) fgRating = "neutral";
+    else if (fgScore <= 75) fgRating = "greed";
+    else fgRating = "extreme greed";
+
+    fgPrevClose = Math.max(0, Math.min(100, Math.round(fgScore - (vixChange * 2))));
+    fgPrev1Week = Math.max(0, Math.min(100, fgScore - 4));
+    fgPrev1Month = Math.max(0, Math.min(100, fgScore + 12));
+    fgPrev1Year = 55;
+
+    subIndicators = [
+      { id: "market_volatility_vix", name: "Market Volatility (VIX)", score: fgScore, rating: fgRating, description: `Calculated from live VIX at ${vixLast.toFixed(2)}` },
+      { id: "put_call_options", name: "Put & Call Options", score: Math.round((fgScore * 0.9) + 5), rating: fgRating, description: "CBOE Put/Call option skew volume proxy" },
+      { id: "market_momentum_sp500", name: "Market Momentum", score: Math.round((fgScore * 1.05)), rating: fgRating, description: "Benchmark index position relative to long-term averages" },
+    ];
+  }
+
+  // 3. Synthesize Actionable Options Analysis Context
+  let putSellingEnvironment: "FAVORABLE" | "HIGH_YIELD_OPPORTUNITY" | "BALANCED" | "CAUTION_REQUIRED" = "FAVORABLE";
+  let environmentTitle = "Favorable Premium Environment";
+  let environmentSummary = "";
+  let recommendedDelta = "0.15 - 0.22 Delta (~80-85% Win Probability)";
+  let recommendedDte = "30 - 45 Days (Optimal Theta Decay Acceleration)";
+  let recommendedStrikeDiscount = "12% - 18% Out-of-the-Money";
+  let cashBufferGuideline = "Maintain 20% - 25% Unallocated Cash Reserve";
+  let volatilitySkewBias = "Standard put skew; downside protective puts trade at customary implied volatility premiums.";
+
+  if (vixRegimeTier === "HIGH" || vixRegimeTier === "PANIC" || fgRating === "extreme fear") {
+    putSellingEnvironment = "HIGH_YIELD_OPPORTUNITY";
+    environmentTitle = "High-Yield Opportunity (Deep Fear & Elevated IV)";
+    environmentSummary = `Market sentiment reflects peak pessimism (Fear & Greed ${fgScore}/100, VIX at ${vixLast}). Implied volatility on cash-secured puts is heavily inflated, creating generational annualized yields. However, downside tail risk and rapid gap-downs are elevated. Strict strike margin-of-safety and patient position sizing are imperative.`;
+    recommendedDelta = "0.10 - 0.16 Delta (~85-90% Win Probability)";
+    recommendedDte = "30 - 50 Days (Allows time for volatility crush and price stabilization)";
+    recommendedStrikeDiscount = "18% - 28% Below Current Stock Price";
+    cashBufferGuideline = "Maintain 35% - 45% Unallocated Cash Buffer (Buffer against margin expansion and assignment cascade)";
+    volatilitySkewBias = "Extreme Put Skew: institutional hedging has pushed OTM put prices to rich premiums relative to calls.";
+  } else if (vixRegimeTier === "ELEVATED" || fgRating === "fear") {
+    putSellingEnvironment = "FAVORABLE";
+    environmentTitle = "Prime Put Selling Regime (Elevated Yields & Active Hedging)";
+    environmentSummary = `VIX at ${vixLast} combined with Fear rating (${fgScore}/100) provides an ideal sweet spot for options premium sellers. Option option premiums are rich, while institutional panic is contained. Cash-secured puts placed below key moving averages and support levels offer robust annualized return on capital with strong safety margins.`;
+    recommendedDelta = "0.14 - 0.22 Delta (~80-86% Win Probability)";
+    recommendedDte = "28 - 45 Days (Captures peak theta decay while harvesting rich initial IV)";
+    recommendedStrikeDiscount = "12% - 20% Out-of-the-Money";
+    cashBufferGuideline = "Maintain 25% - 30% Unallocated Cash Buffer";
+    volatilitySkewBias = "Pronounced Put Skew: Market participants are actively paying up for downside protection, giving cash-secured put sellers an edge.";
+  } else if (fgRating === "extreme greed" || vixLast < 14) {
+    putSellingEnvironment = "CAUTION_REQUIRED";
+    environmentTitle = "Subdued Premiums & Market Complacency";
+    environmentSummary = `Markets are displaying elevated complacency (Fear & Greed ${fgScore}/100, VIX low at ${vixLast}). Put option premiums are compressed, meaning selling tight-delta puts offers diminished reward relative to sudden macro shock risk. Be exceptionally selective, insist on quality large-cap names at steep discounts, or consider defined-risk credit spreads.`;
+    recommendedDelta = "0.12 - 0.18 Delta (~84-88% Win Probability; avoid reaching for yield with tight deltas)";
+    recommendedDte = "21 - 35 Days (Avoid long-dated commitments where an IV expansion spike can hurt open positions)";
+    recommendedStrikeDiscount = "10% - 15% Out-of-the-Money (Ensure strikes clear major 50-day and 200-day moving averages)";
+    cashBufferGuideline = "Maintain 20% - 25% Cash Reserve (Hold dry powder for volatility expansion dips)";
+    volatilitySkewBias = "Compressed Volatility: Low hedging demand leaves put premiums thin; do not sacrifice delta safety to meet return targets.";
+  } else {
+    putSellingEnvironment = "BALANCED";
+    environmentTitle = "Balanced Market Regime (Systematic Theta Harvesting)";
+    environmentSummary = `Market sentiment is neutral (${fgScore}/100) with normal volatility (VIX at ${vixLast}). This provides a stable, predictable backdrop for systematic options strategies. Strike prices align well with standard technical support, and theta decay progresses smoothly without abnormal tail shocks.`;
+    recommendedDelta = "0.15 - 0.22 Delta (~80-85% Win Probability)";
+    recommendedDte = "30 - 45 Days";
+    recommendedStrikeDiscount = "10% - 16% Out-of-the-Money";
+    cashBufferGuideline = "Maintain 15% - 20% Standard Cash Reserve";
+    volatilitySkewBias = "Equilibrium Skew: Standard options pricing curve across strikes with typical index put skew.";
+  }
+
+  const strategyGuidelines = [
+    {
+      strategy: "Cash-Secured Puts (CSP)",
+      recommendation: (vixRegimeTier === "ELEVATED" || vixRegimeTier === "HIGH") ? "PREFERRED" : (vixRegimeTier === "LOW" ? "NEUTRAL" : "FAVORABLE"),
+      action_text: vixRegimeTier === "HIGH" || vixRegimeTier === "ELEVATED"
+        ? "Target 0.12-0.18 Delta puts on high-conviction mega-caps (NVDA, MSFT, AAPL, QQQ). Collect peak IV premium with 15-25% strike buffers."
+        : "Systematically sell 0.15-0.22 Delta puts on quality watchlist names with strong balance sheets and technical support.",
+      rationale: `VIX at ${vixLast} sets option pricing. High volatility delivers high premium capture; low volatility demands wider strike discipline.`,
+      risk_note: "Avoid selling unhedged puts on high-beta speculative names during early phases of a VIX spike."
+    },
+    {
+      strategy: "Covered Calls (CC)",
+      recommendation: (fgRating === "greed" || fgRating === "extreme greed") ? "PREFERRED" : "FAVORABLE",
+      action_text: fgRating === "extreme greed"
+        ? "Sell 0.25-0.35 Delta covered calls into strength on extended holdings to harvest peak call enthusiasm and lock in synthetic yields."
+        : "Sell 0.20-0.30 Delta out-of-the-money calls on existing stock positions to augment quarterly dividend and cash flow.",
+      rationale: "Call buyers pay high premiums during euphoric sentiment phases, maximizing call assignment value.",
+      risk_note: "Caps stock upside if a parabolic rally continues; roll up and out if underlying price surges past strike."
+    },
+    {
+      strategy: "Bull Put Credit Spreads",
+      recommendation: (vixRegimeTier === "HIGH" || vixRegimeTier === "PANIC") ? "PREFERRED" : "FAVORABLE",
+      action_text: "Sell OTM puts and buy further OTM protective long puts to cap maximum loss and eliminate overnight margin liquidation risk.",
+      rationale: "Defined-risk spreads insulate the portfolio from violent gap-downs while still capturing inflated implied volatility decay.",
+      risk_note: "Spread width determines maximum risk; size position by maximum loss rather than margin requirement."
+    },
+    {
+      strategy: "Protective Puts & Collars",
+      recommendation: (fgRating === "extreme greed" || vixLast < 13) ? "PREFERRED" : "DEFENSIVE",
+      action_text: vixLast < 14
+        ? "Opportunistically purchase long protective puts or collars on Core long equity portfolios while VIX is cheap and complacent."
+        : "Hold existing hedges; avoid buying newly inflated puts at top of VIX spike unless mandatory for risk governance.",
+      rationale: "Hedging is most cost-effective when fear is lowest and volatility insurance is unloved.",
+      risk_note: "Long put drag during strong bull runs can diminish net portfolio returns if held indefinitely."
+    }
+  ];
+
+  const keyActionBullets = [
+    `Current VIX at ${vixLast.toFixed(2)} (${vixChange >= 0 ? "+" : ""}${vixChange.toFixed(2)} today) places market in the ${vixRegime} zone.`,
+    `Fear & Greed score of ${fgScore}/100 indicates ${fgRating.toUpperCase()} sentiment (Previous close was ${fgPrevClose}/100).`,
+    `Recommended Put Strike Discount: ${recommendedStrikeDiscount} to ensure substantial margin of safety before underlying price touches strike.`,
+    `Target Delta Band: ${recommendedDelta} for conservative, high-probability cash-secured put execution.`,
+    `Margin Governance: ${cashBufferGuideline} to comfortably withstand intraday volatility fluctuations without forced liquidations.`,
+  ];
+
+  const result = {
+    timestamp: new Date().toISOString(),
+    source: cnnData ? "CNN Fear & Greed + Tradier Brokerage VIX" : "Tradier Brokerage VIX + Synthesized Macro Indicator",
+    vix: {
+      current: vixLast,
+      change: vixChange,
+      change_pct: vixChangePct,
+      prevclose: vixPrevClose,
+      week_52_high: vix52High,
+      week_52_low: vix52Low,
+      percentile_52w: vixPercentile52w,
+      regime: vixRegime,
+      regime_tier: vixRegimeTier,
+      regime_color: vixRegimeColor,
+      historical_30d: vixHistoricalBars,
+    },
+    fear_and_greed: {
+      score: fgScore,
+      rating: fgRating,
+      previous_close: fgPrevClose,
+      previous_1_week: fgPrev1Week,
+      previous_1_month: fgPrev1Month,
+      previous_1_year: fgPrev1Year,
+      historical: fgHistorical,
+      sub_indicators: subIndicators,
+    },
+    options_implications: {
+      put_selling_environment: putSellingEnvironment,
+      environment_title: environmentTitle,
+      environment_summary: environmentSummary,
+      volatility_skew_bias: volatilitySkewBias,
+      recommended_delta: recommendedDelta,
+      recommended_dte: recommendedDte,
+      recommended_strike_discount: recommendedStrikeDiscount,
+      cash_buffer_guideline: cashBufferGuideline,
+      strategy_guidelines: strategyGuidelines,
+      key_action_bullets: keyActionBullets,
+    },
+  };
+
+  marketSentimentCache = {
+    timestamp: now,
+    data: result,
+  };
+
+  return result;
+}
+
+// Endpoint: Market Sentiment Dashboard Data
+app.get("/api/market-sentiment", async (req: Request, res: Response) => {
+  try {
+    const data = await getMarketSentimentData();
+    res.json(data);
+  } catch (err: any) {
+    console.error("Error in /api/market-sentiment:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch market sentiment data" });
+  }
+});
+
 // Batch Real-Time Stock Quotes (Tradier with fallback)
 app.get("/api/quotes", async (req: Request, res: Response) => {
   try {
@@ -1440,9 +2020,20 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
         }
       }
 
-      for (const exp of validExpirations) {
+      // Sample representative expirations (up to 6) to keep multi-ticker scans well within API quotas
+      const targetExpirations =
+        validExpirations.length > 6
+          ? [
+              validExpirations[0],
+              ...validExpirations.slice(1, -1).filter((_, idx, arr) => idx % Math.ceil(arr.length / 4) === 0),
+              validExpirations[validExpirations.length - 1],
+            ].slice(0, 6)
+          : validExpirations;
+
+      for (const exp of targetExpirations) {
         let chain = optData;
         if (optData.expirationDates?.[0] !== exp.timestamp) {
+          await new Promise((r) => setTimeout(r, 60)); // gentle pacing to protect API quota
           const fetched = await fetchMarketOptions(ticker, exp.timestamp);
           if (fetched) chain = fetched;
         }

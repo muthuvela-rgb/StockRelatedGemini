@@ -27,9 +27,11 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Bookmark
+  Bookmark,
+  Gauge,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { ActiveTab } from "./Header";
 import {
   LineChart,
   Line,
@@ -53,9 +55,10 @@ import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 
 interface PutRecommendationsViewerProps {
   watchlist: string[];
+  onNavigateTab?: (tab: ActiveTab) => void;
 }
 
-export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> = ({ watchlist }) => {
+export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> = ({ watchlist, onNavigateTab }) => {
   // Filters & State
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
@@ -71,6 +74,32 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [loading, setLoading] = useState<boolean>(false);
   const [data, setData] = useState<PutRecommendationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Market Sentiment Context Banner State
+  const [sentimentSnippet, setSentimentSnippet] = useState<{
+    vix: number;
+    vixRegime: string;
+    fgScore: number;
+    fgRating: string;
+    environment: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/market-sentiment")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res?.vix && res?.fear_and_greed) {
+          setSentimentSnippet({
+            vix: res.vix.current,
+            vixRegime: res.vix.regime,
+            fgScore: res.fear_and_greed.score,
+            fgRating: res.fear_and_greed.rating,
+            environment: res.options_implications?.environment_title || "Favorable Premium Environment",
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Selected item for Payoff Diagram Modal
   const [selectedTrade, setSelectedTrade] = useState<RecommendedPut | null>(null);
@@ -433,6 +462,44 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </button>
           </div>
         </div>
+
+        {/* Live Market Sentiment Context Strip */}
+        {sentimentSnippet && (
+          <div className="my-3 px-3.5 py-2 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 text-cyan-400 font-semibold">
+                <Gauge className="w-4 h-4" />
+                <span>Market Context:</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Fear & Greed:</span>
+                <span className="px-2 py-0.5 rounded font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px]">
+                  {sentimentSnippet.fgScore}/100 ({sentimentSnippet.fgRating.toUpperCase()})
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">VIX:</span>
+                <span className="px-2 py-0.5 rounded font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px]">
+                  {sentimentSnippet.vix.toFixed(2)} ({sentimentSnippet.vixRegime})
+                </span>
+              </div>
+              <span className="text-slate-500 hidden sm:inline">•</span>
+              <span className="text-slate-300 font-medium hidden md:inline">
+                {sentimentSnippet.environment}
+              </span>
+            </div>
+
+            {onNavigateTab && (
+              <button
+                onClick={() => onNavigateTab("market-sentiment")}
+                className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition ml-auto"
+              >
+                <span>View Full Sentiment Cockpit</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Filter Controls Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-5 text-xs">

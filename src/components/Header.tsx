@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  Gauge,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -28,8 +29,9 @@ import { useAuth } from "../context/AuthContext";
 import { SUPERADMIN_EMAIL } from "../lib/firebase";
 
 export type ActiveTab =
-  | "put-recommendations"
   | "options-scanner"
+  | "put-recommendations"
+  | "market-sentiment"
   | "fall-detector"
   | "technicals"
   | "short-puts"
@@ -63,16 +65,23 @@ export const Header: React.FC<HeaderProps> = ({
   const [providerStatus, setProviderStatus] = useState<{
     provider: string;
     isTradierConfigured: boolean;
-    name: string;
+    tradierInCooldown?: boolean;
+    cooldownSecondsRemaining?: number;
+    name?: string;
     description: string;
   } | null>(null);
   const [showProviderModal, setShowProviderModal] = useState(false);
 
   useEffect(() => {
-    fetch("/api/market-data-status")
-      .then((r) => r.json())
-      .then((data) => setProviderStatus(data))
-      .catch(() => {});
+    const checkStatus = () => {
+      fetch("/api/market-data-status")
+        .then((r) => r.json())
+        .then((data) => setProviderStatus(data))
+        .catch(() => {});
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const isSuperAdmin = Boolean(
@@ -82,6 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
   const baseTabs = [
     { id: "options-scanner" as ActiveTab, label: "Put Scanner", icon: LineChart, badge: "OCC TIMS" },
     { id: "put-recommendations" as ActiveTab, label: "Put Recommendations", icon: ShieldCheck, badge: "3 Risk Tiers" },
+    { id: "market-sentiment" as ActiveTab, label: "Market Sentiment", icon: Gauge, badge: "VIX & F&G" },
     { id: "fall-detector" as ActiveTab, label: "Fall Detector", icon: TrendingDown, badge: "Context" },
     { id: "technicals" as ActiveTab, label: "Technicals", icon: Activity },
     { id: "short-puts" as ActiveTab, label: "Short-Dated", icon: Clock },
@@ -167,20 +177,28 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setShowProviderModal(true)}
               className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-mono text-xs transition border cursor-pointer ${
-                providerStatus?.isTradierConfigured
+                providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
                   ? "bg-cyan-950/60 text-cyan-300 border-cyan-700/50 hover:bg-cyan-900/60 shadow-sm"
+                  : providerStatus?.tradierInCooldown
+                  ? "bg-amber-950/60 text-amber-300 border-amber-700/50 hover:bg-amber-900/60 shadow-sm"
                   : "bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800"
               }`}
               title="Click to view Market Data Feed status (Tradier Brokerage & SEC)"
             >
               <span
                 className={`w-2 h-2 rounded-full animate-pulse ${
-                  providerStatus?.isTradierConfigured ? "bg-cyan-400" : "bg-emerald-500"
+                  providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
+                    ? "bg-cyan-400"
+                    : providerStatus?.tradierInCooldown
+                    ? "bg-amber-400"
+                    : "bg-emerald-500"
                 }`}
               ></span>
               <span>
                 {providerStatus?.isTradierConfigured
-                  ? "Live Tradier & SEC Data"
+                  ? providerStatus?.tradierInCooldown
+                    ? "Yahoo Active (Tradier Cooldown)"
+                    : "Live Tradier & SEC Data"
                   : "Live Yahoo (Tradier Ready)"}
               </span>
             </button>
@@ -296,12 +314,21 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="text-xs text-slate-400">Active Provider</div>
                   <div className="text-sm font-semibold text-white flex items-center gap-2 mt-0.5">
                     {providerStatus?.isTradierConfigured ? (
-                      <>
-                        <span className="text-cyan-400">Tradier Brokerage API</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
-                          PRIMARY
-                        </span>
-                      </>
+                      providerStatus?.tradierInCooldown ? (
+                        <>
+                          <span className="text-amber-400">Yahoo Finance (Tradier Quota Active)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
+                            AUTO-FALLBACK
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-cyan-400">Tradier Brokerage API</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
+                            PRIMARY
+                          </span>
+                        </>
+                      )
                     ) : (
                       <>
                         <span className="text-emerald-400">Yahoo Finance (Fallback)</span>
@@ -313,18 +340,34 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
                 <span className={`w-3 h-3 rounded-full ${
-                  providerStatus?.isTradierConfigured ? "bg-cyan-400 animate-pulse" : "bg-emerald-500 animate-pulse"
+                  providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
+                    ? "bg-cyan-400 animate-pulse"
+                    : providerStatus?.tradierInCooldown
+                    ? "bg-amber-400 animate-pulse"
+                    : "bg-emerald-500 animate-pulse"
                 }`} />
               </div>
+
+              {providerStatus?.tradierInCooldown && (
+                <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-700/60 flex items-start gap-2.5 text-xs text-amber-200">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold text-amber-300">Rate Limit Quota Protected</div>
+                    <div className="text-slate-300 leading-relaxed">
+                      Tradier market data quota (120 req/min) was reached. The circuit breaker automatically shifted quote and option traffic to high-capacity Yahoo Finance so your screeners, charts, and analysis continue uninterrupted. Tradier will automatically resume in ~{providerStatus.cooldownSecondsRemaining || 60}s.
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {providerStatus?.isTradierConfigured ? (
                 <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-800/50 space-y-2">
                   <div className="flex items-center gap-2 text-cyan-300 text-xs font-semibold">
                     <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                    Tradier Brokerage API Active
+                    Tradier Brokerage API Connected
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Stock quotes, options expiration dates, full option chains, and technical historical candles are streaming directly from your configured Tradier API account.
+                    Stock quotes, options expiration dates, full option chains, and technical historical candles are wired directly to your Tradier API account. In-memory caching and request deduplication ensure high performance and quota protection.
                   </p>
                   <div className="pt-2 grid grid-cols-2 gap-2 text-[11px] font-mono">
                     <div className="bg-slate-900/80 p-2 rounded border border-slate-800 text-slate-300">
