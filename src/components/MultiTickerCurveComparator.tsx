@@ -720,9 +720,10 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                         const pointId = `cmp-${t}-${payload.expiration}`;
                         const isSelected = selectedPointKey === pointId;
                         const isFallback = Boolean(
-                          stockObj.used_fallback ||
-                          stockObj.bid_used_fallback ||
-                          (stockObj.premium === stockObj.last_price && stockObj.premium > 0 && !stockObj.bid)
+                          stockObj.isFallback ??
+                          stockObj.bid_used_fallback ??
+                          stockObj.used_fallback ??
+                          stockObj.usedFallback
                         );
 
                         return (
@@ -734,6 +735,10 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                               setSelectedPointKey(pointId);
                               setInspectedPoint({
                                 ...stockObj,
+                                isFallback,
+                                usedFallback: isFallback,
+                                used_fallback: isFallback,
+                                bid_used_fallback: isFallback,
                                 target_strike: stockObj.strike,
                                 snapped_strike: stockObj.strike,
                                 current_price: stockObj.spot,

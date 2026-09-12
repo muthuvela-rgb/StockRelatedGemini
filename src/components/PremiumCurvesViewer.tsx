@@ -301,23 +301,34 @@ export const PremiumCurvesViewer: React.FC = () => {
   const expPoints = expAnalysis?.points || [];
   const kneePoint = expAnalysis?.knee_point;
 
-  const formattedExpPoints = expPoints.map((p) => ({
-    ...p,
-    ticker: expAnalysis?.ticker,
-    strike: p.snapped_strike || p.target_strike,
-    spot: expAnalysis?.current_price,
-    moneyness: expAnalysis?.current_price ? (((p.snapped_strike || p.target_strike) / expAnalysis.current_price) * 100) : 100,
-    returnCashSecured: p.annualized_return_cash_secured,
-    returnMargin: p.annualized_return_margin,
-    returnPct: p.annualized_return_cash_secured,
-    rsi_14: p.rsi_14 || expAnalysis?.rsi_14,
-    bollinger: p.bollinger || expAnalysis?.bollinger,
-    fibonacci: p.fibonacci || expAnalysis?.fibonacci,
-    fifty_two_week_high: expAnalysis?.fifty_two_week_high,
-    fifty_two_week_low: expAnalysis?.fifty_two_week_low,
-    shortLabel: `${p.expiration.slice(5)} (${p.dte}d)`,
-    isKnee: kneePoint && p.expiration === kneePoint.expiration,
-  }));
+  const formattedExpPoints = expPoints.map((p) => {
+    const isFb = Boolean(p.used_fallback || p.bid_used_fallback || (p as any).usedFallback || (p as any).isFallback);
+    return {
+      ...p,
+      ticker: expAnalysis?.ticker,
+      strike: p.snapped_strike || p.target_strike,
+      bid: p.bid ?? p.premium,
+      premium: p.premium,
+      lastPrice: p.last_price,
+      last_price: p.last_price,
+      spot: expAnalysis?.current_price,
+      moneyness: expAnalysis?.current_price ? (((p.snapped_strike || p.target_strike) / expAnalysis.current_price) * 100) : 100,
+      returnCashSecured: p.annualized_return_cash_secured,
+      returnMargin: p.annualized_return_margin,
+      returnPct: p.annualized_return_cash_secured,
+      rsi_14: p.rsi_14 || expAnalysis?.rsi_14,
+      bollinger: p.bollinger || expAnalysis?.bollinger,
+      fibonacci: p.fibonacci || expAnalysis?.fibonacci,
+      fifty_two_week_high: expAnalysis?.fifty_two_week_high,
+      fifty_two_week_low: expAnalysis?.fifty_two_week_low,
+      shortLabel: `${p.expiration.slice(5)} (${p.dte}d)`,
+      isKnee: kneePoint && p.expiration === kneePoint.expiration,
+      isFallback: isFb,
+      usedFallback: isFb,
+      used_fallback: isFb,
+      bid_used_fallback: isFb,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -1221,10 +1232,10 @@ export const PremiumCurvesViewer: React.FC = () => {
                       const pointId = `exp-prem-${payload.expiration}`;
                       const isSelected = selectedPointId === pointId;
                       const isFallback = Boolean(
-                        payload?.used_fallback ||
-                        payload?.usedFallback ||
-                        payload?.bid_used_fallback ||
-                        (payload?.premium === payload?.last_price && payload?.premium > 0 && !payload?.bid)
+                        payload?.isFallback ??
+                        payload?.bid_used_fallback ??
+                        payload?.used_fallback ??
+                        payload?.usedFallback
                       );
 
                       return (
@@ -1277,10 +1288,10 @@ export const PremiumCurvesViewer: React.FC = () => {
                       const pointId = `exp-ret-${payload.expiration}`;
                       const isSelected = selectedPointId === pointId;
                       const isFallback = Boolean(
-                        payload?.used_fallback ||
-                        payload?.usedFallback ||
-                        payload?.bid_used_fallback ||
-                        (payload?.premium === payload?.last_price && payload?.premium > 0 && !payload?.bid)
+                        payload?.isFallback ??
+                        payload?.bid_used_fallback ??
+                        payload?.used_fallback ??
+                        payload?.usedFallback
                       );
 
                       return (
@@ -1448,10 +1459,10 @@ export const PremiumCurvesViewer: React.FC = () => {
                         const isSellLeg = isActiveExp && selectedVerticalPutSpread && selectedVerticalPutSpread.sellStrike === payload.strike;
                         const isBuyLeg = isActiveExp && selectedVerticalPutSpread && selectedVerticalPutSpread.buyStrike === payload.strike;
                         const isFallback = Boolean(
-                          rec?.used_fallback ||
-                          rec?.usedFallback ||
-                          rec?.bid_used_fallback ||
-                          (rec?.premium === rec?.last_price && rec?.premium > 0 && !rec?.bid)
+                          rec?.isFallback ??
+                          rec?.bid_used_fallback ??
+                          rec?.used_fallback ??
+                          rec?.usedFallback
                         );
 
                         return (

@@ -144,6 +144,8 @@ export interface OptionGreeks {
   days_to_expiration?: number;
   bid_used_fallback?: boolean;
   used_fallback?: boolean;
+  isFallback?: boolean;
+  usedFallback?: boolean;
 }
 
 export interface ExpirationChainData {
@@ -375,6 +377,10 @@ export interface PremiumVsExpirationPoint {
   open_interest: number;
   implied_volatility: number;
   used_fallback: boolean;
+  bid_used_fallback?: boolean;
+  usedFallback?: boolean;
+  isFallback?: boolean;
+  lastPrice?: number;
   capital_basis_margin: number;
   annualized_return_margin: number;
   annualized_return_cash_secured: number;

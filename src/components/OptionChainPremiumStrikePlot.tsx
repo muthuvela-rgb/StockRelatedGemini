@@ -291,7 +291,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
         inTheMoney: c.inTheMoney,
         contractSymbol: c.contractSymbol,
         contract: c,
-        isFallback: Boolean(c.used_fallback || c.bid_used_fallback || (c.bid <= 0 && c.lastPrice > 0)),
+        isFallback: Boolean(c.used_fallback || c.bid_used_fallback || (c as any).isFallback || (c as any).usedFallback),
       });
     });
 
@@ -825,7 +825,12 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                       if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return null;
                       const contract = payload?.[`${exp}_contract`];
                       if (!contract) return null;
-                      const isFallback = Boolean(contract.used_fallback || contract.bid_used_fallback || (contract.bid <= 0 && contract.lastPrice > 0));
+                      const isFallback = Boolean(
+                        contract.isFallback ??
+                        contract.bid_used_fallback ??
+                        contract.used_fallback ??
+                        (contract as any).usedFallback
+                      );
                       if (isFallback) {
                         return (
                           <g key={`fb-dot-${exp}-${payload.strike}`} className="cursor-pointer" onClick={() => onSelectContract && onSelectContract(contract)}>
@@ -1014,7 +1019,13 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 dot={((props: any): any => {
                   const { cx, cy, payload } = props;
                   if (cx === undefined || cy === undefined || isNaN(cx) || isNaN(cy)) return null;
-                  const isFallback = Boolean(payload?.isFallback || (payload?.bid <= 0 && payload?.lastPrice > 0));
+                  const isFallback = Boolean(
+                    payload?.isFallback ??
+                    payload?.contract?.isFallback ??
+                    payload?.contract?.bid_used_fallback ??
+                    payload?.contract?.used_fallback ??
+                    (payload?.contract as any)?.usedFallback
+                  );
                   if (isFallback) {
                     return (
                       <g key={`fb-bid-${payload.strike}`} className="cursor-pointer" onClick={() => payload?.contract && onSelectContract && onSelectContract(payload.contract)}>

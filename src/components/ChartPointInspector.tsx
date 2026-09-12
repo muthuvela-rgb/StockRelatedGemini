@@ -102,12 +102,12 @@ export const ChartPointInspector: React.FC<ChartPointInspectorProps> = ({
   const isITM = spot > 0 ? (isPut ? strike > spot : strike < spot) : false;
   const downsideBufferPct = spot > 0 ? Math.max(0, ((spot - strike) / spot) * 100) : 0;
 
+  // Explicit fallback evaluation - strictly only true when explicit fallback flags are set
   const isFallback = Boolean(
-    point.usedFallback ||
-    point.used_fallback ||
-    point.bid_used_fallback ||
     point.isFallback ||
-    ((point.bid === undefined || point.bid <= 0) && (point.lastPrice || point.last_price || 0) > 0)
+    point.bid_used_fallback ||
+    point.used_fallback ||
+    point.usedFallback
   );
 
   const copySummary = () => {

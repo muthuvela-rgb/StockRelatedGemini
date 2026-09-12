@@ -70,13 +70,17 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
         row[`${t}_strike`] = contract.strike;
         row[`${t}_spot`] = contract.current_price;
         row[`${t}_moneyness`] = contract.moneyness_pct;
+        const isFb = Boolean(contract.bid_used_fallback || contract.used_fallback || (contract as any).usedFallback);
         row.stocks[t] = {
           ticker: t,
           strike: contract.strike,
           spot: contract.current_price,
           moneyness: contract.moneyness_pct,
+          bid: contract.bid,
           premium: contract.bid,
           ask: contract.ask,
+          lastPrice: contract.last_price,
+          last_price: contract.last_price,
           returnCashSecured: contract.annualized_return_pct_cash_secured,
           returnMargin: contract.annualized_return_pct,
           iv: contract.implied_volatility,
@@ -86,15 +90,10 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
           fifty_two_week_high: contract.fifty_two_week_high,
           fifty_two_week_low: contract.fifty_two_week_low,
           strike_bollinger_position: contract.strike_bollinger_position,
-          isFallback: Boolean(
-            contract.used_fallback ||
-            contract.bid_used_fallback ||
-            (contract as any).usedFallback ||
-            (contract.bid <= 0 && contract.last_price > 0) ||
-            (contract.bid === contract.last_price && contract.bid > 0 && !contract.ask)
-          ),
-          bid_used_fallback: contract.bid_used_fallback,
-          used_fallback: contract.used_fallback,
+          isFallback: isFb,
+          usedFallback: isFb,
+          bid_used_fallback: isFb,
+          used_fallback: isFb,
         };
       }
     });

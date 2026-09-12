@@ -257,82 +257,103 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   // Single stock dataset when X-Axis is Expiration Date (Single Strike Selected)
   const singleStockExpData = [...singleStockFilteredRecords]
     .sort((a, b) => a.days_to_expiration - b.days_to_expiration)
-    .map((r) => ({
-      ticker: r.ticker,
-      expiration: r.expiration,
-      label: `${r.expiration} (${r.days_to_expiration}d)`,
-      shortLabel: `${r.expiration.slice(5)} (${r.days_to_expiration}d)`,
-      dte: r.days_to_expiration,
-      strike: r.strike,
-      premium: r.bid,
-      ask: r.ask,
-      lastPrice: r.last_price,
-      spot: r.current_price,
-      moneyness: r.moneyness_pct,
-      returnPct: r.annualized_return_pct,
-      returnCashSecured: r.annualized_return_pct_cash_secured,
-      capitalBasis: r.capital_basis,
-      iv: r.implied_volatility,
-      usedFallback: Boolean(r.bid_used_fallback || (r.bid <= 0 && r.last_price > 0)),
-      bid_used_fallback: r.bid_used_fallback,
-      rsi_14: r.rsi_14,
-      bollinger: r.bollinger,
-      fibonacci: r.fibonacci,
-      fifty_two_week_high: r.fifty_two_week_high,
-      fifty_two_week_low: r.fifty_two_week_low,
-      strike_bollinger_position: r.strike_bollinger_position,
-    }));
+    .map((r) => {
+      const isFb = Boolean(r.bid_used_fallback || r.used_fallback);
+      return {
+        ticker: r.ticker,
+        expiration: r.expiration,
+        label: `${r.expiration} (${r.days_to_expiration}d)`,
+        shortLabel: `${r.expiration.slice(5)} (${r.days_to_expiration}d)`,
+        dte: r.days_to_expiration,
+        strike: r.strike,
+        bid: r.bid,
+        premium: r.bid,
+        ask: r.ask,
+        lastPrice: r.last_price,
+        last_price: r.last_price,
+        spot: r.current_price,
+        moneyness: r.moneyness_pct,
+        returnPct: r.annualized_return_pct,
+        returnCashSecured: r.annualized_return_pct_cash_secured,
+        capitalBasis: r.capital_basis,
+        iv: r.implied_volatility,
+        isFallback: isFb,
+        usedFallback: isFb,
+        used_fallback: isFb,
+        bid_used_fallback: isFb,
+        rsi_14: r.rsi_14,
+        bollinger: r.bollinger,
+        fibonacci: r.fibonacci,
+        fifty_two_week_high: r.fifty_two_week_high,
+        fifty_two_week_low: r.fifty_two_week_low,
+        strike_bollinger_position: r.strike_bollinger_position,
+      };
+    });
 
   // Single stock dataset when X-Axis is Strike Price $ (Band Mode with All Strikes)
   const singleStockStrikeData = [...singleStockFilteredRecords]
     .sort((a, b) => a.strike - b.strike)
-    .map((r) => ({
+    .map((r) => {
+      const isFb = Boolean(r.bid_used_fallback || r.used_fallback);
+      return {
+        ticker: r.ticker,
+        strike: r.strike,
+        bid: r.bid,
+        premium: r.bid,
+        ask: r.ask,
+        lastPrice: r.last_price,
+        last_price: r.last_price,
+        spot: r.current_price,
+        moneyness: r.moneyness_pct,
+        dte: r.days_to_expiration,
+        expiration: r.expiration,
+        returnPct: r.annualized_return_pct,
+        returnCashSecured: r.annualized_return_pct_cash_secured,
+        capitalBasis: r.capital_basis,
+        iv: r.implied_volatility,
+        isFallback: isFb,
+        usedFallback: isFb,
+        used_fallback: isFb,
+        bid_used_fallback: isFb,
+        rsi_14: r.rsi_14,
+        bollinger: r.bollinger,
+        fibonacci: r.fibonacci,
+        fifty_two_week_high: r.fifty_two_week_high,
+        fifty_two_week_low: r.fifty_two_week_low,
+        strike_bollinger_position: r.strike_bollinger_position,
+      };
+    });
+
+  // Multi-stock dataset (X-Axis: % Moneyness, Y1: Premium $, Y2: Cash Secured Return %)
+  const multiStockMoneynessData = filteredRecords.map((r) => {
+    const isFb = Boolean(r.bid_used_fallback || r.used_fallback);
+    return {
       ticker: r.ticker,
-      strike: r.strike,
+      moneyness: Number(r.moneyness_pct.toFixed(2)),
+      bid: r.bid,
       premium: r.bid,
       ask: r.ask,
       lastPrice: r.last_price,
+      last_price: r.last_price,
+      returnCashSecured: Number(r.annualized_return_pct_cash_secured.toFixed(1)),
+      returnMargin: Number(r.annualized_return_pct.toFixed(1)),
+      strike: r.strike,
       spot: r.current_price,
-      moneyness: r.moneyness_pct,
       dte: r.days_to_expiration,
       expiration: r.expiration,
-      returnPct: r.annualized_return_pct,
-      returnCashSecured: r.annualized_return_pct_cash_secured,
-      capitalBasis: r.capital_basis,
       iv: r.implied_volatility,
-      usedFallback: Boolean(r.bid_used_fallback || (r.bid <= 0 && r.last_price > 0)),
-      bid_used_fallback: r.bid_used_fallback,
+      isFallback: isFb,
+      usedFallback: isFb,
+      used_fallback: isFb,
+      bid_used_fallback: isFb,
       rsi_14: r.rsi_14,
       bollinger: r.bollinger,
       fibonacci: r.fibonacci,
       fifty_two_week_high: r.fifty_two_week_high,
       fifty_two_week_low: r.fifty_two_week_low,
       strike_bollinger_position: r.strike_bollinger_position,
-    }));
-
-  // Multi-stock dataset (X-Axis: % Moneyness, Y1: Premium $, Y2: Cash Secured Return %)
-  const multiStockMoneynessData = filteredRecords.map((r) => ({
-    ticker: r.ticker,
-    moneyness: Number(r.moneyness_pct.toFixed(2)),
-    premium: r.bid,
-    ask: r.ask,
-    lastPrice: r.last_price,
-    returnCashSecured: Number(r.annualized_return_pct_cash_secured.toFixed(1)),
-    returnMargin: Number(r.annualized_return_pct.toFixed(1)),
-    strike: r.strike,
-    spot: r.current_price,
-    dte: r.days_to_expiration,
-    expiration: r.expiration,
-    iv: r.implied_volatility,
-    usedFallback: Boolean(r.bid_used_fallback || (r.bid <= 0 && r.last_price > 0)),
-    bid_used_fallback: r.bid_used_fallback,
-    rsi_14: r.rsi_14,
-    bollinger: r.bollinger,
-    fibonacci: r.fibonacci,
-    fifty_two_week_high: r.fifty_two_week_high,
-    fifty_two_week_low: r.fifty_two_week_low,
-    strike_bollinger_position: r.strike_bollinger_position,
-  }));
+    };
+  });
 
   const handleSort = (field: keyof PutOptionRecord) => {
     if (sortBy === field) {
@@ -1087,9 +1108,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           const isSellLeg = !isSingleStrikeSelected && singleStockSelectedSpread && singleStockSelectedSpread.sellStrike === payload.strike;
                           const isBuyLeg = !isSingleStrikeSelected && singleStockSelectedSpread && singleStockSelectedSpread.buyStrike === payload.strike;
                           const isFallback = Boolean(
-                            payload.usedFallback ||
-                            payload.bid_used_fallback ||
-                            (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                            payload?.isFallback ??
+                            payload?.bid_used_fallback ??
+                            payload?.used_fallback ??
+                            payload?.usedFallback
                           );
 
                           return (
@@ -1163,9 +1185,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                               inspectedChartPoint.strike === payload.strike && inspectedChartPoint.expiration === payload.expiration
                             );
                             const isFallback = Boolean(
-                              payload.usedFallback ||
-                              payload.bid_used_fallback ||
-                              (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                              payload?.isFallback ??
+                              payload?.bid_used_fallback ??
+                              payload?.used_fallback ??
+                              payload?.usedFallback
                             );
 
                             return (
@@ -1369,9 +1392,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                             inspectedChartPoint.expiration === payload.expiration
                           );
                           const isFallback = Boolean(
-                            payload.usedFallback ||
-                            payload.bid_used_fallback ||
-                            (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                            payload?.isFallback ??
+                            payload?.bid_used_fallback ??
+                            payload?.used_fallback ??
+                            payload?.usedFallback
                           );
 
                           return (
@@ -1426,9 +1450,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                               inspectedChartPoint.expiration === payload.expiration
                             );
                             const isFallback = Boolean(
-                              payload.usedFallback ||
-                              payload.bid_used_fallback ||
-                              (payload.premium === payload.lastPrice && payload.premium > 0 && !payload.bid)
+                              payload?.isFallback ??
+                              payload?.bid_used_fallback ??
+                              payload?.used_fallback ??
+                              payload?.usedFallback
                             );
 
                             return (

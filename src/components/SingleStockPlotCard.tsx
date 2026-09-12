@@ -77,72 +77,72 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
     // Chronologically sorted by DTE / expiration date
     chartData = [...filtered]
       .sort((a, b) => a.days_to_expiration - b.days_to_expiration)
-      .map((r) => ({
-        ticker: r.ticker,
-        expiration: r.expiration,
-        label: `${r.expiration} (${r.days_to_expiration}d)`,
-        dte: r.days_to_expiration,
-        strike: r.strike,
-        premium: r.bid,
-        ask: r.ask,
-        lastPrice: r.last_price,
-        spot: r.current_price,
-        moneyness: r.moneyness_pct,
-        returnPct: r.annualized_return_pct,
-        returnCashSecured: r.annualized_return_pct_cash_secured,
-        capitalBasis: r.capital_basis,
-        iv: r.implied_volatility,
-        rsi_14: r.rsi_14,
-        bollinger: r.bollinger,
-        fibonacci: r.fibonacci,
-        fifty_two_week_high: r.fifty_two_week_high,
-        fifty_two_week_low: r.fifty_two_week_low,
-        strike_bollinger_position: r.strike_bollinger_position,
-        isFallback: Boolean(
-          r.used_fallback ||
-          r.bid_used_fallback ||
-          (r as any).usedFallback ||
-          (r.bid <= 0 && r.last_price > 0) ||
-          (r.bid === r.last_price && r.bid > 0 && !r.ask)
-        ),
-        bid_used_fallback: r.bid_used_fallback,
-        used_fallback: r.used_fallback,
-      }));
+      .map((r) => {
+        const isFb = Boolean(r.bid_used_fallback || r.used_fallback || (r as any).usedFallback);
+        return {
+          ticker: r.ticker,
+          expiration: r.expiration,
+          label: `${r.expiration} (${r.days_to_expiration}d)`,
+          dte: r.days_to_expiration,
+          strike: r.strike,
+          bid: r.bid,
+          premium: r.bid,
+          ask: r.ask,
+          lastPrice: r.last_price,
+          last_price: r.last_price,
+          spot: r.current_price,
+          moneyness: r.moneyness_pct,
+          returnPct: r.annualized_return_pct,
+          returnCashSecured: r.annualized_return_pct_cash_secured,
+          capitalBasis: r.capital_basis,
+          iv: r.implied_volatility,
+          rsi_14: r.rsi_14,
+          bollinger: r.bollinger,
+          fibonacci: r.fibonacci,
+          fifty_two_week_high: r.fifty_two_week_high,
+          fifty_two_week_low: r.fifty_two_week_low,
+          strike_bollinger_position: r.strike_bollinger_position,
+          isFallback: isFb,
+          usedFallback: isFb,
+          bid_used_fallback: isFb,
+          used_fallback: isFb,
+        };
+      });
   } else {
     // Sorted by Strike Price ($)
     chartData = [...filtered]
       .sort((a, b) => a.strike - b.strike)
-      .map((r) => ({
-        ticker: r.ticker,
-        strike: r.strike,
-        expiration: r.expiration,
-        label: `$${r.strike}`,
-        dte: r.days_to_expiration,
-        premium: r.bid,
-        ask: r.ask,
-        lastPrice: r.last_price,
-        spot: r.current_price,
-        moneyness: r.moneyness_pct,
-        returnPct: r.annualized_return_pct,
-        returnCashSecured: r.annualized_return_pct_cash_secured,
-        capitalBasis: r.capital_basis,
-        iv: r.implied_volatility,
-        rsi_14: r.rsi_14,
-        bollinger: r.bollinger,
-        fibonacci: r.fibonacci,
-        fifty_two_week_high: r.fifty_two_week_high,
-        fifty_two_week_low: r.fifty_two_week_low,
-        strike_bollinger_position: r.strike_bollinger_position,
-        isFallback: Boolean(
-          r.used_fallback ||
-          r.bid_used_fallback ||
-          (r as any).usedFallback ||
-          (r.bid <= 0 && r.last_price > 0) ||
-          (r.bid === r.last_price && r.bid > 0 && !r.ask)
-        ),
-        bid_used_fallback: r.bid_used_fallback,
-        used_fallback: r.used_fallback,
-      }));
+      .map((r) => {
+        const isFb = Boolean(r.bid_used_fallback || r.used_fallback || (r as any).usedFallback);
+        return {
+          ticker: r.ticker,
+          strike: r.strike,
+          expiration: r.expiration,
+          label: `$${r.strike}`,
+          dte: r.days_to_expiration,
+          bid: r.bid,
+          premium: r.bid,
+          ask: r.ask,
+          lastPrice: r.last_price,
+          last_price: r.last_price,
+          spot: r.current_price,
+          moneyness: r.moneyness_pct,
+          returnPct: r.annualized_return_pct,
+          returnCashSecured: r.annualized_return_pct_cash_secured,
+          capitalBasis: r.capital_basis,
+          iv: r.implied_volatility,
+          rsi_14: r.rsi_14,
+          bollinger: r.bollinger,
+          fibonacci: r.fibonacci,
+          fifty_two_week_high: r.fifty_two_week_high,
+          fifty_two_week_low: r.fifty_two_week_low,
+          strike_bollinger_position: r.strike_bollinger_position,
+          isFallback: isFb,
+          usedFallback: isFb,
+          bid_used_fallback: isFb,
+          used_fallback: isFb,
+        };
+      });
   }
 
   const themeColor = STOCK_COLORS[colorIndex % STOCK_COLORS.length];
