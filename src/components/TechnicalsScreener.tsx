@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Activity,
   Search,
@@ -16,6 +16,59 @@ import {
 import { TechnicalsData } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { StatCard } from "./StatCard";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type TechnicalsSortKey = keyof TechnicalsData | "bollinger_pct_b";
+
+const TECHNICALS_COLUMNS: ColumnDefinition<TechnicalsSortKey>[] = [
+  { key: "rsi_14", label: "RSI (14d)", defaultDirection: "asc", numeric: true },
+  { key: "bollinger_pct_b", label: "Bollinger %B", defaultDirection: "asc", numeric: true, extractor: (d: TechnicalsData) => d.bollinger?.percent_b ?? 0 },
+  { key: "implied_volatility_pct", label: "ATM IV %", defaultDirection: "desc", numeric: true },
+  { key: "ticker", label: "Ticker", defaultDirection: "asc" },
+  { key: "current_price", label: "Spot Price", defaultDirection: "desc", numeric: true },
+  { key: "historical_volatility_pct", label: "Realized Vol %", defaultDirection: "desc", numeric: true },
+  { key: "analyst_upside_pct", label: "Analyst Upside %", defaultDirection: "desc", numeric: true },
+];
+
+const TECHNICALS_PRESETS: SortPreset<TechnicalsSortKey>[] = [
+  {
+    label: "Oversold Pullbacks: RSI ➔ %B ➔ IV",
+    description: "Lowest RSI (oversold), lowest Bollinger %B, and high IV for put premium selling",
+    criteria: [
+      { field: "rsi_14", direction: "asc" },
+      { field: "bollinger_pct_b", direction: "asc" },
+      { field: "implied_volatility_pct", direction: "desc" },
+    ],
+  },
+  {
+    label: "Vol Premium Spike: IV ➔ Realized Vol ➔ RSI",
+    description: "Highest implied volatility relative to realized volatility",
+    criteria: [
+      { field: "implied_volatility_pct", direction: "desc" },
+      { field: "historical_volatility_pct", direction: "desc" },
+      { field: "rsi_14", direction: "asc" },
+    ],
+  },
+  {
+    label: "Value Upside: Analyst Upside ➔ RSI ➔ Spot",
+    description: "Strongest analyst price target upside with oversold RSI confirmation",
+    criteria: [
+      { field: "analyst_upside_pct", direction: "desc" },
+      { field: "rsi_14", direction: "asc" },
+      { field: "current_price", direction: "asc" },
+    ],
+  },
+];
 
 interface TechnicalsScreenerProps {
   watchlist: string[];
@@ -28,10 +81,9 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<TechnicalsData[]>([]);
   const [selectedStock, setSelectedStock] = useState<TechnicalsData | null>(null);
-  type TechnicalsSortKey = keyof TechnicalsData | "bollinger_pct_b";
-
-  const [sortBy, setSortBy] = useState<TechnicalsSortKey>("rsi_14");
-  const [sortAsc, setSortAsc] = useState(true);
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion<TechnicalsSortKey>[]>([
+    { id: "1", field: "rsi_14", direction: "asc" },
+  ]);
 
   const fetchTechnicals = async () => {
     setLoading(true);
@@ -61,33 +113,14 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
     fetchTechnicals();
   }, [universe]);
 
-  const handleSort = (field: TechnicalsSortKey) => {
-    if (sortBy === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortBy(field);
-      setSortAsc(field === "ticker");
-    }
+  const handleSort = (field: TechnicalsSortKey, isShift: boolean = false) => {
+    const defaultDir = field === "ticker" || field === "rsi_14" || field === "bollinger_pct_b" ? "asc" : "desc";
+    setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
-  const sortedResults = [...results].sort((a, b) => {
-    let aVal: any;
-    let bVal: any;
-    if (sortBy === "bollinger_pct_b") {
-      aVal = a.bollinger?.percent_b ?? 0;
-      bVal = b.bollinger?.percent_b ?? 0;
-    } else {
-      aVal = a[sortBy as keyof TechnicalsData];
-      bVal = b[sortBy as keyof TechnicalsData];
-    }
-
-    if (aVal === null || aVal === undefined) return 1;
-    if (bVal === null || bVal === undefined) return -1;
-    if (typeof aVal === "string") {
-      return sortAsc ? (aVal as string).localeCompare(bVal as string) : (bVal as string).localeCompare(aVal as string);
-    }
-    return sortAsc ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-  });
+  const sortedResults = useMemo(() => {
+    return applyHierarchicalSort(results, sortCriteria, TECHNICALS_COLUMNS);
+  }, [results, sortCriteria]);
 
   return (
     <div className="space-y-6">
@@ -172,101 +205,69 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
             <span className="text-[11px] text-slate-400">Click a row to inspect full Fibonacci & Volatility</span>
           </div>
 
+          {/* Hierarchical Multi-Level Sort Controls */}
+          <div className="p-3 border-b border-slate-800/80 bg-slate-950/40">
+            <HierarchicalSortControl
+              criteria={sortCriteria}
+              onChangeCriteria={setSortCriteria}
+              availableColumns={TECHNICALS_COLUMNS}
+              presets={TECHNICALS_PRESETS}
+            />
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
                 <tr>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "ticker" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("ticker")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Ticker</span>
-                      {sortBy === "ticker" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "current_price" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("current_price")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Price</span>
-                      {sortBy === "current_price" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "rsi_14" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("rsi_14")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>RSI (14d)</span>
-                      {sortBy === "rsi_14" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "bollinger_pct_b" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("bollinger_pct_b")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Bollinger (%B & Zone)</span>
-                      {sortBy === "bollinger_pct_b" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "implied_volatility_pct" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("implied_volatility_pct")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>IV (ATM)</span>
-                      {sortBy === "implied_volatility_pct" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "historical_volatility_pct" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("historical_volatility_pct")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Realized Vol</span>
-                      {sortBy === "historical_volatility_pct" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "analyst_upside_pct" ? "text-blue-300" : ""}`}
-                    onClick={() => handleSort("analyst_upside_pct")}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Analyst Upside</span>
-                      {sortBy === "analyst_upside_pct" ? (
-                        sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                      )}
-                    </div>
-                  </th>
+                  <TableSortHeader
+                    field="ticker"
+                    label="Ticker"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
+                  <TableSortHeader
+                    field="current_price"
+                    label="Price"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
+                  <TableSortHeader
+                    field="rsi_14"
+                    label="RSI (14d)"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
+                  <TableSortHeader
+                    field="bollinger_pct_b"
+                    label="Bollinger (%B & Zone)"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
+                  <TableSortHeader
+                    field="implied_volatility_pct"
+                    label="IV (ATM)"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
+                  <TableSortHeader
+                    field="historical_volatility_pct"
+                    label="Realized Vol"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
+                  <TableSortHeader
+                    field="analyst_upside_pct"
+                    label="Analyst Upside"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">

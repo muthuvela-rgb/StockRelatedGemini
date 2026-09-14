@@ -14,6 +14,70 @@ import {
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { StatCard } from "./StatCard";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type ShortDatedSortKey =
+  | "ticker"
+  | "expiration"
+  | "strike"
+  | "current_price"
+  | "moneyness_pct"
+  | "bid"
+  | "implied_volatility"
+  | "capital_basis"
+  | "annualized_return_pct";
+
+const SHORT_DATED_COLUMNS: ColumnDefinition<ShortDatedSortKey>[] = [
+  { key: "moneyness_pct", label: "Moneyness %", defaultDirection: "desc", numeric: true },
+  { key: "strike", label: "Strike Price", defaultDirection: "asc", numeric: true },
+  { key: "annualized_return_pct", label: "Annualized Yield %", defaultDirection: "desc", numeric: true },
+  { key: "ticker", label: "Ticker", defaultDirection: "asc" },
+  { key: "expiration", label: "Expiration (DTE)", defaultDirection: "asc", extractor: (r: PutOptionRecord) => r.days_to_expiration ?? r.expiration },
+  { key: "current_price", label: "Spot Price", defaultDirection: "desc", numeric: true },
+  { key: "bid", label: "Bid / Ask", defaultDirection: "desc", numeric: true },
+  { key: "implied_volatility", label: "IV %", defaultDirection: "desc", numeric: true },
+  { key: "capital_basis", label: "Margin Basis", defaultDirection: "asc", numeric: true },
+];
+
+const SHORT_DATED_PRESETS: SortPreset<ShortDatedSortKey>[] = [
+  {
+    label: "Moneyness ➔ Strike ➔ Ann. Yield",
+    description: "Groups by Moneyness %, breaks ties with Strike, then ranks by Yield",
+    criteria: [
+      { field: "moneyness_pct", direction: "desc" },
+      { field: "strike", direction: "asc" },
+      { field: "annualized_return_pct", direction: "desc" },
+    ],
+  },
+  {
+    label: "Max Short Yield: Ann. Yield ➔ DTE ➔ Bid",
+    description: "Highest annualized yields first, then shortest days to expiration",
+    criteria: [
+      { field: "annualized_return_pct", direction: "desc" },
+      { field: "expiration", direction: "asc" },
+      { field: "bid", direction: "desc" },
+    ],
+  },
+  {
+    label: "Safety First: Moneyness ➔ IV ➔ Yield",
+    description: "Lowest moneyness (safest strikes) first, then IV and yield",
+    criteria: [
+      { field: "moneyness_pct", direction: "asc" },
+      { field: "implied_volatility", direction: "desc" },
+      { field: "annualized_return_pct", direction: "desc" },
+    ],
+  },
+];
 
 interface ShortDatedScreenerProps {
   watchlist: string[];
@@ -72,46 +136,21 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
     }
   };
 
-  type ShortDatedSortKey =
-    | "ticker"
-    | "expiration"
-    | "strike"
-    | "current_price"
-    | "moneyness_pct"
-    | "bid"
-    | "implied_volatility"
-    | "capital_basis"
-    | "annualized_return_pct";
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion<ShortDatedSortKey>[]>([
+    { id: "1", field: "annualized_return_pct", direction: "desc" },
+  ]);
 
-  const [sortBy, setSortBy] = useState<ShortDatedSortKey>("annualized_return_pct");
-  const [sortAsc, setSortAsc] = useState<boolean>(false);
-
-  const handleSort = (field: ShortDatedSortKey) => {
-    if (sortBy === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortBy(field);
-      setSortAsc(field === "ticker" || field === "expiration" || field === "strike");
-    }
+  const handleSort = (field: ShortDatedSortKey, isShift: boolean = false) => {
+    const defaultDir =
+      field === "ticker" || field === "expiration" || field === "strike" || field === "capital_basis"
+        ? "asc"
+        : "desc";
+    setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
   const sortedRecords = useMemo(() => {
-    const list = [...records];
-    return list.sort((a, b) => {
-      let valA: any = a[sortBy];
-      let valB: any = b[sortBy];
-
-      if (sortBy === "expiration") {
-        valA = a.days_to_expiration ?? a.expiration;
-        valB = b.days_to_expiration ?? b.expiration;
-      }
-
-      if (typeof valA === "string" && typeof valB === "string") {
-        return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return sortAsc ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
-    });
-  }, [records, sortBy, sortAsc]);
+    return applyHierarchicalSort(records, sortCriteria, SHORT_DATED_COLUMNS);
+  }, [records, sortCriteria]);
 
   useEffect(() => {
     runShortScan();
@@ -207,130 +246,87 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
           <h3 className="text-sm font-bold text-white font-display">
             High-Yield Short-Dated Candidates ({records.length} Contracts)
           </h3>
-          <span className="text-xs text-slate-400 font-mono">Sorted by Portfolio Margin Yield</span>
+          <span className="text-xs text-slate-400 font-mono">Multi-Level Hierarchical Sort Enabled</span>
+        </div>
+
+        {/* Hierarchical Multi-Level Sort Controls */}
+        <div className="p-3 border-b border-slate-800/80 bg-slate-950/40">
+          <HierarchicalSortControl
+            criteria={sortCriteria}
+            onChangeCriteria={setSortCriteria}
+            availableColumns={SHORT_DATED_COLUMNS}
+            presets={SHORT_DATED_PRESETS}
+          />
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
-                <th
-                  onClick={() => handleSort("ticker")}
-                  className={`px-4 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "ticker" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Ticker</span>
-                    {sortBy === "ticker" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("expiration")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "expiration" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Expiration (DTE)</span>
-                    {sortBy === "expiration" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("strike")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "strike" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Strike</span>
-                    {sortBy === "strike" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("current_price")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "current_price" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Spot</span>
-                    {sortBy === "current_price" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("moneyness_pct")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "moneyness_pct" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Moneyness %</span>
-                    {sortBy === "moneyness_pct" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("bid")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "bid" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Bid / Ask</span>
-                    {sortBy === "bid" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("implied_volatility")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "implied_volatility" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>IV %</span>
-                    {sortBy === "implied_volatility" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("capital_basis")}
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "capital_basis" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>OCC Margin Basis</span>
-                    {sortBy === "capital_basis" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("annualized_return_pct")}
-                  className={`px-4 py-3 text-right cursor-pointer hover:text-white transition-colors ${sortBy === "annualized_return_pct" ? "text-blue-300 bg-slate-750" : ""}`}
-                >
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span>Annualized Yield</span>
-                    {sortBy === "annualized_return_pct" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
+                <TableSortHeader
+                  field="ticker"
+                  label="Ticker"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-4 py-3"
+                />
+                <TableSortHeader
+                  field="expiration"
+                  label="Expiration (DTE)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="strike"
+                  label="Strike"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="current_price"
+                  label="Spot"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="moneyness_pct"
+                  label="Moneyness %"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="bid"
+                  label="Bid / Ask"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="implied_volatility"
+                  label="IV %"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="capital_basis"
+                  label="OCC Margin Basis"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="annualized_return_pct"
+                  label="Annualized Yield"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  align="right"
+                  className="px-4 py-3 text-right"
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800 font-mono">

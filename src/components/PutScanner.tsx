@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Play,
   Download,
@@ -43,6 +43,129 @@ import {
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { StatCard } from "./StatCard";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+  appendSortLevel,
+  removeSortLevel,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+const PUT_SCANNER_COLUMNS: ColumnDefinition<keyof PutOptionRecord>[] = [
+  {
+    key: "moneyness_pct",
+    label: "Moneyness %",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.moneyness_pct.toFixed(1)),
+  },
+  {
+    key: "strike",
+    label: "Strike Price",
+    defaultDirection: "asc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.strike.toFixed(2)),
+  },
+  {
+    key: "annualized_return_pct",
+    label: "Ann. Return %",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.annualized_return_pct.toFixed(2)),
+  },
+  {
+    key: "ticker",
+    label: "Ticker",
+    defaultDirection: "asc",
+    extractor: (r: PutOptionRecord) => r.ticker,
+  },
+  {
+    key: "expiration",
+    label: "Expiration (DTE)",
+    defaultDirection: "asc",
+    extractor: (r: PutOptionRecord) => r.days_to_expiration ?? r.expiration,
+  },
+  {
+    key: "current_price",
+    label: "Spot Price",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.current_price.toFixed(2)),
+  },
+  {
+    key: "bid",
+    label: "Bid / Ask",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.bid.toFixed(2)),
+  },
+  {
+    key: "implied_volatility",
+    label: "IV %",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number((r.implied_volatility || 0).toFixed(1)),
+  },
+  {
+    key: "capital_basis",
+    label: "Capital Basis",
+    defaultDirection: "asc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.capital_basis.toFixed(2)),
+  },
+  {
+    key: "annualized_return_pct_cash_secured",
+    label: "Cash Return %",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => Number(r.annualized_return_pct_cash_secured.toFixed(2)),
+  },
+];
+
+const PUT_SCANNER_PRESETS: SortPreset<keyof PutOptionRecord>[] = [
+  {
+    label: "Moneyness ➔ Strike ➔ Ann. Return",
+    description: "Groups by Moneyness %, breaks ties with Strike, then ranks by Return",
+    criteria: [
+      { field: "moneyness_pct", direction: "desc" },
+      { field: "strike", direction: "asc" },
+      { field: "annualized_return_pct", direction: "desc" },
+    ],
+  },
+  {
+    label: "Yield Priority: Ann. Return ➔ Moneyness ➔ IV",
+    description: "Ranks highest return first, then by moneyness buffer and volatility",
+    criteria: [
+      { field: "annualized_return_pct", direction: "desc" },
+      { field: "moneyness_pct", direction: "asc" },
+      { field: "implied_volatility", direction: "desc" },
+    ],
+  },
+  {
+    label: "Chain Layout: Ticker ➔ Expiration ➔ Strike",
+    description: "Alphabetical ticker, then chronologically by expiration, then ascending strikes",
+    criteria: [
+      { field: "ticker", direction: "asc" },
+      { field: "expiration", direction: "asc" },
+      { field: "strike", direction: "asc" },
+    ],
+  },
+  {
+    label: "Deep Out-of-the-Money: Moneyness ➔ Bid ➔ IV",
+    description: "Safest strikes first, then best premium bids and implied volatility",
+    criteria: [
+      { field: "moneyness_pct", direction: "asc" },
+      { field: "bid", direction: "desc" },
+      { field: "implied_volatility", direction: "desc" },
+    ],
+  },
+];
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { ChartPointInspector } from "./ChartPointInspector";
 import { MultiPlotViewMenu, STOCK_COLORS } from "./MultiPlotViewMenu";
@@ -76,9 +199,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [noFallback, setNoFallback] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Sorting and filtering
-  const [sortBy, setSortBy] = useState<keyof PutOptionRecord>("annualized_return_pct");
-  const [sortAsc, setSortAsc] = useState(false);
+  // Hierarchical Sorting State
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion<keyof PutOptionRecord>[]>([
+    { id: "1", field: "annualized_return_pct", direction: "desc" },
+  ]);
   const [filterMoneynessMax, setFilterMoneynessMax] = useState<number>(100);
   const [filterMinBid, setFilterMinBid] = useState<number>(0);
   const [filterSearch, setFilterSearch] = useState("");
@@ -145,22 +269,17 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     handleScan();
   }, [universe]);
 
-  // Filter & Sort
-  const filteredRecords = records
-    .filter((r) => {
-      if (filterSearch && !r.ticker.toLowerCase().includes(filterSearch.toLowerCase())) return false;
-      if (r.moneyness_pct > filterMoneynessMax) return false;
-      if (r.bid < filterMinBid) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      let aVal = a[sortBy];
-      let bVal = b[sortBy];
-      if (typeof aVal === "string") {
-        return sortAsc ? (aVal as string).localeCompare(bVal as string) : (bVal as string).localeCompare(aVal as string);
-      }
-      return sortAsc ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-    });
+  // Filter & Hierarchical Sort
+  const rawFilteredRecords = records.filter((r) => {
+    if (filterSearch && !r.ticker.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+    if (r.moneyness_pct > filterMoneynessMax) return false;
+    if (r.bid < filterMinBid) return false;
+    return true;
+  });
+
+  const filteredRecords = useMemo(() => {
+    return applyHierarchicalSort(rawFilteredRecords, sortCriteria, PUT_SCANNER_COLUMNS);
+  }, [rawFilteredRecords, sortCriteria]);
 
   const exportCsv = () => {
     if (filteredRecords.length === 0) return;
@@ -355,13 +474,24 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     };
   });
 
-  const handleSort = (field: keyof PutOptionRecord) => {
-    if (sortBy === field) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortBy(field);
-      setSortAsc(false);
-    }
+  const handleSort = (field: keyof PutOptionRecord, isShift: boolean = false) => {
+    const defaultDir =
+      field === "strike" || field === "ticker" || field === "expiration" || field === "capital_basis"
+        ? "asc"
+        : "desc";
+    setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
+  };
+
+  const handleAddLevel = (field: keyof PutOptionRecord) => {
+    const defaultDir =
+      field === "strike" || field === "ticker" || field === "expiration" || field === "capital_basis"
+        ? "asc"
+        : "desc";
+    setSortCriteria((prev) => appendSortLevel(field, prev, defaultDir));
+  };
+
+  const handleRemoveLevel = (field: keyof PutOptionRecord) => {
+    setSortCriteria((prev) => removeSortLevel(field, prev));
   };
 
   return (
@@ -1599,127 +1729,102 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
 
       {/* Results Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        {/* Hierarchical Multi-Level Sort Controls */}
+        <div className="p-3 border-b border-slate-800/80 bg-slate-950/40">
+          <HierarchicalSortControl
+            criteria={sortCriteria}
+            onChangeCriteria={setSortCriteria}
+            availableColumns={PUT_SCANNER_COLUMNS}
+            presets={PUT_SCANNER_PRESETS}
+          />
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
-                <th
-                  className={`px-4 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "ticker" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("ticker")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Ticker</span>
-                    {sortBy === "ticker" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "expiration" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("expiration")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Expiration (DTE)</span>
-                    {sortBy === "expiration" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "strike" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("strike")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Strike</span>
-                    {sortBy === "strike" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "current_price" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("current_price")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Spot</span>
-                    {sortBy === "current_price" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "moneyness_pct" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("moneyness_pct")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Moneyness %</span>
-                    {sortBy === "moneyness_pct" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "bid" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("bid")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Bid / Ask</span>
-                    {sortBy === "bid" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "implied_volatility" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("implied_volatility")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>IV %</span>
-                    {sortBy === "implied_volatility" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-3 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "capital_basis" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("capital_basis")}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Capital Basis</span>
-                    {sortBy === "capital_basis" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  className={`px-4 py-3 cursor-pointer hover:text-white transition-colors ${sortBy === "annualized_return_pct" ? "text-emerald-400" : ""}`}
-                  onClick={() => handleSort("annualized_return_pct")}
-                >
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span>Annualized Return %</span>
-                    {sortBy === "annualized_return_pct" ? (
-                      sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60" />
-                    )}
-                  </div>
-                </th>
+                <TableSortHeader
+                  field="ticker"
+                  label="Ticker"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-4 py-3"
+                />
+                <TableSortHeader
+                  field="expiration"
+                  label="Expiration (DTE)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="strike"
+                  label="Strike"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="current_price"
+                  label="Spot"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="moneyness_pct"
+                  label="Moneyness %"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="bid"
+                  label="Bid / Ask"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="implied_volatility"
+                  label="IV %"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="capital_basis"
+                  label="Capital Basis"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="annualized_return_pct"
+                  label="Annualized Return %"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  align="right"
+                  className="px-4 py-3"
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">

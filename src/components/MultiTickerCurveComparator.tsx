@@ -37,6 +37,67 @@ import { MultiTickerCompareAnalysis, MultiTickerCompareResult, PremiumVsExpirati
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { ChartPointInspector } from "./ChartPointInspector";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type MultiTableSortKey =
+  | "ticker"
+  | "current_price"
+  | "target_strike"
+  | "avg_cash_return"
+  | "avg_margin_return"
+  | "avg_iv"
+  | "rsi_14"
+  | "knee_point";
+
+const COMPARATOR_COLUMNS: ColumnDefinition<MultiTableSortKey>[] = [
+  { key: "avg_cash_return", label: "Avg Cash Return", defaultDirection: "desc", numeric: true },
+  { key: "avg_margin_return", label: "Avg Margin Return", defaultDirection: "desc", numeric: true },
+  { key: "avg_iv", label: "Avg IV %", defaultDirection: "desc", numeric: true },
+  { key: "ticker", label: "Ticker Symbol", defaultDirection: "asc" },
+  { key: "current_price", label: "Spot Price", defaultDirection: "desc", numeric: true },
+  { key: "target_strike", label: "Target Strike", defaultDirection: "asc", numeric: true },
+  { key: "rsi_14", label: "RSI (14)", defaultDirection: "asc", numeric: true, extractor: (item: any) => item.rsi_14 ?? -1 },
+  { key: "knee_point", label: "Sweet-Spot Knee Yield", defaultDirection: "desc", numeric: true, extractor: (item: any) => item.knee_point?.annualized_return_cash_secured ?? -1 },
+];
+
+const COMPARATOR_PRESETS: SortPreset<MultiTableSortKey>[] = [
+  {
+    label: "Yield Leaders: Cash Return ➔ IV ➔ Ticker",
+    description: "Highest annualized cash-secured yield across compared tickers",
+    criteria: [
+      { field: "avg_cash_return", direction: "desc" },
+      { field: "avg_iv", direction: "desc" },
+      { field: "ticker", direction: "asc" },
+    ],
+  },
+  {
+    label: "Oversold High-Yield: RSI ➔ Cash Return ➔ IV",
+    description: "Lowest RSI (deepest oversold) with highest cash-secured return",
+    criteria: [
+      { field: "rsi_14", direction: "asc" },
+      { field: "avg_cash_return", direction: "desc" },
+      { field: "avg_iv", direction: "desc" },
+    ],
+  },
+  {
+    label: "Alphabetical: Ticker ➔ Cash Return",
+    description: "Ordered alphabetically by ticker symbol",
+    criteria: [
+      { field: "ticker", direction: "asc" },
+      { field: "avg_cash_return", direction: "desc" },
+    ],
+  },
+];
 
 export const COMPARISON_PALETTE = [
   "#38bdf8", // Sky blue
@@ -230,73 +291,18 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
   const lowestIvTicker = [...tickerSummaries].sort((a, b) => a.avg_iv - b.avg_iv)[0];
   const highestIvTicker = [...tickerSummaries].sort((a, b) => b.avg_iv - a.avg_iv)[0];
 
-  type MultiTableSortKey =
-    | "ticker"
-    | "current_price"
-    | "target_strike"
-    | "avg_cash_return"
-    | "avg_margin_return"
-    | "avg_iv"
-    | "rsi_14"
-    | "knee_point";
+  const [tableSortCriteria, setTableSortCriteria] = useState<SortCriterion<MultiTableSortKey>[]>([
+    { id: "1", field: "avg_cash_return", direction: "desc" },
+  ]);
 
-  const [tableSortField, setTableSortField] = useState<MultiTableSortKey>("avg_cash_return");
-  const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("desc");
-
-  const handleTableSort = (field: MultiTableSortKey) => {
-    if (tableSortField === field) {
-      setTableSortDir(tableSortDir === "asc" ? "desc" : "asc");
-    } else {
-      setTableSortField(field);
-      setTableSortDir(field === "ticker" ? "asc" : "desc");
-    }
+  const handleTableSort = (field: MultiTableSortKey, isShift: boolean = false) => {
+    const defaultDir = field === "ticker" || field === "target_strike" || field === "rsi_14" ? "asc" : "desc";
+    setTableSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
   const sortedTickerSummaries = useMemo(() => {
-    const list = [...tickerSummaries];
-    return list.sort((a, b) => {
-      let valA: any = 0;
-      let valB: any = 0;
-      switch (tableSortField) {
-        case "ticker":
-          valA = a.ticker;
-          valB = b.ticker;
-          break;
-        case "current_price":
-          valA = a.current_price;
-          valB = b.current_price;
-          break;
-        case "target_strike":
-          valA = a.target_strike;
-          valB = b.target_strike;
-          break;
-        case "avg_cash_return":
-          valA = a.avg_cash_return;
-          valB = b.avg_cash_return;
-          break;
-        case "avg_margin_return":
-          valA = a.avg_margin_return;
-          valB = b.avg_margin_return;
-          break;
-        case "avg_iv":
-          valA = a.avg_iv;
-          valB = b.avg_iv;
-          break;
-        case "rsi_14":
-          valA = a.rsi_14 ?? -1;
-          valB = b.rsi_14 ?? -1;
-          break;
-        case "knee_point":
-          valA = a.knee_point?.annualized_return_cash_secured ?? -1;
-          valB = b.knee_point?.annualized_return_cash_secured ?? -1;
-          break;
-      }
-      if (typeof valA === "string") {
-        return tableSortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return tableSortDir === "asc" ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
-    });
-  }, [tickerSummaries, tableSortField, tableSortDir]);
+    return applyHierarchicalSort(tickerSummaries, tableSortCriteria, COMPARATOR_COLUMNS);
+  }, [tickerSummaries, tableSortCriteria]);
 
   return (
     <div className="space-y-6">
@@ -794,8 +800,8 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
 
       {/* Multi-Ticker Comparison Matrix Table */}
       {data && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
                 <BarChart2 className="w-4 h-4 text-indigo-400" />
@@ -807,114 +813,73 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
             </div>
           </div>
 
+          <HierarchicalSortControl
+            criteria={tableSortCriteria}
+            onChangeCriteria={setTableSortCriteria}
+            availableColumns={COMPARATOR_COLUMNS}
+            presets={COMPARATOR_PRESETS}
+          />
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs select-none">
               <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
                 <tr>
-                  <th
-                    onClick={() => handleTableSort("ticker")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "ticker" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Ticker</span>
-                      {tableSortField === "ticker" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("current_price")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "current_price" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Spot Price</span>
-                      {tableSortField === "current_price" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("target_strike")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "target_strike" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Target Strike</span>
-                      {tableSortField === "target_strike" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("avg_cash_return")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "avg_cash_return" ? "text-emerald-300" : "text-emerald-400"}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Avg Cash Return</span>
-                      {tableSortField === "avg_cash_return" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("avg_margin_return")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "avg_margin_return" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Avg Margin Return</span>
-                      {tableSortField === "avg_margin_return" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("avg_iv")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "avg_iv" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Avg IV</span>
-                      {tableSortField === "avg_iv" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("rsi_14")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "rsi_14" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>RSI (14)</span>
-                      {tableSortField === "rsi_14" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("knee_point")}
-                    className={`py-3 px-3 cursor-pointer hover:text-white transition-colors ${tableSortField === "knee_point" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Sweet-Spot Knee Point</span>
-                      {tableSortField === "knee_point" ? (
-                        tableSortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
+                  <TableSortHeader
+                    field="ticker"
+                    label="Ticker"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3"
+                  />
+                  <TableSortHeader
+                    field="current_price"
+                    label="Spot Price"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3"
+                  />
+                  <TableSortHeader
+                    field="target_strike"
+                    label="Target Strike"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3"
+                  />
+                  <TableSortHeader
+                    field="avg_cash_return"
+                    label="Avg Cash Return"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3 text-emerald-400"
+                  />
+                  <TableSortHeader
+                    field="avg_margin_return"
+                    label="Avg Margin Return"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3 text-blue-400"
+                  />
+                  <TableSortHeader
+                    field="avg_iv"
+                    label="Avg IV"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3"
+                  />
+                  <TableSortHeader
+                    field="rsi_14"
+                    label="RSI (14)"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3"
+                  />
+                  <TableSortHeader
+                    field="knee_point"
+                    label="Sweet-Spot Knee Point"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3"
+                  />
                   <th className="py-3 px-3 text-right">Action</th>
                 </tr>
               </thead>

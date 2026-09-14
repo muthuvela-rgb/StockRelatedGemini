@@ -20,6 +20,67 @@ import {
   OptionStrikeData,
   findVerticalPutSpreads,
 } from "../utils/verticalPutOptimizer";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type VerticalSpreadSortKey =
+  | "rank"
+  | "sellStrike"
+  | "buyStrike"
+  | "netCredit"
+  | "totalCredit100"
+  | "maxRisk100"
+  | "returnOnRisk"
+  | "downsideCushionPct";
+
+const VERTICAL_SPREAD_COLUMNS: ColumnDefinition<VerticalSpreadSortKey>[] = [
+  { key: "rank", label: "Rank", defaultDirection: "asc", numeric: true, extractor: (s: any) => s.originalRank },
+  { key: "netCredit", label: "Net Credit ($)", defaultDirection: "desc", numeric: true },
+  { key: "totalCredit100", label: "Total Credit ($100x)", defaultDirection: "desc", numeric: true },
+  { key: "sellStrike", label: "Sell Strike", defaultDirection: "asc", numeric: true },
+  { key: "buyStrike", label: "Buy Strike", defaultDirection: "asc", numeric: true },
+  { key: "returnOnRisk", label: "Return on Risk (RoR %)", defaultDirection: "desc", numeric: true },
+  { key: "downsideCushionPct", label: "Downside Cushion %", defaultDirection: "desc", numeric: true },
+  { key: "maxRisk100", label: "Max Risk ($)", defaultDirection: "asc", numeric: true },
+];
+
+const VERTICAL_SPREAD_PRESETS: SortPreset<VerticalSpreadSortKey>[] = [
+  {
+    label: "Optimizer Default: Rank ➔ Net Credit",
+    description: "Ordered by best optimizer scoring and credit received",
+    criteria: [
+      { field: "rank", direction: "asc" },
+      { field: "netCredit", direction: "desc" },
+    ],
+  },
+  {
+    label: "Maximum Yield: RoR ➔ Net Credit ➔ Cushion",
+    description: "Highest return-on-risk ratio first with healthy downside buffer",
+    criteria: [
+      { field: "returnOnRisk", direction: "desc" },
+      { field: "netCredit", direction: "desc" },
+      { field: "downsideCushionPct", direction: "desc" },
+    ],
+  },
+  {
+    label: "Defensive Cushion: Cushion ➔ Net Credit ➔ Max Risk",
+    description: "Widest safety buffer from spot price with lowest maximum risk",
+    criteria: [
+      { field: "downsideCushionPct", direction: "desc" },
+      { field: "netCredit", direction: "desc" },
+      { field: "maxRisk100", direction: "asc" },
+    ],
+  },
+];
 
 interface VerticalPutOptimizerPanelProps {
   ticker: string;
@@ -53,26 +114,13 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
   const [cushionFilter, setCushionFilter] = useState<"ALL" | "OTM_ONLY" | "BUFFER_5">("ALL");
   const [showTable, setShowTable] = useState<boolean>(false);
 
-  type VerticalSpreadSortKey =
-    | "rank"
-    | "sellStrike"
-    | "buyStrike"
-    | "netCredit"
-    | "totalCredit100"
-    | "maxRisk100"
-    | "returnOnRisk"
-    | "downsideCushionPct";
+  const [tableSortCriteria, setTableSortCriteria] = useState<SortCriterion<VerticalSpreadSortKey>[]>([
+    { id: "1", field: "rank", direction: "asc" },
+  ]);
 
-  const [tableSortField, setTableSortField] = useState<VerticalSpreadSortKey>("rank");
-  const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("asc");
-
-  const handleTableSort = (field: VerticalSpreadSortKey) => {
-    if (tableSortField === field) {
-      setTableSortDir(tableSortDir === "asc" ? "desc" : "asc");
-    } else {
-      setTableSortField(field);
-      setTableSortDir(field === "rank" || field === "sellStrike" || field === "buyStrike" || field === "maxRisk100" ? "asc" : "desc");
-    }
+  const handleTableSort = (field: VerticalSpreadSortKey, isShift: boolean = false) => {
+    const defaultDir = field === "rank" || field === "sellStrike" || field === "buyStrike" || field === "maxRisk100" ? "asc" : "desc";
+    setTableSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
   // Compute all available spreads sorted by net premium collected descending
@@ -85,46 +133,8 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
 
   const sortedSpreads = useMemo(() => {
     const listWithRank = allSpreads.map((s, idx) => ({ ...s, originalRank: idx + 1 }));
-    return listWithRank.sort((a, b) => {
-      let valA: number = 0;
-      let valB: number = 0;
-      switch (tableSortField) {
-        case "rank":
-          valA = a.originalRank;
-          valB = b.originalRank;
-          break;
-        case "sellStrike":
-          valA = a.sellStrike;
-          valB = b.sellStrike;
-          break;
-        case "buyStrike":
-          valA = a.buyStrike;
-          valB = b.buyStrike;
-          break;
-        case "netCredit":
-          valA = a.netCredit;
-          valB = b.netCredit;
-          break;
-        case "totalCredit100":
-          valA = a.totalCredit100;
-          valB = b.totalCredit100;
-          break;
-        case "maxRisk100":
-          valA = a.maxRisk100;
-          valB = b.maxRisk100;
-          break;
-        case "returnOnRisk":
-          valA = a.returnOnRisk;
-          valB = b.returnOnRisk;
-          break;
-        case "downsideCushionPct":
-          valA = a.downsideCushionPct;
-          valB = b.downsideCushionPct;
-          break;
-      }
-      return tableSortDir === "asc" ? valA - valB : valB - valA;
-    });
-  }, [allSpreads, tableSortField, tableSortDir]);
+    return applyHierarchicalSort(listWithRank, tableSortCriteria, VERTICAL_SPREAD_COLUMNS);
+  }, [allSpreads, tableSortCriteria]);
 
   // Determine available spread widths in data
   const availableWidths = useMemo(() => {
@@ -402,119 +412,86 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
 
           {/* Expandable Candidates Table */}
           {showTable && allSpreads.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden space-y-2">
               <div className="p-2.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between text-xs text-slate-300 font-semibold">
                 <span>Top Vertical Put Spreads Ranked by Premium Collected</span>
                 <span className="text-[10px] text-slate-500">Click any row to display on chart</span>
               </div>
+
+              <div className="px-2.5 pt-1">
+                <HierarchicalSortControl
+                  criteria={tableSortCriteria}
+                  onChangeCriteria={setTableSortCriteria}
+                  availableColumns={VERTICAL_SPREAD_COLUMNS}
+                  presets={VERTICAL_SPREAD_PRESETS}
+                />
+              </div>
+
               <div className="max-h-60 overflow-y-auto">
                 <table className="w-full text-left font-mono text-[11px] select-none">
                   <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase border-b border-slate-800 sticky top-0">
                     <tr>
-                      <th
-                        onClick={() => handleTableSort("rank")}
-                        className={`p-2 cursor-pointer hover:text-white transition-colors ${tableSortField === "rank" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <span>Rank</span>
-                          {tableSortField === "rank" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("sellStrike")}
-                        className={`p-2 cursor-pointer hover:text-white transition-colors ${tableSortField === "sellStrike" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <span>Sell Strike</span>
-                          {tableSortField === "sellStrike" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("buyStrike")}
-                        className={`p-2 cursor-pointer hover:text-white transition-colors ${tableSortField === "buyStrike" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <span>Buy Strike</span>
-                          {tableSortField === "buyStrike" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("netCredit")}
-                        className={`p-2 text-right cursor-pointer hover:text-white transition-colors ${tableSortField === "netCredit" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          <span>Net Credit ($)</span>
-                          {tableSortField === "netCredit" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("totalCredit100")}
-                        className={`p-2 text-right cursor-pointer hover:text-white transition-colors ${tableSortField === "totalCredit100" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          <span>Total ($100x)</span>
-                          {tableSortField === "totalCredit100" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("maxRisk100")}
-                        className={`p-2 text-right cursor-pointer hover:text-white transition-colors ${tableSortField === "maxRisk100" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          <span>Max Risk</span>
-                          {tableSortField === "maxRisk100" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("returnOnRisk")}
-                        className={`p-2 text-right cursor-pointer hover:text-white transition-colors ${tableSortField === "returnOnRisk" ? "text-cyan-300" : ""}`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          <span>RoR (%)</span>
-                          {tableSortField === "returnOnRisk" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-300" /> : <ArrowDown className="w-3 h-3 text-cyan-300" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
-                      <th
-                        onClick={() => handleTableSort("downsideCushionPct")}
-                        className={`p-2 text-right cursor-pointer hover:text-white transition-colors ${tableSortField === "downsideCushionPct" ? "text-emerald-400" : ""}`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          <span>Cushion</span>
-                          {tableSortField === "downsideCushionPct" ? (
-                            tableSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                          )}
-                        </div>
-                      </th>
+                      <TableSortHeader
+                        field="rank"
+                        label="Rank"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        className="p-2"
+                      />
+                      <TableSortHeader
+                        field="sellStrike"
+                        label="Sell Strike"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        className="p-2"
+                      />
+                      <TableSortHeader
+                        field="buyStrike"
+                        label="Buy Strike"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        className="p-2"
+                      />
+                      <TableSortHeader
+                        field="netCredit"
+                        label="Net Credit ($)"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        align="right"
+                        className="p-2"
+                      />
+                      <TableSortHeader
+                        field="totalCredit100"
+                        label="Total ($100x)"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        align="right"
+                        className="p-2"
+                      />
+                      <TableSortHeader
+                        field="maxRisk100"
+                        label="Max Risk"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        align="right"
+                        className="p-2"
+                      />
+                      <TableSortHeader
+                        field="returnOnRisk"
+                        label="RoR (%)"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        align="right"
+                        className="p-2 text-cyan-300"
+                      />
+                      <TableSortHeader
+                        field="downsideCushionPct"
+                        label="Cushion"
+                        criteria={tableSortCriteria}
+                        onSortClick={handleTableSort}
+                        align="right"
+                        className="p-2"
+                      />
                       <th className="p-2 text-center">Action</th>
                     </tr>
                   </thead>

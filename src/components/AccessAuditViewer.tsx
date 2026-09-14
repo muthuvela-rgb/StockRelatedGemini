@@ -9,6 +9,96 @@ import {
 } from "../lib/firebase";
 import { AccessLogEntry, AccessEventType } from "../types";
 import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type AuditLogSortKey = "timestamp" | "user" | "eventType" | "status" | "ip" | "userAgent";
+
+const AUDIT_LOG_COLUMNS: ColumnDefinition<AuditLogSortKey>[] = [
+  {
+    key: "timestamp",
+    label: "Timestamp",
+    defaultDirection: "desc",
+    numeric: true,
+    extractor: (log: AccessLogEntry) => {
+      if (!log.timestamp) return 0;
+      if (typeof log.timestamp === "number") return log.timestamp;
+      if (typeof log.timestamp === "string") return new Date(log.timestamp).getTime() || 0;
+      if (typeof (log.timestamp as any).toMillis === "function") return (log.timestamp as any).toMillis();
+      if ((log.timestamp as any).seconds) return (log.timestamp as any).seconds * 1000;
+      return 0;
+    },
+  },
+  {
+    key: "user",
+    label: "User / Email",
+    defaultDirection: "asc",
+    extractor: (log: AccessLogEntry) => log.userEmail || log.userName || "Anonymous",
+  },
+  {
+    key: "eventType",
+    label: "Event Type",
+    defaultDirection: "asc",
+    extractor: (log: AccessLogEntry) => log.eventType,
+  },
+  {
+    key: "status",
+    label: "Status",
+    defaultDirection: "asc",
+    extractor: (log: AccessLogEntry) => log.status,
+  },
+  {
+    key: "ip",
+    label: "IP Address",
+    defaultDirection: "asc",
+    extractor: (log: AccessLogEntry) => log.ip || "",
+  },
+  {
+    key: "userAgent",
+    label: "Device / Client",
+    defaultDirection: "asc",
+    extractor: (log: AccessLogEntry) => log.userAgent || "",
+  },
+];
+
+const AUDIT_LOG_PRESETS: SortPreset<AuditLogSortKey>[] = [
+  {
+    label: "Chronological: Newest ➔ User ➔ Event",
+    description: "Most recent access activity first",
+    criteria: [
+      { field: "timestamp", direction: "desc" },
+      { field: "user", direction: "asc" },
+      { field: "eventType", direction: "asc" },
+    ],
+  },
+  {
+    label: "Security Audit: Status ➔ Event ➔ Timestamp",
+    description: "Group by status (BLOCKED / ALLOWED), event type, and recency",
+    criteria: [
+      { field: "status", direction: "asc" },
+      { field: "eventType", direction: "asc" },
+      { field: "timestamp", direction: "desc" },
+    ],
+  },
+  {
+    label: "User Forensics: User ➔ Timestamp ➔ Event",
+    description: "Group access timeline per user email address",
+    criteria: [
+      { field: "user", direction: "asc" },
+      { field: "timestamp", direction: "desc" },
+      { field: "eventType", direction: "asc" },
+    ],
+  },
+];
+import {
   ShieldAlert,
   ShieldCheck,
   Lock,
@@ -220,6 +310,19 @@ export const AccessAuditViewer: React.FC = () => {
       return true;
     });
   }, [logs, searchQuery, selectedEventType, timeFilter]);
+
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion<AuditLogSortKey>[]>([
+    { id: "1", field: "timestamp", direction: "desc" },
+  ]);
+
+  const handleSort = (field: AuditLogSortKey, isShift: boolean = false) => {
+    const defaultDir = field === "timestamp" ? "desc" : "asc";
+    setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
+  };
+
+  const sortedLogs = useMemo(() => {
+    return applyHierarchicalSort(filteredLogs, sortCriteria, AUDIT_LOG_COLUMNS);
+  }, [filteredLogs, sortCriteria]);
 
   // High-level statistics
   const stats = useMemo(() => {
@@ -568,8 +671,17 @@ export const AccessAuditViewer: React.FC = () => {
             </span>
           </div>
           <span className="text-[11px] text-slate-500 font-mono hidden sm:inline">
-            Ordered by newest timestamp first
+            Hierarchical multi-sort active
           </span>
+        </div>
+
+        <div className="p-4 border-b border-slate-800/80 bg-slate-950/40">
+          <HierarchicalSortControl
+            criteria={sortCriteria}
+            onChangeCriteria={setSortCriteria}
+            availableColumns={AUDIT_LOG_COLUMNS}
+            presets={AUDIT_LOG_PRESETS}
+          />
         </div>
 
         {loading ? (
@@ -592,16 +704,46 @@ export const AccessAuditViewer: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-[11px] border-b border-slate-800">
                 <tr>
-                  <th className="py-3 px-4">User / Identity</th>
-                  <th className="py-3 px-4">Timestamp</th>
-                  <th className="py-3 px-4">Event & Status</th>
-                  <th className="py-3 px-4">IP Address</th>
-                  <th className="py-3 px-4">Device / Client</th>
+                  <TableSortHeader
+                    field="user"
+                    label="User / Identity"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="py-3 px-4"
+                  />
+                  <TableSortHeader
+                    field="timestamp"
+                    label="Timestamp"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="py-3 px-4"
+                  />
+                  <TableSortHeader
+                    field="eventType"
+                    label="Event Type"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="py-3 px-4"
+                  />
+                  <TableSortHeader
+                    field="ip"
+                    label="IP Address"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="py-3 px-4"
+                  />
+                  <TableSortHeader
+                    field="userAgent"
+                    label="Device / Client"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="py-3 px-4"
+                  />
                   <th className="py-3 px-4 text-right">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-sans">
-                {filteredLogs.map((log, index) => {
+                {sortedLogs.map((log, index) => {
                   const isLogAdmin = log.userEmail?.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
                   const isBlocked = log.status === "BLOCKED" || log.eventType === "RESTRICTED_ATTEMPT";
                   const isLogin = log.eventType === "LOGIN_SUCCESS";

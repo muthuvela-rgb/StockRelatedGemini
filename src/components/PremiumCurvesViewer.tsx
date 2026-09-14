@@ -38,6 +38,67 @@ import {
 import { PremiumCurveAnalysis, PremiumVsExpirationAnalysis } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type StrikeRangeSortKey =
+  | "key"
+  | "snapped_strike"
+  | "cushion_to_strike_pct"
+  | "avg_premium"
+  | "avg_cash_return"
+  | "avg_margin_return"
+  | "avg_iv"
+  | "knee_point";
+
+const STRIKE_RANGE_COLUMNS: ColumnDefinition<StrikeRangeSortKey>[] = [
+  { key: "avg_cash_return", label: "Avg Cash Return", defaultDirection: "desc", numeric: true },
+  { key: "avg_margin_return", label: "Avg Margin Return", defaultDirection: "desc", numeric: true },
+  { key: "avg_premium", label: "Avg Premium", defaultDirection: "desc", numeric: true },
+  { key: "cushion_to_strike_pct", label: "Downside Cushion %", defaultDirection: "desc", numeric: true },
+  { key: "snapped_strike", label: "Listed Strike", defaultDirection: "asc", numeric: true },
+  { key: "key", label: "Strike (% Spot)", defaultDirection: "asc", numeric: true, extractor: (s: any) => s.target_strike ?? 0 },
+  { key: "avg_iv", label: "Avg IV %", defaultDirection: "desc", numeric: true },
+  { key: "knee_point", label: "Sweet-Spot Knee Premium", defaultDirection: "desc", numeric: true, extractor: (s: any) => s.knee_point?.premium ?? -1 },
+];
+
+const STRIKE_RANGE_PRESETS: SortPreset<StrikeRangeSortKey>[] = [
+  {
+    label: "Yield Rank: Cash Return ➔ Cushion ➔ Premium",
+    description: "Highest average annualized cash return with secondary cushion safety",
+    criteria: [
+      { field: "avg_cash_return", direction: "desc" },
+      { field: "cushion_to_strike_pct", direction: "desc" },
+      { field: "avg_premium", direction: "desc" },
+    ],
+  },
+  {
+    label: "Downside Safety: Cushion ➔ Cash Return ➔ Strike",
+    description: "Deepest OTM buffer first, sorted by cash-secured return",
+    criteria: [
+      { field: "cushion_to_strike_pct", direction: "desc" },
+      { field: "avg_cash_return", direction: "desc" },
+      { field: "snapped_strike", direction: "asc" },
+    ],
+  },
+  {
+    label: "Strike Ladder: Spot % ➔ Listed Strike",
+    description: "Ascending strike moneyness ladder order",
+    criteria: [
+      { field: "key", direction: "asc" },
+      { field: "snapped_strike", direction: "asc" },
+    ],
+  },
+];
 import { ChartPointInspector } from "./ChartPointInspector";
 import { MultiTickerCurveComparator } from "./MultiTickerCurveComparator";
 import { VerticalPutOptimizerPanel } from "./VerticalPutOptimizerPanel";
@@ -185,71 +246,19 @@ export const PremiumCurvesViewer: React.FC = () => {
     rangeStepPct,
   ]);
 
-  type StrikeRangeSortKey =
-    | "key"
-    | "snapped_strike"
-    | "cushion_to_strike_pct"
-    | "avg_premium"
-    | "avg_cash_return"
-    | "avg_margin_return"
-    | "avg_iv"
-    | "knee_point";
+  const [strikeSortCriteria, setStrikeSortCriteria] = useState<SortCriterion<StrikeRangeSortKey>[]>([
+    { id: "1", field: "avg_cash_return", direction: "desc" },
+  ]);
 
-  const [strikeSortField, setStrikeSortField] = useState<StrikeRangeSortKey>("avg_cash_return");
-  const [strikeSortDir, setStrikeSortDir] = useState<"asc" | "desc">("desc");
-
-  const handleStrikeSort = (field: StrikeRangeSortKey) => {
-    if (strikeSortField === field) {
-      setStrikeSortDir(strikeSortDir === "asc" ? "desc" : "asc");
-    } else {
-      setStrikeSortField(field);
-      setStrikeSortDir(field === "key" || field === "snapped_strike" ? "asc" : "desc");
-    }
+  const handleStrikeSort = (field: StrikeRangeSortKey, isShift: boolean = false) => {
+    const defaultDir = field === "key" || field === "snapped_strike" ? "asc" : "desc";
+    setStrikeSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
   const sortedRangeStrikes = useMemo(() => {
     if (!expAnalysis?.range_strikes) return [];
-    const list = [...expAnalysis.range_strikes];
-    return list.sort((a, b) => {
-      let valA: any = 0;
-      let valB: any = 0;
-      switch (strikeSortField) {
-        case "key":
-          valA = a.target_strike ?? 0;
-          valB = b.target_strike ?? 0;
-          break;
-        case "snapped_strike":
-          valA = a.snapped_strike ?? 0;
-          valB = b.snapped_strike ?? 0;
-          break;
-        case "cushion_to_strike_pct":
-          valA = a.cushion_to_strike_pct ?? 0;
-          valB = b.cushion_to_strike_pct ?? 0;
-          break;
-        case "avg_premium":
-          valA = a.avg_premium ?? 0;
-          valB = b.avg_premium ?? 0;
-          break;
-        case "avg_cash_return":
-          valA = a.avg_cash_return ?? 0;
-          valB = b.avg_cash_return ?? 0;
-          break;
-        case "avg_margin_return":
-          valA = a.avg_margin_return ?? 0;
-          valB = b.avg_margin_return ?? 0;
-          break;
-        case "avg_iv":
-          valA = a.avg_iv ?? 0;
-          valB = b.avg_iv ?? 0;
-          break;
-        case "knee_point":
-          valA = a.knee_point?.premium ?? -1;
-          valB = b.knee_point?.premium ?? -1;
-          break;
-      }
-      return strikeSortDir === "asc" ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
-    });
-  }, [expAnalysis?.range_strikes, strikeSortField, strikeSortDir]);
+    return applyHierarchicalSort(expAnalysis.range_strikes, strikeSortCriteria, STRIKE_RANGE_COLUMNS);
+  }, [expAnalysis?.range_strikes, strikeSortCriteria]);
 
   // Helpers for tooltip formatting
   const formatExpDateDetail = (expStr: string) => {
@@ -1014,8 +1023,8 @@ export const PremiumCurvesViewer: React.FC = () => {
 
               {/* Range Strike Matrix Table */}
               {expAnalysis.range_strikes && expAnalysis.range_strikes.length > 0 && (
-                <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-cyan-400" />
                       Strike Range Comparison & Sweet-Spot Knee Analysis
@@ -1025,114 +1034,73 @@ export const PremiumCurvesViewer: React.FC = () => {
                     </span>
                   </div>
 
+                  <HierarchicalSortControl
+                    criteria={strikeSortCriteria}
+                    onChangeCriteria={setStrikeSortCriteria}
+                    availableColumns={STRIKE_RANGE_COLUMNS}
+                    presets={STRIKE_RANGE_PRESETS}
+                  />
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs select-none">
                       <thead>
                         <tr className="border-b border-slate-800 text-slate-400 text-[11px]">
-                          <th
-                            onClick={() => handleStrikeSort("key")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "key" ? "text-cyan-400" : ""}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Strike (% Spot)</span>
-                              {strikeSortField === "key" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("snapped_strike")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "snapped_strike" ? "text-cyan-400" : ""}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Listed Strike</span>
-                              {strikeSortField === "snapped_strike" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("cushion_to_strike_pct")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "cushion_to_strike_pct" ? "text-cyan-400" : ""}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Downside Cushion</span>
-                              {strikeSortField === "cushion_to_strike_pct" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("avg_premium")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_premium" ? "text-cyan-400" : ""}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Avg Premium</span>
-                              {strikeSortField === "avg_premium" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-cyan-400" /> : <ArrowDown className="w-3 h-3 text-cyan-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("avg_cash_return")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_cash_return" ? "text-emerald-300" : "text-emerald-400"}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Avg Cash Return</span>
-                              {strikeSortField === "avg_cash_return" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("avg_margin_return")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_margin_return" ? "text-blue-300" : "text-blue-400"}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Avg Margin Return</span>
-                              {strikeSortField === "avg_margin_return" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("avg_iv")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "avg_iv" ? "text-purple-300" : "text-slate-400"}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Avg IV</span>
-                              {strikeSortField === "avg_iv" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-purple-400" /> : <ArrowDown className="w-3 h-3 text-purple-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
-                          <th
-                            onClick={() => handleStrikeSort("knee_point")}
-                            className={`pb-2 font-medium cursor-pointer hover:text-white transition-colors ${strikeSortField === "knee_point" ? "text-amber-300" : "text-amber-400"}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span>Sweet-Spot Knee</span>
-                              {strikeSortField === "knee_point" ? (
-                                strikeSortDir === "asc" ? <ArrowUp className="w-3 h-3 text-amber-400" /> : <ArrowDown className="w-3 h-3 text-amber-400" />
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                              )}
-                            </div>
-                          </th>
+                          <TableSortHeader
+                            field="key"
+                            label="Strike (% Spot)"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium"
+                          />
+                          <TableSortHeader
+                            field="snapped_strike"
+                            label="Listed Strike"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium"
+                          />
+                          <TableSortHeader
+                            field="cushion_to_strike_pct"
+                            label="Downside Cushion"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium"
+                          />
+                          <TableSortHeader
+                            field="avg_premium"
+                            label="Avg Premium"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium"
+                          />
+                          <TableSortHeader
+                            field="avg_cash_return"
+                            label="Avg Cash Return"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium text-emerald-400"
+                          />
+                          <TableSortHeader
+                            field="avg_margin_return"
+                            label="Avg Margin Return"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium text-blue-400"
+                          />
+                          <TableSortHeader
+                            field="avg_iv"
+                            label="Avg IV"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium text-purple-300"
+                          />
+                          <TableSortHeader
+                            field="knee_point"
+                            label="Sweet-Spot Knee"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium text-amber-300"
+                          />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60 font-mono">

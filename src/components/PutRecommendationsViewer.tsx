@@ -52,6 +52,19 @@ import {
 } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+  appendSortLevel,
+  removeSortLevel,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
 
 interface PutRecommendationsViewerProps {
   watchlist: string[];
@@ -259,41 +272,6 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  // Current list filtered and sorted
-  const currentList = useMemo(() => {
-    if (!data) return [];
-    let list: RecommendedPut[] = [];
-    if (activeTierTab === "least_risk") list = [...data.least_risk];
-    else if (activeTierTab === "medium_risk") list = [...data.medium_risk];
-    else if (activeTierTab === "high_risk") list = [...data.high_risk];
-    else list = [...data.all_recommendations];
-
-    // Filter by ticker search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toUpperCase();
-      list = list.filter((r) => r.ticker.includes(q) || r.contract_symbol.includes(q));
-    }
-
-    // Sort
-    list.sort((a, b) => {
-      if (sortBy === "score") {
-        if (b.score !== a.score) return b.score - a.score;
-        if (b.cushion_to_strike_pct !== a.cushion_to_strike_pct) {
-          return b.cushion_to_strike_pct - a.cushion_to_strike_pct;
-        }
-        return b.annualized_return_cash_secured - a.annualized_return_cash_secured;
-      }
-      if (sortBy === "annual_margin") return b.annualized_return_margin - a.annualized_return_margin;
-      if (sortBy === "annual_cash") return b.annualized_return_cash_secured - a.annualized_return_cash_secured;
-      if (sortBy === "cushion") return b.cushion_to_strike_pct - a.cushion_to_strike_pct;
-      if (sortBy === "pop") return b.probability_of_profit - a.probability_of_profit;
-      if (sortBy === "theta") return b.daily_theta_decay - a.daily_theta_decay;
-      return 0;
-    });
-
-    return list;
-  }, [data, activeTierTab, searchQuery, sortBy]);
-
   type TableSortKey =
     | "ticker"
     | "strike"
@@ -308,80 +286,176 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
     | "theta"
     | "score";
 
-  const [tableSortKey, setTableSortKey] = useState<TableSortKey | null>(null);
-  const [tableSortAsc, setTableSortAsc] = useState<boolean>(false);
+  const PUT_REC_COLUMNS: ColumnDefinition<TableSortKey>[] = [
+    {
+      key: "cushion",
+      label: "Moneyness / Buffer %",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.cushion_to_strike_pct.toFixed(1)),
+    },
+    {
+      key: "strike",
+      label: "Strike Price",
+      defaultDirection: "asc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.strike.toFixed(2)),
+    },
+    {
+      key: "annual_cash",
+      label: "Cash Ann. %",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.annualized_return_cash_secured.toFixed(2)),
+    },
+    {
+      key: "ticker",
+      label: "Ticker",
+      defaultDirection: "asc",
+      extractor: (r: RecommendedPut) => r.ticker,
+    },
+    {
+      key: "expiration",
+      label: "Expiration (DTE)",
+      defaultDirection: "asc",
+      extractor: (r: RecommendedPut) => r.dte ?? 0,
+    },
+    {
+      key: "score",
+      label: "Strategic Score",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Math.round(r.score),
+    },
+    {
+      key: "risk_tier",
+      label: "Risk Tier",
+      defaultDirection: "asc",
+      extractor: (r: RecommendedPut) => r.risk_tier,
+    },
+    {
+      key: "pop",
+      label: "POP %",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.probability_of_profit.toFixed(1)),
+    },
+    {
+      key: "delta",
+      label: "Delta (Δ)",
+      defaultDirection: "asc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(Math.abs(r.greeks?.delta ?? 0).toFixed(3)),
+    },
+    {
+      key: "bid",
+      label: "Bid (Ask)",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.bid.toFixed(2)),
+    },
+    {
+      key: "annual_margin",
+      label: "Margin Ann. %",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.annualized_return_margin.toFixed(2)),
+    },
+    {
+      key: "theta",
+      label: "Theta / Day",
+      defaultDirection: "desc",
+      numeric: true,
+      extractor: (r: RecommendedPut) => Number(r.daily_theta_decay.toFixed(2)),
+    },
+  ];
 
-  const handleTableSort = (key: TableSortKey) => {
-    if (tableSortKey === key) {
-      setTableSortAsc(!tableSortAsc);
-    } else {
-      setTableSortKey(key);
-      setTableSortAsc(key === "ticker" || key === "expiration" || key === "strike");
-    }
+  const PUT_REC_PRESETS: SortPreset<TableSortKey>[] = [
+    {
+      label: "Moneyness ➔ Strike ➔ Ann. Cash Return",
+      description: "Groups by buffer/moneyness, breaks ties with strike, then ranks return",
+      criteria: [
+        { field: "cushion", direction: "desc" },
+        { field: "strike", direction: "asc" },
+        { field: "annual_cash", direction: "desc" },
+      ],
+    },
+    {
+      label: "Top Score ➔ Safety Buffer ➔ Cash Return",
+      description: "Highest scoring AI recommendations, buffered downside, then yield",
+      criteria: [
+        { field: "score", direction: "desc" },
+        { field: "cushion", direction: "desc" },
+        { field: "annual_cash", direction: "desc" },
+      ],
+    },
+    {
+      label: "Income Priority: Cash Ann % ➔ POP ➔ Buffer",
+      description: "Highest yielding cash returns, high probability of profit",
+      criteria: [
+        { field: "annual_cash", direction: "desc" },
+        { field: "pop", direction: "desc" },
+        { field: "cushion", direction: "desc" },
+      ],
+    },
+    {
+      label: "Ticker Chain: Ticker ➔ Expiration ➔ Strike",
+      description: "Alphabetical ticker, chronological expiration, ascending strikes",
+      criteria: [
+        { field: "ticker", direction: "asc" },
+        { field: "expiration", direction: "asc" },
+        { field: "strike", direction: "asc" },
+      ],
+    },
+  ];
+
+  const [tableSortCriteria, setTableSortCriteria] = useState<SortCriterion<TableSortKey>[]>([
+    { id: "1", field: "score", direction: "desc" },
+  ]);
+
+  const handleTableSort = (key: TableSortKey, isShift: boolean = false) => {
+    const defaultDir =
+      key === "ticker" || key === "expiration" || key === "strike" || key === "risk_tier" || key === "delta"
+        ? "asc"
+        : "desc";
+    setTableSortCriteria((prev) => handleHeaderClick(key, isShift, prev, defaultDir));
   };
 
-  const tableRows = useMemo(() => {
-    if (!tableSortKey) return currentList;
-    const list = [...currentList];
-    return list.sort((a, b) => {
-      let valA: any = 0;
-      let valB: any = 0;
-      switch (tableSortKey) {
-        case "ticker":
-          valA = a.ticker;
-          valB = b.ticker;
-          break;
-        case "strike":
-          valA = a.strike;
-          valB = b.strike;
-          break;
-        case "expiration":
-          valA = a.dte ?? 0;
-          valB = b.dte ?? 0;
-          break;
-        case "risk_tier":
-          valA = a.risk_tier;
-          valB = b.risk_tier;
-          break;
-        case "pop":
-          valA = a.probability_of_profit;
-          valB = b.probability_of_profit;
-          break;
-        case "delta":
-          valA = Math.abs(a.greeks?.delta ?? 0);
-          valB = Math.abs(b.greeks?.delta ?? 0);
-          break;
-        case "bid":
-          valA = a.bid;
-          valB = b.bid;
-          break;
-        case "cushion":
-          valA = a.cushion_to_strike_pct;
-          valB = b.cushion_to_strike_pct;
-          break;
-        case "annual_cash":
-          valA = a.annualized_return_cash_secured;
-          valB = b.annualized_return_cash_secured;
-          break;
-        case "annual_margin":
-          valA = a.annualized_return_margin;
-          valB = b.annualized_return_margin;
-          break;
-        case "theta":
-          valA = a.daily_theta_decay;
-          valB = b.daily_theta_decay;
-          break;
-        case "score":
-          valA = a.score;
-          valB = b.score;
-          break;
-      }
-      if (typeof valA === "string") {
-        return tableSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return tableSortAsc ? (valA ?? 0) - (valB ?? 0) : (valB ?? 0) - (valA ?? 0);
-    });
-  }, [currentList, tableSortKey, tableSortAsc]);
+  const handleAddTableSortLevel = (key: TableSortKey) => {
+    const defaultDir =
+      key === "ticker" || key === "expiration" || key === "strike" || key === "risk_tier" || key === "delta"
+        ? "asc"
+        : "desc";
+    setTableSortCriteria((prev) => appendSortLevel(key, prev, defaultDir));
+  };
+
+  const handleRemoveTableSortLevel = (key: TableSortKey) => {
+    setTableSortCriteria((prev) => removeSortLevel(key, prev));
+  };
+
+  // Raw list filtered by risk tier and search term
+  const filteredList = useMemo(() => {
+    if (!data) return [];
+    let list: RecommendedPut[] = [];
+    if (activeTierTab === "least_risk") list = [...data.least_risk];
+    else if (activeTierTab === "medium_risk") list = [...data.medium_risk];
+    else if (activeTierTab === "high_risk") list = [...data.high_risk];
+    else list = [...data.all_recommendations];
+
+    // Filter by ticker search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toUpperCase();
+      list = list.filter((r) => r.ticker.includes(q) || r.contract_symbol.includes(q));
+    }
+    return list;
+  }, [data, activeTierTab, searchQuery]);
+
+  // Unified sorted recommendations using hierarchical sorting across BOTH Cards and Table views
+  const currentList = useMemo(() => {
+    return applyHierarchicalSort(filteredList, tableSortCriteria, PUT_REC_COLUMNS);
+  }, [filteredList, tableSortCriteria]);
+
+  const tableRows = currentList;
 
   // Generate payoff data for selected trade
   const payoffChartData = useMemo(() => {
@@ -627,8 +701,12 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           <div>
             <label className="block text-slate-400 font-medium mb-1.5">Sort Output By</label>
             <select
-              value={sortBy}
-              onChange={(e: any) => setSortBy(e.target.value)}
+              value={tableSortCriteria[0]?.field || sortBy}
+              onChange={(e: any) => {
+                const val = e.target.value;
+                setSortBy(val);
+                setTableSortCriteria([{ id: "1", field: val, direction: "desc" }]);
+              }}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
               <option value="score">Composite Score (Tie-Break: Downside Buffer - Default)</option>
@@ -995,6 +1073,18 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         </div>
       )}
 
+      {/* Hierarchical Multi-Level Sort Controls (Governs both Cards and Table views) */}
+      {!loading && currentList.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl">
+          <HierarchicalSortControl
+            criteria={tableSortCriteria}
+            onChangeCriteria={setTableSortCriteria}
+            availableColumns={PUT_REC_COLUMNS}
+            presets={PUT_REC_PRESETS}
+          />
+        </div>
+      )}
+
       {/* CARDS VIEW */}
       {!loading && viewMode === "cards" && currentList.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1234,162 +1324,115 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <table className="w-full text-left border-collapse text-xs select-none">
               <thead>
                 <tr className="bg-slate-950/90 text-slate-400 border-b border-slate-800 font-mono text-[11px]">
-                  <th
-                    onClick={() => handleTableSort("ticker")}
-                    className={`py-3 px-3.5 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "ticker" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Ticker / Spot</span>
-                      {tableSortKey === "ticker" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("strike")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "strike" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Strike</span>
-                      {tableSortKey === "strike" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("expiration")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "expiration" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Expiration / DTE</span>
-                      {tableSortKey === "expiration" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("risk_tier")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "risk_tier" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Risk Tier</span>
-                      {tableSortKey === "risk_tier" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("pop")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "pop" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>POP</span>
-                      {tableSortKey === "pop" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("delta")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "delta" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Delta (Δ)</span>
-                      {tableSortKey === "delta" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("bid")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "bid" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Bid (Ask)</span>
-                      {tableSortKey === "bid" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("cushion")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "cushion" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Buffer %</span>
-                      {tableSortKey === "cushion" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("annual_cash")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "annual_cash" ? "text-emerald-300" : "text-emerald-400"}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Cash Ann %</span>
-                      {tableSortKey === "annual_cash" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-emerald-400" /> : <ArrowDown className="w-3 h-3 text-emerald-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("annual_margin")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "annual_margin" ? "text-blue-300" : "text-slate-300"}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Margin Ann %</span>
-                      {tableSortKey === "annual_margin" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("theta")}
-                    className={`py-3 px-3 font-bold cursor-pointer hover:text-white transition-colors ${tableSortKey === "theta" ? "text-amber-200" : "text-amber-300"}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Theta/Day</span>
-                      {tableSortKey === "theta" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-amber-400" /> : <ArrowDown className="w-3 h-3 text-amber-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleTableSort("score")}
-                    className={`py-3 px-3 font-bold text-center cursor-pointer hover:text-white transition-colors ${tableSortKey === "score" ? "text-blue-400" : ""}`}
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>Score</span>
-                      {tableSortKey === "score" ? (
-                        tableSortAsc ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-600 opacity-60" />
-                      )}
-                    </div>
-                  </th>
+                  <TableSortHeader
+                    field="ticker"
+                    label="Ticker / Spot"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3.5 font-bold"
+                  />
+                  <TableSortHeader
+                    field="strike"
+                    label="Strike"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="expiration"
+                    label="Expiration / DTE"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="risk_tier"
+                    label="Risk Tier"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="pop"
+                    label="POP"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="delta"
+                    label="Delta (Δ)"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="bid"
+                    label="Bid (Ask)"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="cushion"
+                    label="Buffer %"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="annual_cash"
+                    label="Cash Ann %"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="annual_margin"
+                    label="Margin Ann %"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="theta"
+                    label="Theta/Day"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    className="py-3 px-3 font-bold"
+                  />
+                  <TableSortHeader
+                    field="score"
+                    label="Score"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    onAddLevel={handleAddTableSortLevel}
+                    onRemoveLevel={handleRemoveTableSortLevel}
+                    align="center"
+                    className="py-3 px-3 font-bold text-center"
+                  />
                   <th className="py-3 px-3.5 font-bold text-right">Actions</th>
                 </tr>
               </thead>

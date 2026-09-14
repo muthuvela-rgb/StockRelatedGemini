@@ -21,6 +21,70 @@ import { OptionChainResponse, OptionGreeks } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { OptionChainPremiumStrikePlot } from "./OptionChainPremiumStrikePlot";
+import {
+  SortCriterion,
+  ColumnDefinition,
+  SortPreset,
+  applyHierarchicalSort,
+  handleHeaderClick,
+} from "../utils/hierarchicalSort";
+import {
+  HierarchicalSortControl,
+  TableSortHeader,
+} from "./HierarchicalSortControl";
+
+type OptionChainSortKey =
+  | "expiration"
+  | "strike"
+  | "cushion"
+  | "annReturn"
+  | "bid"
+  | "lastPrice"
+  | "impliedVolatility"
+  | "delta"
+  | "gamma"
+  | "theta"
+  | "vega"
+  | "volume"
+  | "openInterest";
+
+const OPTION_CHAIN_PRESETS: SortPreset<OptionChainSortKey>[] = [
+  {
+    label: "User Multi-Tier: Moneyness ➔ Strike ➔ Ann. Return",
+    description: "Groups by buffer/moneyness %, breaks ties with strike, then ranks return",
+    criteria: [
+      { field: "cushion", direction: "desc" },
+      { field: "strike", direction: "asc" },
+      { field: "annReturn", direction: "desc" },
+    ],
+  },
+  {
+    label: "Yield Maximizer: Ann. Return ➔ Strike ➔ IV",
+    description: "Highest annualized cash-secured yield first",
+    criteria: [
+      { field: "annReturn", direction: "desc" },
+      { field: "strike", direction: "asc" },
+      { field: "impliedVolatility", direction: "desc" },
+    ],
+  },
+  {
+    label: "Ladder View: Expiration ➔ Strike",
+    description: "Chronological expiration order, ascending strike ladder",
+    criteria: [
+      { field: "expiration", direction: "asc" },
+      { field: "strike", direction: "asc" },
+    ],
+  },
+  {
+    label: "High Liquidity: Volume ➔ Open Int ➔ Bid",
+    description: "Most actively traded contracts sorted by volume and open interest",
+    criteria: [
+      { field: "volume", direction: "desc" },
+      { field: "openInterest", direction: "desc" },
+      { field: "bid", direction: "desc" },
+    ],
+  },
+];
 
 interface OptionChainViewerProps {
   watchlist: string[];
@@ -135,36 +199,13 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     return (premium / capitalBasis) * (365.0 / dte) * 100;
   };
 
-  // Sorting state for table columns
-  type SortKey =
-    | "expiration"
-    | "strike"
-    | "cushion"
-    | "annReturn"
-    | "bid"
-    | "lastPrice"
-    | "impliedVolatility"
-    | "delta"
-    | "gamma"
-    | "theta"
-    | "vega"
-    | "volume"
-    | "openInterest";
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion<OptionChainSortKey>[]>([
+    { id: "1", field: "strike", direction: "asc" },
+  ]);
 
-  const [sortField, setSortField] = useState<SortKey>("strike");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  const handleSort = (field: SortKey) => {
-    if (sortField === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      if (field === "strike" || field === "expiration") {
-        setSortDir("asc");
-      } else {
-        setSortDir("desc");
-      }
-    }
+  const handleSort = (field: OptionChainSortKey, isShift: boolean = false) => {
+    const defaultDir = field === "strike" || field === "expiration" || field === "delta" ? "asc" : "desc";
+    setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
   // Filter rows by strike range and table expiration filter
@@ -177,91 +218,116 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     });
   }, [rows, strikeRange, selectedExp, tableExpFilter]);
 
-  // Sort filtered rows by active column
+  const optionChainColumns: ColumnDefinition<OptionChainSortKey>[] = useMemo(() => {
+    const spot = chainData?.current_price || 0;
+    const isPut = tab === "puts";
+    return [
+      {
+        key: "strike",
+        label: "Strike Price",
+        defaultDirection: "asc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.strike,
+      },
+      {
+        key: "cushion",
+        label: "Cushion / Moneyness %",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => {
+          const s = spot > 0 ? spot : 1;
+          return isPut ? ((s - r.strike) / s) * 100 : ((r.strike - s) / s) * 100;
+        },
+      },
+      {
+        key: "annReturn",
+        label: "% Ann. Return",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => getAnnualizedCashReturn(r, spot, isPut, selectedExp),
+      },
+      {
+        key: "expiration",
+        label: "Expiration (DTE)",
+        defaultDirection: "asc",
+        extractor: (r: OptionGreeks) => r.days_to_expiration ?? (r.expiration || ""),
+      },
+      {
+        key: "bid",
+        label: "Bid / Ask",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => (r.bid > 0 ? r.bid : r.lastPrice > 0 ? (r.ask > 0 ? Math.min(r.lastPrice, r.ask) : r.lastPrice) : 0),
+      },
+      {
+        key: "lastPrice",
+        label: "Last Price",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.lastPrice ?? 0,
+      },
+      {
+        key: "impliedVolatility",
+        label: "IV %",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.impliedVolatility ?? 0,
+      },
+      {
+        key: "delta",
+        label: "Delta (Δ)",
+        defaultDirection: "asc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => (r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0),
+      },
+      {
+        key: "gamma",
+        label: "Gamma (Γ)",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.gamma ?? 0,
+      },
+      {
+        key: "theta",
+        label: "Theta (θ)",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.theta ?? 0,
+      },
+      {
+        key: "vega",
+        label: "Vega (ν)",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.vega ?? 0,
+      },
+      {
+        key: "volume",
+        label: "Volume",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.volume ?? 0,
+      },
+      {
+        key: "openInterest",
+        label: "Open Interest",
+        defaultDirection: "desc",
+        numeric: true,
+        extractor: (r: OptionGreeks) => r.openInterest ?? 0,
+      },
+    ];
+  }, [chainData?.current_price, tab, selectedExp]);
+
+  // Hierarchically sorted rows
   const sortedRows = useMemo(() => {
-    const list = [...filteredRows];
-    return list.sort((a, b) => {
-      let valA: any = 0;
-      let valB: any = 0;
-
-      switch (sortField) {
-        case "expiration":
-          valA = a.days_to_expiration ?? (a.expiration || "");
-          valB = b.days_to_expiration ?? (b.expiration || "");
-          if (valA === valB) {
-            return (a.strike - b.strike) * (sortDir === "asc" ? 1 : -1);
-          }
-          break;
-        case "strike":
-          valA = a.strike;
-          valB = b.strike;
-          break;
-        case "cushion": {
-          const spot = chainData?.current_price || 1;
-          const isPut = tab === "puts";
-          valA = isPut ? ((spot - a.strike) / spot) * 100 : ((a.strike - spot) / spot) * 100;
-          valB = isPut ? ((spot - b.strike) / spot) * 100 : ((b.strike - spot) / spot) * 100;
-          break;
-        }
-        case "annReturn": {
-          const spot = chainData?.current_price || 0;
-          const isPut = tab === "puts";
-          valA = getAnnualizedCashReturn(a, spot, isPut, selectedExp);
-          valB = getAnnualizedCashReturn(b, spot, isPut, selectedExp);
-          break;
-        }
-        case "bid":
-          valA = a.bid > 0 ? a.bid : (a.lastPrice > 0 ? (a.ask > 0 ? Math.min(a.lastPrice, a.ask) : a.lastPrice) : 0);
-          valB = b.bid > 0 ? b.bid : (b.lastPrice > 0 ? (b.ask > 0 ? Math.min(b.lastPrice, b.ask) : b.lastPrice) : 0);
-          break;
-        case "lastPrice":
-          valA = a.lastPrice ?? 0;
-          valB = b.lastPrice ?? 0;
-          break;
-        case "impliedVolatility":
-          valA = a.impliedVolatility ?? 0;
-          valB = b.impliedVolatility ?? 0;
-          break;
-        case "delta":
-          valA = a.delta !== null && a.delta !== undefined ? Math.abs(a.delta) : -999;
-          valB = b.delta !== null && b.delta !== undefined ? Math.abs(b.delta) : -999;
-          break;
-        case "gamma":
-          valA = a.gamma ?? 0;
-          valB = b.gamma ?? 0;
-          break;
-        case "theta":
-          valA = a.theta ?? 0;
-          valB = b.theta ?? 0;
-          break;
-        case "vega":
-          valA = a.vega ?? 0;
-          valB = b.vega ?? 0;
-          break;
-        case "volume":
-          valA = a.volume ?? 0;
-          valB = b.volume ?? 0;
-          break;
-        case "openInterest":
-          valA = a.openInterest ?? 0;
-          valB = b.openInterest ?? 0;
-          break;
-      }
-
-      if (typeof valA === "string" && typeof valB === "string") {
-        return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      if (valA < valB) return sortDir === "asc" ? -1 : 1;
-      if (valA > valB) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [filteredRows, sortField, sortDir, chainData?.current_price, tab]);
+    return applyHierarchicalSort(filteredRows, sortCriteria, optionChainColumns);
+  }, [filteredRows, sortCriteria, optionChainColumns]);
 
   const totalPages = Math.ceil(sortedRows.length / pageSize) || 1;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [tab, selectedExp, tableExpFilter, strikeRange, ticker, sortField, sortDir]);
+  }, [tab, selectedExp, tableExpFilter, strikeRange, ticker, sortCriteria]);
 
   const paginatedRows = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -524,214 +590,121 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           )}
         </div>
 
+        {/* Hierarchical Multi-Level Sort Controls */}
+        <div className="p-3 border-b border-slate-800/80 bg-slate-950/40">
+          <HierarchicalSortControl
+            criteria={sortCriteria}
+            onChangeCriteria={setSortCriteria}
+            availableColumns={optionChainColumns}
+            presets={OPTION_CHAIN_PRESETS}
+          />
+        </div>
+
         {/* Table View */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-800/90 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
                 {selectedExp === "ALL" && (
-                  <th
-                    onClick={() => handleSort("expiration")}
-                    className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                      sortField === "expiration" ? "text-blue-300 bg-slate-800/90" : ""
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Expiration (DTE)</span>
-                      {sortField === "expiration" ? (
-                        sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                      ) : (
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                      )}
-                    </div>
-                  </th>
+                  <TableSortHeader
+                    field="expiration"
+                    label="Expiration (DTE)"
+                    criteria={sortCriteria}
+                    onSortClick={handleSort}
+                    className="px-3 py-3"
+                  />
                 )}
-                <th
-                  onClick={() => handleSort("strike")}
-                  className={`px-4 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "strike" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Strike</span>
-                    {sortField === "strike" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("cushion")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "cushion" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
+                <TableSortHeader
+                  field="strike"
+                  label="Strike"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-4 py-3"
+                />
+                <TableSortHeader
+                  field="cushion"
+                  label="Cushion / Moneyness"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
                   title={tab === "puts" ? "Downside safety cushion % from spot (and Moneyness %)" : "Upside cushion % from spot (and Moneyness %)"}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Cushion / Moneyness</span>
-                    {sortField === "cushion" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("annReturn")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "annReturn" ? "text-emerald-300 bg-slate-800/90" : ""
-                  }`}
+                />
+                <TableSortHeader
+                  field="annReturn"
+                  label="% Ann. Return"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
                   title={
                     tab === "puts"
                       ? "Annualized Return on Cash-Secured Put = (Bid / Strike) * (365 / DTE)"
                       : "Annualized Return on Covered Call = (Bid / Spot) * (365 / DTE)"
                   }
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>% Ann. Return</span>
-                    {sortField === "annReturn" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("bid")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "bid" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Bid / Ask</span>
-                    {sortField === "bid" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("lastPrice")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "lastPrice" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Last</span>
-                    {sortField === "lastPrice" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("impliedVolatility")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "impliedVolatility" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>IV %</span>
-                    {sortField === "impliedVolatility" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("delta")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "delta" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Delta (Δ)</span>
-                    {sortField === "delta" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("gamma")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "gamma" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Gamma (Γ)</span>
-                    {sortField === "gamma" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("theta")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "theta" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Theta (Θ/day)</span>
-                    {sortField === "theta" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("vega")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "vega" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Vega (ν/1%)</span>
-                    {sortField === "vega" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("volume")}
-                  className={`px-3 py-3 cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "volume" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>Volume</span>
-                    {sortField === "volume" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => handleSort("openInterest")}
-                  className={`px-4 py-3 text-right cursor-pointer transition-colors hover:text-white hover:bg-slate-750 ${
-                    sortField === "openInterest" ? "text-blue-300 bg-slate-800/90" : ""
-                  }`}
-                >
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span>Open Int</span>
-                    {sortField === "openInterest" ? (
-                      sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5 text-blue-400 shrink-0" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    ) : (
-                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 opacity-60 hover:opacity-100 shrink-0" />
-                    )}
-                  </div>
-                </th>
+                />
+                <TableSortHeader
+                  field="bid"
+                  label="Bid / Ask"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="lastPrice"
+                  label="Last"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="impliedVolatility"
+                  label="IV %"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="delta"
+                  label="Delta (Δ)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="gamma"
+                  label="Gamma (Γ)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="theta"
+                  label="Theta (Θ/day)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="vega"
+                  label="Vega (ν/1%)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="volume"
+                  label="Volume"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
+                  field="openInterest"
+                  label="Open Int"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-4 py-3 text-right"
+                  align="right"
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800 font-mono">
