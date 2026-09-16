@@ -910,6 +910,9 @@ export interface NasdaqSimulationResult {
   params: {
     initialAmount: number;
     topN: number;
+    selectionMode?: "top" | "bottom";
+    universeSelection?: string;
+    universeName?: string;
     rebalanceMonths: number;
     years: number;
     rebalanceMode?: "target-reset" | "nasdaq-capped";

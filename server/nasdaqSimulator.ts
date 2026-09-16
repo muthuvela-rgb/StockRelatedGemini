@@ -15,58 +15,107 @@ export interface NasdaqCompanyMetadata {
   sector: string;
 }
 
-export const NASDAQ_TOP_COMPANIES: NasdaqCompanyMetadata[] = [
-  { ticker: "NVDA", name: "NVIDIA Corporation", marketCapBillions: 3150, sector: "Semiconductors" },
-  { ticker: "AAPL", name: "Apple Inc.", marketCapBillions: 3400, sector: "Consumer Electronics" },
-  { ticker: "MSFT", name: "Microsoft Corporation", marketCapBillions: 3100, sector: "Software - Infrastructure" },
-  { ticker: "AMZN", name: "Amazon.com Inc.", marketCapBillions: 2100, sector: "Internet Retail" },
-  { ticker: "GOOGL", name: "Alphabet Inc. (Class A)", marketCapBillions: 2050, sector: "Internet Content & Information" },
-  { ticker: "META", name: "Meta Platforms Inc.", marketCapBillions: 1450, sector: "Internet Content & Information" },
-  { ticker: "TSLA", name: "Tesla Inc.", marketCapBillions: 780, sector: "Auto Manufacturers" },
-  { ticker: "AVGO", name: "Broadcom Inc.", marketCapBillions: 800, sector: "Semiconductors" },
-  { ticker: "COST", name: "Costco Wholesale Corp.", marketCapBillions: 390, sector: "Discount Stores" },
-  { ticker: "ASML", name: "ASML Holding N.V.", marketCapBillions: 330, sector: "Semiconductor Equipment" },
-  { ticker: "NFLX", name: "Netflix Inc.", marketCapBillions: 300, sector: "Entertainment" },
-  { ticker: "AMD", name: "Advanced Micro Devices", marketCapBillions: 235, sector: "Semiconductors" },
-  { ticker: "LIN", name: "Linde plc", marketCapBillions: 220, sector: "Specialty Chemicals" },
-  { ticker: "QCOM", name: "QUALCOMM Inc.", marketCapBillions: 195, sector: "Semiconductors" },
-  { ticker: "TMUS", name: "T-Mobile US Inc.", marketCapBillions: 225, sector: "Telecom Services" },
-  { ticker: "TXN", name: "Texas Instruments Inc.", marketCapBillions: 185, sector: "Semiconductors" },
-  { ticker: "AMAT", name: "Applied Materials Inc.", marketCapBillions: 175, sector: "Semiconductor Equipment" },
-  { ticker: "INTU", name: "Intuit Inc.", marketCapBillions: 180, sector: "Software - Application" },
-  { ticker: "BKNG", name: "Booking Holdings Inc.", marketCapBillions: 155, sector: "Travel Services" },
-  { ticker: "ISRG", name: "Intuitive Surgical Inc.", marketCapBillions: 165, sector: "Medical Instruments" },
-  { ticker: "HON", name: "Honeywell International", marketCapBillions: 135, sector: "Conglomerates" },
-  { ticker: "VRTX", name: "Vertex Pharmaceuticals", marketCapBillions: 120, sector: "Biotechnology" },
-  { ticker: "LRCX", name: "Lam Research Corp.", marketCapBillions: 120, sector: "Semiconductor Equipment" },
-  { ticker: "PANW", name: "Palo Alto Networks", marketCapBillions: 115, sector: "Software - Infrastructure" },
-  { ticker: "ADP", name: "Automatic Data Processing", marketCapBillions: 115, sector: "Staffing & Employment" },
-  { ticker: "GILD", name: "Gilead Sciences Inc.", marketCapBillions: 110, sector: "Drug Manufacturers" },
-  { ticker: "SBUX", name: "Starbucks Corporation", marketCapBillions: 110, sector: "Restaurants" },
-  { ticker: "REGN", name: "Regeneron Pharmaceuticals", marketCapBillions: 110, sector: "Biotechnology" },
-  { ticker: "MDLZ", name: "Mondelez International", marketCapBillions: 95, sector: "Confectioners" },
-  { ticker: "ADI", name: "Analog Devices Inc.", marketCapBillions: 110, sector: "Semiconductors" },
-  { ticker: "KLAC", name: "KLA Corporation", marketCapBillions: 95, sector: "Semiconductor Equipment" },
-  { ticker: "SNPS", name: "Synopsys Inc.", marketCapBillions: 85, sector: "Software - Infrastructure" },
-  { ticker: "CDNS", name: "Cadence Design Systems", marketCapBillions: 82, sector: "Software - Application" },
-  { ticker: "CSX", name: "CSX Corporation", marketCapBillions: 70, sector: "Railroads" },
-  { ticker: "MELI", name: "MercadoLibre Inc.", marketCapBillions: 95, sector: "Internet Retail" },
-  { ticker: "CRWD", name: "CrowdStrike Holdings", marketCapBillions: 85, sector: "Software - Infrastructure" },
-  { ticker: "MAR", name: "Marriott International", marketCapBillions: 75, sector: "Lodging" },
-  { ticker: "CTAS", name: "Cintas Corporation", marketCapBillions: 75, sector: "Specialty Business Services" },
-  { ticker: "PYPL", name: "PayPal Holdings Inc.", marketCapBillions: 70, sector: "Credit Services" },
-  { ticker: "ORLY", name: "O'Reilly Automotive", marketCapBillions: 65, sector: "Auto Parts" },
-  { ticker: "ABNB", name: "Airbnb Inc.", marketCapBillions: 80, sector: "Travel Services" },
-  { ticker: "DASH", name: "DoorDash Inc.", marketCapBillions: 60, sector: "Internet Retail" },
-  { ticker: "FTNT", name: "Fortinet Inc.", marketCapBillions: 65, sector: "Software - Infrastructure" },
-  { ticker: "CEG", name: "Constellation Energy", marketCapBillions: 60, sector: "Utilities - Regulated" },
-  { ticker: "NXPI", name: "NXP Semiconductors", marketCapBillions: 60, sector: "Semiconductors" },
-  { ticker: "PCAR", name: "PACCAR Inc.", marketCapBillions: 50, sector: "Farm & Heavy Construction" },
-  { ticker: "CCEP", name: "Coca-Cola Europacific", marketCapBillions: 42, sector: "Beverages - Non-Alcoholic" },
-  { ticker: "ROST", name: "Ross Stores Inc.", marketCapBillions: 50, sector: "Apparel Retail" },
-  { ticker: "MCHP", name: "Microchip Technology", marketCapBillions: 45, sector: "Semiconductors" },
-  { ticker: "ODFL", name: "Old Dominion Freight Line", marketCapBillions: 40, sector: "Trucking" },
+export const NASDAQ_100_COMPANIES: NasdaqCompanyMetadata[] = [
+  { ticker: "NVDA", name: "NVIDIA Corp.", marketCapBillions: 5113.3, sector: "Semiconductors" },
+  { ticker: "AAPL", name: "Apple Inc.", marketCapBillions: 4835.6, sector: "Consumer Electronics" },
+  { ticker: "GOOGL", name: "Alphabet Inc.", marketCapBillions: 4219.1, sector: "Internet Content & Information" },
+  { ticker: "MSFT", name: "Microsoft Corp.", marketCapBillions: 3691.4, sector: "Software - Infrastructure" },
+  { ticker: "AMZN", name: "Amazon.com, Inc.", marketCapBillions: 2679.5, sector: "Internet Retail" },
+  { ticker: "META", name: "Meta Platforms, Inc.", marketCapBillions: 1707.4, sector: "Internet Content & Information" },
+  { ticker: "AVGO", name: "Broadcom Inc.", marketCapBillions: 1619.5, sector: "Semiconductors" },
+  { ticker: "TSLA", name: "Tesla, Inc.", marketCapBillions: 1408.3, sector: "Auto Manufacturers" },
+  { ticker: "MU", name: "Micron Technology, Inc.", marketCapBillions: 1047.6, sector: "Semiconductors" },
+  { ticker: "WMT", name: "Walmart Inc.", marketCapBillions: 857.6, sector: "Discount Stores" },
+  { ticker: "AMD", name: "Advanced Micro Devices, Inc.", marketCapBillions: 823.1, sector: "Semiconductors" },
+  { ticker: "ASML", name: "ASML Holding N.V. New York Registry Shares", marketCapBillions: 613.4, sector: "Semiconductor Equipment" },
+  { ticker: "INTC", name: "Intel Corp.", marketCapBillions: 513.4, sector: "Semiconductors" },
+  { ticker: "CSCO", name: "Cisco Systems, Inc.", marketCapBillions: 434.0, sector: "Communications Equipment" },
+  { ticker: "PLTR", name: "Palantir Technologies Inc.", marketCapBillions: 414.5, sector: "Software - Infrastructure" },
+  { ticker: "COST", name: "Costco Wholesale Corp.", marketCapBillions: 399.7, sector: "Discount Stores" },
+  { ticker: "LRCX", name: "Lam Research Corp.", marketCapBillions: 338.9, sector: "Semiconductor Equipment" },
+  { ticker: "AMAT", name: "Applied Materials, Inc.", marketCapBillions: 334.2, sector: "Semiconductor Equipment" },
+  { ticker: "NFLX", name: "Netflix, Inc.", marketCapBillions: 324.4, sector: "Entertainment" },
+  { ticker: "PANW", name: "Palo Alto Networks, Inc.", marketCapBillions: 306.8, sector: "Software - Infrastructure" },
+  { ticker: "ARM", name: "Arm Holdings plc American Depositary Shares", marketCapBillions: 257.3, sector: "Semiconductors" },
+  { ticker: "CRWD", name: "CrowdStrike Holdings, Inc.", marketCapBillions: 248.3, sector: "Software - Infrastructure" },
+  { ticker: "TXN", name: "Texas Instruments Inc.", marketCapBillions: 240.6, sector: "Semiconductors" },
+  { ticker: "SNDK", name: "Sandisk Corp.", marketCapBillions: 224.2, sector: "Semiconductors" },
+  { ticker: "KLAC", name: "KLA Corp.", marketCapBillions: 219.5, sector: "Semiconductor Equipment" },
+  { ticker: "LIN", name: "Linde plc", marketCapBillions: 213.4, sector: "Specialty Chemicals" },
+  { ticker: "AMGN", name: "Amgen Inc.", marketCapBillions: 203.1, sector: "Biotechnology" },
+  { ticker: "QCOM", name: "QUALCOMM Inc.", marketCapBillions: 197.2, sector: "Semiconductors" },
+  { ticker: "MRVL", name: "Marvell Technology, Inc.", marketCapBillions: 194.4, sector: "Semiconductors" },
+  { ticker: "TMUS", name: "T-Mobile US, Inc.", marketCapBillions: 193.6, sector: "Telecom Services" },
+  { ticker: "PEP", name: "PepsiCo, Inc.", marketCapBillions: 184.9, sector: "Beverages - Non-Alcoholic" },
+  { ticker: "GILD", name: "Gilead Sciences, Inc.", marketCapBillions: 181.4, sector: "Drug Manufacturers" },
+  { ticker: "STX", name: "Seagate Technology Holdings PLC (Ireland)", marketCapBillions: 176.5, sector: "Computer Hardware" },
+  { ticker: "ADI", name: "Analog Devices, Inc.", marketCapBillions: 175.1, sector: "Semiconductors" },
+  { ticker: "SHOP", name: "Shopify Inc. Subordinate Voting Shares", marketCapBillions: 168.3, sector: "Internet Retail" },
+  { ticker: "WDC", name: "Western Digital Corp.", marketCapBillions: 148.5, sector: "Computer Hardware" },
+  { ticker: "ISRG", name: "Intuitive Surgical, Inc.", marketCapBillions: 133.2, sector: "Medical Instruments" },
+  { ticker: "MNST", name: "Monster Beverage Corp.", marketCapBillions: 131.1, sector: "Beverages - Non-Alcoholic" },
+  { ticker: "VRTX", name: "Vertex Pharmaceuticals Inc.", marketCapBillions: 130.4, sector: "Biotechnology" },
+  { ticker: "BKNG", name: "Booking Holdings Inc.", marketCapBillions: 128.7, sector: "Travel Services" },
+  { ticker: "FTNT", name: "Fortinet, Inc.", marketCapBillions: 126.5, sector: "Software - Infrastructure" },
+  { ticker: "PDD", name: "PDD Holdings Inc. American Depositary Shares", marketCapBillions: 111.1, sector: "Internet Retail" },
+  { ticker: "APP", name: "Applovin Corp.", marketCapBillions: 110.9, sector: "Software - Application" },
+  { ticker: "SBUX", name: "Starbucks Corp.", marketCapBillions: 110.1, sector: "Restaurants" },
+  { ticker: "ADP", name: "Automatic Data Processing, Inc.", marketCapBillions: 109.9, sector: "Staffing & Employment" },
+  { ticker: "ADBE", name: "Adobe Inc.", marketCapBillions: 102.5, sector: "Software - Infrastructure" },
+  { ticker: "ABNB", name: "Airbnb, Inc.", marketCapBillions: 100.8, sector: "Travel Services" },
+  { ticker: "MELI", name: "MercadoLibre, Inc.", marketCapBillions: 92.7, sector: "Internet Retail" },
+  { ticker: "CEG", name: "Constellation Energy Corp.", marketCapBillions: 92.1, sector: "Utilities - Regulated" },
+  { ticker: "CSX", name: "CSX Corp.", marketCapBillions: 90.1, sector: "Railroads" },
+  { ticker: "INTU", name: "Intuit Inc.", marketCapBillions: 88.0, sector: "Software - Application" },
+  { ticker: "MAR", name: "Marriott International", marketCapBillions: 87.9, sector: "Lodging" },
+  { ticker: "CMCSA", name: "Comcast Corp.", marketCapBillions: 86.7, sector: "Telecom Services" },
+  { ticker: "DASH", name: "DoorDash, Inc.", marketCapBillions: 85.9, sector: "Internet Retail" },
+  { ticker: "DDOG", name: "Datadog, Inc.", marketCapBillions: 82.7, sector: "Software - Application" },
+  { ticker: "REGN", name: "Regeneron Pharmaceuticals, Inc.", marketCapBillions: 79.7, sector: "Biotechnology" },
+  { ticker: "CTAS", name: "Cintas Corp.", marketCapBillions: 79.6, sector: "Specialty Business Services" },
+  { ticker: "MDLZ", name: "Mondelez International, Inc.", marketCapBillions: 79.3, sector: "Confectioners" },
+  { ticker: "CDNS", name: "Cadence Design Systems, Inc.", marketCapBillions: 75.4, sector: "Software - Application" },
+  { ticker: "LITE", name: "Lumentum Holdings Inc.", marketCapBillions: 75.3, sector: "Electronic Components" },
+  { ticker: "ROST", name: "Ross Stores, Inc.", marketCapBillions: 72.3, sector: "Apparel Retail" },
+  { ticker: "SNPS", name: "Synopsys, Inc.", marketCapBillions: 70.5, sector: "Software - Infrastructure" },
+  { ticker: "WBD", name: "Warner Bros. Discovery, Inc. Series A", marketCapBillions: 70.4, sector: "Entertainment" },
+  { ticker: "ORLY", name: "O'Reilly Automotive, Inc.", marketCapBillions: 68.9, sector: "Auto Parts" },
+  { ticker: "AEP", name: "American Electric Power Company, Inc.", marketCapBillions: 65.7, sector: "Utilities - Regulated" },
+  { ticker: "HON", name: "Honeywell International Inc.", marketCapBillions: 64.5, sector: "Conglomerates" },
+  { ticker: "PCAR", name: "PACCAR Inc.", marketCapBillions: 64.5, sector: "Farm & Heavy Construction" },
+  { ticker: "FANG", name: "Diamondback Energy, Inc.", marketCapBillions: 59.2, sector: "Oil & Gas E&P" },
+  { ticker: "NXPI", name: "NXP Semiconductors N.V.", marketCapBillions: 57.1, sector: "Semiconductors" },
+  { ticker: "FAST", name: "Fastenal Company", marketCapBillions: 56.7, sector: "Industrial Distribution" },
+  { ticker: "NBIS", name: "Nebius Group N.V.", marketCapBillions: 56.4, sector: "Software - Infrastructure" },
+  { ticker: "BKR", name: "Baker Hughes Company", marketCapBillions: 56.3, sector: "Oil & Gas Equipment" },
+  { ticker: "MPWR", name: "Monolithic Power Systems, Inc.", marketCapBillions: 56.1, sector: "Semiconductors" },
+  { ticker: "TER", name: "Teradyne, Inc.", marketCapBillions: 52.0, sector: "Semiconductor Equipment" },
+  { ticker: "MSTR", name: "Strategy Inc", marketCapBillions: 49.8, sector: "Software - Application" },
+  { ticker: "ADSK", name: "Autodesk, Inc.", marketCapBillions: 47.3, sector: "Software - Application" },
+  { ticker: "CCEP", name: "Coca-Cola Europacific Partners plc", marketCapBillions: 46.8, sector: "Beverages - Non-Alcoholic" },
+  { ticker: "PYPL", name: "PayPal Holdings, Inc.", marketCapBillions: 46.0, sector: "Credit Services" },
+  { ticker: "WDAY", name: "Workday, Inc.", marketCapBillions: 46.0, sector: "Software - Application" },
+  { ticker: "XEL", name: "Xcel Energy Inc.", marketCapBillions: 45.3, sector: "Utilities - Regulated" },
+  { ticker: "TRI", name: "Thomson Reuters Corp. Common Shares", marketCapBillions: 44.5, sector: "Publishing" },
+  { ticker: "EXC", name: "Exelon Corp.", marketCapBillions: 43.6, sector: "Utilities - Regulated" },
+  { ticker: "KDP", name: "Keurig Dr Pepper Inc.", marketCapBillions: 42.9, sector: "Beverages - Non-Alcoholic" },
+  { ticker: "PAYX", name: "Paychex, Inc.", marketCapBillions: 42.1, sector: "Staffing & Employment" },
+  { ticker: "IDXX", name: "IDEXX Laboratories, Inc.", marketCapBillions: 40.2, sector: "Medical Instruments" },
+  { ticker: "TTWO", name: "Take-Two Interactive Software, Inc.", marketCapBillions: 39.6, sector: "Electronic Gaming & Multimedia" },
+  { ticker: "FER", name: "Ferrovial N.V.", marketCapBillions: 39.0, sector: "Engineering & Construction" },
+  { ticker: "MCHP", name: "Microchip Technology Inc.", marketCapBillions: 38.8, sector: "Semiconductors" },
+  { ticker: "RKLB", name: "Rocket Lab Corp.", marketCapBillions: 38.0, sector: "Aerospace & Defense" },
+  { ticker: "ROP", name: "Roper Technologies, Inc.", marketCapBillions: 38.0, sector: "Specialty Industrial Machinery" },
+  { ticker: "ODFL", name: "Old Dominion Freight Line, Inc.", marketCapBillions: 37.5, sector: "Trucking" },
+  { ticker: "AXON", name: "Axon Enterprise, Inc.", marketCapBillions: 35.9, sector: "Aerospace & Defense" },
+  { ticker: "DXCM", name: "DexCom, Inc.", marketCapBillions: 32.6, sector: "Medical Devices" },
+  { ticker: "ALNY", name: "Alnylam Pharmaceuticals, Inc.", marketCapBillions: 31.9, sector: "Biotechnology" },
+  { ticker: "GEHC", name: "GE HealthCare Technologies Inc.", marketCapBillions: 28.9, sector: "Medical Devices" },
+  { ticker: "CPRT", name: "Copart, Inc.", marketCapBillions: 28.7, sector: "Auto & Truck Dealerships" },
 ];
+
+// Backwards compatibility export
+export const NASDAQ_TOP_COMPANIES = NASDAQ_100_COMPANIES;
 
 // In-memory price cache for historical daily series: ticker:years -> { dates: string[], closes: number[], expiresAt: number }
 interface CachedHistory {
@@ -153,18 +202,41 @@ export async function getDailyPrices(ticker: string, years: number): Promise<{ d
 export async function runNasdaqMarketCapSimulation(params: {
   initialAmount: number;
   topN: number;
+  selectionMode?: "top" | "bottom";
+  universeSelection?: string;
   rebalanceMonths: number;
   years: number;
   rebalanceMode?: "target-reset" | "nasdaq-capped";
 }): Promise<NasdaqSimulationResult> {
   const initialAmount = Math.max(1000, Number(params.initialAmount) || 100000);
-  const topN = Math.max(3, Math.min(50, Number(params.topN) || 10));
+  let count = Math.max(3, Math.min(100, Number(params.topN) || 10));
+  let selectionMode: "top" | "bottom" = params.selectionMode === "bottom" ? "bottom" : "top";
+
+  if (params.universeSelection) {
+    if (params.universeSelection.startsWith("bottom-")) {
+      selectionMode = "bottom";
+      const parsed = parseInt(params.universeSelection.replace("bottom-", ""), 10);
+      if (!isNaN(parsed) && parsed > 0) count = parsed;
+    } else if (params.universeSelection.startsWith("top-")) {
+      selectionMode = "top";
+      const parsed = parseInt(params.universeSelection.replace("top-", ""), 10);
+      if (!isNaN(parsed) && parsed > 0) count = parsed;
+    }
+  }
+
   const rebalanceMonths = Math.max(1, Math.min(24, Number(params.rebalanceMonths) || 3));
   const years = Math.max(1, Math.min(10, Number(params.years) || 3));
   const rebalanceMode = params.rebalanceMode === "nasdaq-capped" ? "nasdaq-capped" : "target-reset";
 
-  // 1. Select top N companies from the ranked universe
-  const selectedUniverse = NASDAQ_TOP_COMPANIES.slice(0, topN);
+  // 1. Select companies from the ranked universe (Top N or Bottom N)
+  const selectedUniverse = selectionMode === "bottom"
+    ? NASDAQ_100_COMPANIES.slice(-count)
+    : NASDAQ_100_COMPANIES.slice(0, count);
+
+  const universeName = selectionMode === "bottom"
+    ? `Bottom ${count} Smallest Nasdaq-100 Components`
+    : `Top ${count} Largest Nasdaq Stocks`;
+
   const tickers = selectedUniverse.map((c) => c.ticker);
 
   // 2. Fetch historical prices for all constituents + QQQ + SPY
@@ -541,7 +613,10 @@ export async function runNasdaqMarketCapSimulation(params: {
   // 7. Generate Standalone Python Script
   const pythonScript = generateStandalonePythonScript({
     initialAmount,
-    topN,
+    topN: count,
+    selectionMode,
+    universeSelection: params.universeSelection || `${selectionMode}-${count}`,
+    universeName,
     rebalanceMonths,
     years,
     rebalanceMode,
@@ -551,7 +626,10 @@ export async function runNasdaqMarketCapSimulation(params: {
   return {
     params: {
       initialAmount,
-      topN,
+      topN: count,
+      selectionMode,
+      universeSelection: params.universeSelection || `${selectionMode}-${count}`,
+      universeName,
       rebalanceMonths,
       years,
       rebalanceMode,
@@ -572,19 +650,31 @@ export async function runNasdaqMarketCapSimulation(params: {
 export function generateStandalonePythonScript(params: {
   initialAmount: number;
   topN: number;
+  selectionMode?: "top" | "bottom";
+  universeSelection?: string;
+  universeName?: string;
   rebalanceMonths: number;
   years: number;
   rebalanceMode?: "target-reset" | "nasdaq-capped";
   tickers: string[];
 }): string {
-  const { initialAmount, topN, rebalanceMonths, years, tickers, rebalanceMode = "target-reset" } = params;
+  const {
+    initialAmount,
+    topN,
+    selectionMode = "top",
+    universeName = selectionMode === "bottom" ? `Bottom ${topN} Smallest Nasdaq-100 Components` : `Top ${topN} Largest Nasdaq Stocks`,
+    rebalanceMonths,
+    years,
+    tickers,
+    rebalanceMode = "target-reset",
+  } = params;
 
   return `#!/usr/bin/env python3
 """
 Nasdaq Market-Cap Weighted Periodic Rebalancing Simulator
 =========================================================
 Simulates an investment of $${initialAmount.toLocaleString()} proportionately weighted
-by market capitalization across the top ${topN} Nasdaq companies,
+by market capitalization across ${universeName},
 reallocated every ${rebalanceMonths} month(s) over the last ${years} year(s).
 
 Requirements:
@@ -603,18 +693,20 @@ import matplotlib.pyplot as plt
 # ================= Configuration =================
 INITIAL_CAPITAL = ${initialAmount}
 TOP_N = ${topN}
+SELECTION_MODE = "${selectionMode}"
+UNIVERSE_NAME = "${universeName}"
 REBALANCE_MONTHS = ${rebalanceMonths}
 YEARS = ${years}
 
-# Top Nasdaq tickers selected by market capitalization
+# Constituent tickers selected by market capitalization
 CONSTITUENTS = ${JSON.stringify(tickers, null, 2)}
 BENCHMARKS = ["QQQ", "SPY"]
 ALL_TICKERS = CONSTITUENTS + BENCHMARKS
 
 def run_simulation():
     print(f"=== Running Nasdaq Market-Cap Backtest ===")
+    print(f"Universe: {UNIVERSE_NAME} ({len(CONSTITUENTS)} constituents)")
     print(f"Initial Capital: $\{INITIAL_CAPITAL:,.2f\}")
-    print(f"Top N Companies: {TOP_N}")
     print(f"Rebalance Interval: Every {REBALANCE_MONTHS} month(s)")
     print(f"Lookback Window: Last {YEARS} year(s)\\n")
 
@@ -744,10 +836,11 @@ def run_simulation():
 
     # Plot Equity Curves
     plt.figure(figsize=(12, 6))
-    plt.plot(trading_dates, portfolio_values, label=f"Top {TOP_N} Nasdaq Market-Cap Strategy ({cagr:.1f}% CAGR)", color="#10b981", lw=2)
+    strategy_label = f"{UNIVERSE_NAME} Strategy ({cagr:.1f}% CAGR)"
+    plt.plot(trading_dates, portfolio_values, label=strategy_label, color="#10b981", lw=2)
     plt.plot(trading_dates, qqq_values, label=f"QQQ Nasdaq-100 ETF ({qqq_cagr:.1f}% CAGR)", color="#6366f1", lw=1.5, ls="--")
     plt.plot(trading_dates, spy_values, label=f"SPY S&P 500 ETF ({spy_cagr:.1f}% CAGR)", color="#f59e0b", lw=1.5, ls=":")
-    plt.title(f"Market-Cap Weighted Periodic Rebalancing Backtest ({YEARS} Years)", fontsize=14, fontweight="bold")
+    plt.title(f"Nasdaq Market-Cap Periodic Rebalancing: {UNIVERSE_NAME} ({YEARS} Years)", fontsize=13, fontweight="bold")
     plt.xlabel("Date", fontsize=11)
     plt.ylabel("Portfolio Value ($)", fontsize=11)
     plt.grid(True, alpha=0.3)

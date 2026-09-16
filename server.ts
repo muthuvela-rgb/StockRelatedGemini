@@ -15,6 +15,7 @@ import {
 import {
   runNasdaqMarketCapSimulation,
   NASDAQ_TOP_COMPANIES,
+  NASDAQ_100_COMPANIES,
   generateStandalonePythonScript,
 } from "./server/nasdaqSimulator";
 
@@ -5207,10 +5208,12 @@ app.get("/api/backtest/nasdaq-universe", (req: Request, res: Response) => {
 
 app.post("/api/backtest/nasdaq-market-cap", async (req: Request, res: Response) => {
   try {
-    const { initialAmount, topN, rebalanceMonths, years, rebalanceMode } = req.body || {};
+    const { initialAmount, topN, rebalanceMonths, years, rebalanceMode, selectionMode, universeSelection } = req.body || {};
     const result = await runNasdaqMarketCapSimulation({
       initialAmount: Number(initialAmount) || 100000,
       topN: Number(topN) || 10,
+      selectionMode: selectionMode === "bottom" ? "bottom" : "top",
+      universeSelection: typeof universeSelection === "string" ? universeSelection : undefined,
       rebalanceMonths: Number(rebalanceMonths) || 3,
       years: Number(years) || 3,
       rebalanceMode: rebalanceMode === "nasdaq-capped" ? "nasdaq-capped" : "target-reset",
@@ -5229,14 +5232,34 @@ app.get("/api/backtest/nasdaq-script", (req: Request, res: Response) => {
   try {
     const initialAmount = Number(req.query.initialAmount) || 100000;
     const topN = Number(req.query.topN) || 10;
+    const selectionMode = req.query.selectionMode === "bottom" ? "bottom" : "top";
+    const universeSelection = typeof req.query.universeSelection === "string" ? req.query.universeSelection : undefined;
     const rebalanceMonths = Number(req.query.rebalanceMonths) || 3;
     const years = Number(req.query.years) || 3;
     const rebalanceMode = req.query.rebalanceMode === "nasdaq-capped" ? "nasdaq-capped" : "target-reset";
 
-    const selectedTickers = NASDAQ_TOP_COMPANIES.slice(0, topN).map((c) => c.ticker);
+    let count = topN;
+    let mode: "top" | "bottom" = selectionMode === "bottom" ? "bottom" : "top";
+    if (universeSelection) {
+      if (universeSelection.startsWith("bottom-")) {
+        mode = "bottom";
+        count = parseInt(universeSelection.replace("bottom-", ""), 10) || topN;
+      } else if (universeSelection.startsWith("top-")) {
+        mode = "top";
+        count = parseInt(universeSelection.replace("top-", ""), 10) || topN;
+      }
+    }
+
+    const selectedUniverse = mode === "bottom" ? NASDAQ_100_COMPANIES.slice(-count) : NASDAQ_100_COMPANIES.slice(0, count);
+    const selectedTickers = selectedUniverse.map((c) => c.ticker);
+    const universeName = mode === "bottom" ? `Bottom ${count} Smallest Nasdaq-100 Components` : `Top ${count} Largest Nasdaq Stocks`;
+
     const script = generateStandalonePythonScript({
       initialAmount,
-      topN,
+      topN: count,
+      selectionMode: mode,
+      universeSelection,
+      universeName,
       rebalanceMonths,
       years,
       rebalanceMode,
@@ -5244,7 +5267,8 @@ app.get("/api/backtest/nasdaq-script", (req: Request, res: Response) => {
     });
 
     if (req.query.download === "true") {
-      res.setHeader("Content-Disposition", 'attachment; filename="nasdaq_rebalance_simulator.py"');
+      const filename = `nasdaq_${mode}_${count}_rebalance_simulator.py`;
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "text/x-python");
       res.send(script);
     } else {

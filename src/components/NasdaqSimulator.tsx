@@ -38,11 +38,15 @@ import { NasdaqSimulationResult, RebalanceEvent } from "../types";
 
 export const NasdaqSimulator: React.FC = () => {
   // Simulator input parameters
+  const [universeSelection, setUniverseSelection] = useState<string>("top-10");
   const [initialAmount, setInitialAmount] = useState<number>(100000);
-  const [topN, setTopN] = useState<number>(10);
   const [rebalanceMonths, setRebalanceMonths] = useState<number>(3);
   const [years, setYears] = useState<number>(3);
   const [rebalanceMode, setRebalanceMode] = useState<"target-reset" | "nasdaq-capped">("target-reset");
+
+  // Derived cohort parameters
+  const isBottom = universeSelection.startsWith("bottom-");
+  const topN = parseInt(universeSelection.split("-")[1], 10) || 10;
 
   // Simulation state
   const [loading, setLoading] = useState<boolean>(false);
@@ -62,13 +66,16 @@ export const NasdaqSimulator: React.FC = () => {
   // Fetch simulation with optional instant override parameters
   const runSimulation = async (overrides?: {
     initialAmount?: number;
+    universeSelection?: string;
     topN?: number;
     rebalanceMonths?: number;
     years?: number;
     rebalanceMode?: "target-reset" | "nasdaq-capped";
   }) => {
     const effAmount = overrides?.initialAmount !== undefined ? overrides.initialAmount : initialAmount;
-    const effTopN = overrides?.topN !== undefined ? overrides.topN : topN;
+    const effUniverse = overrides?.universeSelection !== undefined ? overrides.universeSelection : universeSelection;
+    const effTopN = overrides?.topN !== undefined ? overrides.topN : (parseInt(effUniverse.split("-")[1], 10) || 10);
+    const effModeSelection = effUniverse.startsWith("bottom-") ? "bottom" : "top";
     const effRebal = overrides?.rebalanceMonths !== undefined ? overrides.rebalanceMonths : rebalanceMonths;
     const effYears = overrides?.years !== undefined ? overrides.years : years;
     const effMode = overrides?.rebalanceMode !== undefined ? overrides.rebalanceMode : rebalanceMode;
@@ -82,6 +89,8 @@ export const NasdaqSimulator: React.FC = () => {
         body: JSON.stringify({
           initialAmount: effAmount,
           topN: effTopN,
+          selectionMode: effModeSelection,
+          universeSelection: effUniverse,
           rebalanceMonths: effRebal,
           years: effYears,
           rebalanceMode: effMode,
@@ -112,7 +121,9 @@ export const NasdaqSimulator: React.FC = () => {
   };
 
   const handleDownloadScript = () => {
-    const url = `/api/backtest/nasdaq-script?initialAmount=${initialAmount}&topN=${topN}&rebalanceMonths=${rebalanceMonths}&years=${years}&rebalanceMode=${rebalanceMode}&download=true`;
+    const effMode = universeSelection.startsWith("bottom-") ? "bottom" : "top";
+    const effCount = parseInt(universeSelection.split("-")[1], 10) || 10;
+    const url = `/api/backtest/nasdaq-script?initialAmount=${initialAmount}&topN=${effCount}&selectionMode=${effMode}&universeSelection=${universeSelection}&rebalanceMonths=${rebalanceMonths}&years=${years}&rebalanceMode=${rebalanceMode}&download=true`;
     window.open(url, "_blank");
   };
 
@@ -233,31 +244,101 @@ export const NasdaqSimulator: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. Top N Companies */}
+          {/* 2. Constituent Universe (Top / Bottom) */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-emerald-400" />
-              Top N Nasdaq Companies
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                Constituent Universe
+              </label>
+              <span
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full font-sans ${
+                  isBottom
+                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
+                    : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                }`}
+              >
+                {isBottom ? `Bottom ${topN}` : `Top ${topN}`}
+              </span>
+            </div>
             <select
-              value={topN}
+              value={universeSelection}
               onChange={(e) => {
-                const val = Number(e.target.value);
-                setTopN(val);
-                runSimulation({ topN: val });
+                const val = e.target.value;
+                setUniverseSelection(val);
+                runSimulation({ universeSelection: val });
               }}
               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 font-medium focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
-              <option value={5}>Top 5 Largest Nasdaq Stocks</option>
-              <option value={10}>Top 10 Largest Nasdaq Stocks (Default)</option>
-              <option value={15}>Top 15 Largest Nasdaq Stocks</option>
-              <option value={20}>Top 20 Largest Nasdaq Stocks</option>
-              <option value={25}>Top 25 Largest Nasdaq Stocks</option>
-              <option value={30}>Top 30 Largest Nasdaq Stocks</option>
-              <option value={50}>Top 50 Largest Nasdaq Stocks</option>
+              <optgroup label="Top Mega-Cap Constituents">
+                <option value="top-5">Top 5 Largest Nasdaq Stocks</option>
+                <option value="top-10">Top 10 Largest Nasdaq Stocks (Default)</option>
+                <option value="top-15">Top 15 Largest Nasdaq Stocks</option>
+                <option value="top-20">Top 20 Largest Nasdaq Stocks</option>
+                <option value="top-25">Top 25 Largest Nasdaq Stocks</option>
+                <option value="top-30">Top 30 Largest Nasdaq Stocks</option>
+                <option value="top-50">Top 50 Largest Nasdaq Stocks</option>
+              </optgroup>
+              <optgroup label="Bottom Constituents (Smallest in Nasdaq-100)">
+                <option value="bottom-5">Bottom 5 Smallest Nasdaq-100 Stocks</option>
+                <option value="bottom-10">Bottom 10 Smallest Nasdaq-100 Stocks</option>
+                <option value="bottom-15">Bottom 15 Smallest Nasdaq-100 Stocks</option>
+                <option value="bottom-20">Bottom 20 Smallest Nasdaq-100 Stocks</option>
+              </optgroup>
             </select>
+
+            {/* Quick Cohort Selectors */}
+            <div className="space-y-1 pt-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-slate-400 font-medium w-12">Top:</span>
+                <div className="flex flex-wrap gap-1">
+                  {[5, 10, 15, 20, 50].map((n) => (
+                    <button
+                      key={`top-${n}`}
+                      onClick={() => {
+                        const val = `top-${n}`;
+                        setUniverseSelection(val);
+                        runSimulation({ universeSelection: val });
+                      }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition ${
+                        universeSelection === `top-${n}`
+                          ? "bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 font-bold"
+                          : "bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-slate-700/60"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-purple-400 font-medium w-12">Bottom:</span>
+                <div className="flex flex-wrap gap-1">
+                  {[5, 10, 15, 20].map((n) => (
+                    <button
+                      key={`bottom-${n}`}
+                      onClick={() => {
+                        const val = `bottom-${n}`;
+                        setUniverseSelection(val);
+                        runSimulation({ universeSelection: val });
+                      }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition ${
+                        universeSelection === `bottom-${n}`
+                          ? "bg-purple-500/25 text-purple-200 border border-purple-500/50 font-bold"
+                          : "bg-slate-800/80 hover:bg-slate-800 text-purple-400/80 border border-purple-500/30"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
             <p className="text-[11px] text-slate-500">
-              Ranked by current market capitalization (NVDA, AAPL, MSFT, AMZN, GOOGL...)
+              {isBottom
+                ? "Smallest Nasdaq-100 components by market cap (CPRT, GEHC, ALNY, DXCM, AXON...)"
+                : "Largest mega-caps by market cap (NVDA, AAPL, GOOGL, MSFT, AMZN...)"}
             </p>
           </div>
 
@@ -380,7 +461,7 @@ export const NasdaqSimulator: React.FC = () => {
           <div>
             <h3 className="text-base font-semibold text-white">Running Nasdaq Historical Backtest...</h3>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Downloading historical daily prices for top {topN} Nasdaq stocks, calculating market cap drift, and executing periodic rebalance schedules.
+              Downloading historical daily prices for {isBottom ? `bottom ${topN} smallest` : `top ${topN} largest`} Nasdaq-100 stocks, calculating market cap drift, and executing periodic rebalance schedules.
             </p>
           </div>
         </div>
@@ -587,7 +668,7 @@ export const NasdaqSimulator: React.FC = () => {
                         formatter={(value: any, name: any) => [
                           fmtCurrPrecise(Number(value)),
                           name === "portfolioValue"
-                            ? `Top ${topN} Rebalanced`
+                            ? `${result.params.selectionMode === "bottom" ? "Bottom" : "Top"} ${result.params.topN} Rebalanced`
                             : name === "buyAndHoldValue"
                             ? "Buy & Hold (No Rebalance)"
                             : name === "qqqValue"
@@ -703,8 +784,29 @@ export const NasdaqSimulator: React.FC = () => {
 
           {/* VIEW TAB 2: CONSTITUENTS & ALLOCATIONS */}
           {viewTab === "constituents" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
+            <div>
+              <div className="p-3 bg-slate-950/60 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                      result.params.selectionMode === "bottom"
+                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                        : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    }`}
+                  >
+                    {result.params.universeName || `${result.params.selectionMode === "bottom" ? "Bottom" : "Top"} ${result.params.topN} Universe`}
+                  </span>
+                  <span className="text-slate-500">•</span>
+                  <span className="text-slate-400">
+                    {result.constituents.length} active constituents weighted by market cap
+                  </span>
+                </div>
+                <div className="text-slate-400 font-mono text-[11px]">
+                  Total Basket Market Cap: ${(result.constituents.reduce((acc, s) => acc + s.marketCap, 0) >= 1000 ? `${(result.constituents.reduce((acc, s) => acc + s.marketCap, 0) / 1000).toFixed(2)}T` : `${result.constituents.reduce((acc, s) => acc + s.marketCap, 0).toFixed(1)}B`)}
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
                   <tr>
                     <th className="py-3 px-4">Rank / Ticker</th>
@@ -762,6 +864,7 @@ export const NasdaqSimulator: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
 
