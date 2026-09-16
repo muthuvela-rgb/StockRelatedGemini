@@ -31,6 +31,7 @@ import {
   Sparkles,
   TrendingUp,
   BarChart3,
+  Globe,
 } from "lucide-react";
 import { ActiveTab } from "./Header";
 
@@ -46,7 +47,7 @@ interface TabGuideInfo {
   title: string;
   badge: string;
   icon: any;
-  category: "Options & Yield" | "Technical & Fall" | "Fundamentals & Transcripts" | "Portfolio & Education" | "Security";
+  category: "Options & Yield" | "Technical & Fall" | "Macro & Sentiment" | "Fundamentals & Transcripts" | "Portfolio & Education" | "Security";
   tagline: string;
   whatItDoes: string;
   howToUse: string[];
@@ -144,6 +145,43 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
         proTips: [
           "Use the 'Saved Trades' button in the top navigation to revisit logged recommendations and see total capital allocated.",
           "Diversify strikes across different sectors (Tech, Industrials, Healthcare) rather than loading puts on a single high-beta name."
+        ]
+      },
+      {
+        id: "macro-markets",
+        title: "Macro Markets & Commodities",
+        badge: "Gold/BTC/INR",
+        icon: Globe,
+        category: "Macro & Sentiment",
+        tagline: "Live prices for Gold, Silver, Oil, Bitcoin with USD-to-INR conversion, US Treasury yields, and FOMC policy horizon.",
+        whatItDoes:
+          "Bridges global commodities, monetary indicators, and currency markets with equity and options decisions. Provides live price feeds, dual-currency INR conversion (per ounce, gram, and Bitcoin total), normalized historical performance charts, Fed Governor speaking calendars, and macroeconomic research.",
+        howToUse: [
+          "Monitor live gold, silver, oil, and bitcoin quotes alongside the USD/INR forex spot rate.",
+          "Examine the Base-100 Normalized Chart to observe divergence between equities, commodities, and 10Y/30Y Treasury yields.",
+          "Review upcoming FOMC rate decisions and Governor speeches in the Federal Reserve Calendar.",
+          "Download or inspect the standalone Python monitoring script for off-platform algorithmic backtesting."
+        ],
+        keyMetrics: [
+          {
+            name: "Gold & Silver (USD & INR)",
+            formulaOrRule: "Spot $/oz & Rupee / 10g equivalent",
+            meaning: "Monetary debasement hedge & sovereign reserve accumulation tracker."
+          },
+          {
+            name: "Bitcoin USD & INR",
+            formulaOrRule: "Spot USD × USD/INR Spot",
+            meaning: "Real-time institutional liquidity indicator showing Rupee nominal all-time highs."
+          },
+          {
+            name: "US 10Y Yield (^TNX) & 3M (^IRX)",
+            formulaOrRule: "Benchmark Sovereign Bond Yields",
+            meaning: "Key discount rate for equity valuation, options pricing hurdle rates, and mortgage financing."
+          }
+        ],
+        proTips: [
+          "When 10Y Treasury yields rally toward 5%, short-dated put selling on high-multiple tech should be sized conservatively.",
+          "Gold and silver rallies often signal systemic dollar debasement or geopolitical risk premiums, offering valuable macro hedge signals."
         ]
       },
       {

@@ -926,5 +926,83 @@ export interface NasdaqSimulationResult {
   pythonScript: string;
 }
 
+// ==========================================
+// MACRO MARKETS & COMMODITIES INTELLIGENCE
+// ==========================================
+
+export interface MacroQuote {
+  id: string;
+  name: string;
+  symbol: string;
+  category: "metals" | "energy" | "crypto" | "forex" | "yields";
+  price: number;
+  prevClose: number;
+  change: number;
+  changePct: number;
+  unit: string;
+  usdValueFormatted: string;
+  inrValueFormatted?: string;
+  inrPerGramFormatted?: string;
+  inrPrice?: number;
+  high52w?: number;
+  low52w?: number;
+  sparkline?: number[];
+  notes?: string;
+}
+
+export interface MacroHistoricalPoint {
+  date: string;
+  gold?: number;
+  silver?: number;
+  oil?: number;
+  bitcoin?: number;
+  bitcoinInr?: number;
+  us10y?: number;
+  us30y?: number;
+  us3m?: number;
+  usdinr?: number;
+  normGold?: number;
+  normSilver?: number;
+  normOil?: number;
+  normBitcoin?: number;
+  normUs10y?: number;
+  normUsdInr?: number;
+}
+
+export interface FedEvent {
+  id: string;
+  date: string;
+  title: string;
+  type: "meeting" | "minutes" | "speech" | "conference" | "blackout";
+  official: string;
+  location?: string;
+  impactLevel: "high" | "medium" | "low";
+  description: string;
+  topics: string[];
+}
+
+export interface MacroResearchInsight {
+  topic: string;
+  bias: "bullish" | "bearish" | "neutral" | "volatile";
+  keyCatalysts: string[];
+  fedPolicyImpact: string;
+  forecastRange: string;
+  socialSentiment: {
+    score: number; // 0 - 100
+    label: string;
+    institutionalFlow: string;
+  };
+}
+
+export interface MacroIntelligenceResponse {
+  timestamp: string;
+  usdinrRate: number;
+  quotes: MacroQuote[];
+  fedEvents: FedEvent[];
+  insights: MacroResearchInsight[];
+  pythonScript: string;
+}
+
+
 
 

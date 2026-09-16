@@ -5280,8 +5280,52 @@ app.get("/api/backtest/nasdaq-script", (req: Request, res: Response) => {
 });
 
 // ==========================================
+// MACRO MARKETS & COMMODITIES ENDPOINTS
+// ==========================================
+
+app.get("/api/macro/intelligence", async (req: Request, res: Response) => {
+  try {
+    const { getLiveMacroIntelligence } = await import("./server/macroService");
+    const data = await getLiveMacroIntelligence();
+    res.json({ success: true, ...data });
+  } catch (err: any) {
+    console.error("Error in /api/macro/intelligence:", err);
+    res.status(500).json({ success: false, error: err?.message || "Failed to fetch macro intelligence" });
+  }
+});
+
+app.get("/api/macro/historical", async (req: Request, res: Response) => {
+  try {
+    const { getMacroHistoricalData } = await import("./server/macroService");
+    const duration = typeof req.query.duration === "string" ? req.query.duration : "1y";
+    const data = await getMacroHistoricalData(duration);
+    res.json({ success: true, duration, points: data });
+  } catch (err: any) {
+    console.error("Error in /api/macro/historical:", err);
+    res.status(500).json({ success: false, error: err?.message || "Failed to fetch macro historical points" });
+  }
+});
+
+app.get("/api/macro/script", async (req: Request, res: Response) => {
+  try {
+    const { generateMacroPythonScript } = await import("./server/macroService");
+    const script = generateMacroPythonScript();
+    if (req.query.download === "true") {
+      res.setHeader("Content-Disposition", 'attachment; filename="macro_market_monitor.py"');
+      res.setHeader("Content-Type", "text/x-python");
+      res.send(script);
+    } else {
+      res.json({ success: true, script });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || "Failed to generate macro python script" });
+  }
+});
+
+// ==========================================
 // VITE MIDDLEWARE & SERVER STARTUP
 // ==========================================
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

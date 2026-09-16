@@ -1,6 +1,6 @@
 {
   "name": "StockRelated Options & Stock Analytics",
-  "description": "Comprehensive stock and options analysis toolkit with real-time VIX & Fear and Greed market sentiment, Nasdaq market-cap periodic rebalancing simulator, Black-Scholes Greeks, put annualized returns, stock fall detection, SEC EDGAR reports, and Alpha Vantage earnings call transcripts summarized with Gemini AI.",
+  "description": "Comprehensive stock, options, and macro analysis toolkit with live gold, silver, oil, and bitcoin (USD & INR) feeds, US Treasury yields, FOMC Federal Reserve calendar, Nasdaq rebalancing simulator, Black-Scholes Greeks, SEC EDGAR reports, and earnings call transcripts.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

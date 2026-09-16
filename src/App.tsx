@@ -18,6 +18,7 @@ import { AccessAuditViewer } from "./components/AccessAuditViewer";
 import { JuniorInvestorAcademy } from "./components/JuniorInvestorAcademy";
 import { MarketSentiment } from "./components/MarketSentiment";
 import { NasdaqSimulator } from "./components/NasdaqSimulator";
+import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { LineChart, BookOpen } from "lucide-react";
 
 const AppContent: React.FC = () => {
@@ -143,6 +144,9 @@ const AppContent: React.FC = () => {
         )}
         {activeTab === "nasdaq-simulator" && (
           <NasdaqSimulator />
+        )}
+        {activeTab === "macro-markets" && (
+          <MacroDashboard />
         )}
         {activeTab === "options-scanner" && (
           <PutScanner watchlist={watchlist} />
