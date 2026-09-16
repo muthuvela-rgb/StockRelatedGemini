@@ -29,7 +29,8 @@ import {
   Play,
   ExternalLink,
   Sparkles,
-  TrendingUp
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { ActiveTab } from "./Header";
 
@@ -374,6 +375,50 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
         ],
         proTips: [
           "Curate a focused list of 10–25 companies you understand deeply rather than an unmanageable list of 100+ speculative names."
+        ]
+      },
+      {
+        id: "nasdaq-simulator",
+        title: "Nasdaq Rebalance Simulator",
+        badge: "Market-Cap Backtest",
+        icon: BarChart3,
+        category: "Portfolio & Education",
+        tagline: "Quantitative backtesting of market-cap weighted portfolios across top Nasdaq companies with periodic reallocations.",
+        whatItDoes:
+          "Simulates historical investment performance for any capital amount proportionately weighted by market capitalization across the top N Nasdaq companies (NVDA, AAPL, MSFT, AMZN, GOOGL, META, etc.), rebalancing dynamically every M months over a custom lookback window. Generates equity curves, drawdown analysis, audit logs of every buy/sell trade, benchmark comparisons against QQQ and SPY, and exports a standalone Python runner script using yfinance.",
+        howToUse: [
+          "Configure your Initial Investment amount ($10k, $100k, $1M).",
+          "Select the Top N universe (Top 5, 10, 20, 30, 50 largest Nasdaq stocks by market cap).",
+          "Set your Rebalance Frequency (Monthly, Bi-Monthly, Quarterly, Semi-Annually, Annually).",
+          "Select the Backtest Horizon (1 to 10 years) and click 'Run Simulation'.",
+          "Inspect the multi-benchmark equity curve, constituent contributions, and rebalance audit schedule.",
+          "Click 'Standalone Python Script' to copy or download the self-contained script for offline execution in Google Colab or terminal."
+        ],
+        keyMetrics: [
+          {
+            name: "Proportional Weight",
+            formulaOrRule: "w_i = MarketCap_i / Sum(MarketCap)",
+            meaning: "Initial capital and rebalance allocations match constituent relative sizes."
+          },
+          {
+            name: "Dynamic Capitalization Drift",
+            formulaOrRule: "MC_i(t) = MC_i(0) × (Price_i(t) / Price_i(0))",
+            meaning: "Simulates actual equity capitalization drift between rebalance checkpoints."
+          },
+          {
+            name: "Turnover ($ & %)",
+            formulaOrRule: "0.5 × Sum(|Shares_new - Shares_old| × Price)",
+            meaning: "Measures capital traded during each portfolio rebalance event."
+          },
+          {
+            name: "Sharpe & Sortino",
+            formulaOrRule: "(CAGR - Rf) / Annualized Volatility",
+            meaning: "Evaluates risk-adjusted returns against standard benchmarks."
+          }
+        ],
+        proTips: [
+          "Compare Top 10 quarterly rebalancing against QQQ to see if concentration in mega-cap tech outperforms broad index weightings.",
+          "Download the generated Python script to modify advanced execution parameters or backtest custom universes."
         ]
       },
       {

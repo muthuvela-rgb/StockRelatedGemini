@@ -12,6 +12,11 @@ import {
   getTickerSentimentHistory,
   getWatchlistSentimentHistory,
 } from "./server/transcripts";
+import {
+  runNasdaqMarketCapSimulation,
+  NASDAQ_TOP_COMPANIES,
+  generateStandalonePythonScript,
+} from "./server/nasdaqSimulator";
 
 const app = express();
 const PORT = 3000;
@@ -5163,6 +5168,90 @@ Every stock represents owning a small piece of a company. When companies build g
       searchSources: [],
       isGrounded: false,
     });
+  }
+});
+
+// ==========================================
+// NASDAQ MARKET-CAP BACKTESTING SIMULATOR API
+// ==========================================
+app.get("/api/backtest/nasdaq-universe", (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    totalCount: NASDAQ_TOP_COMPANIES.length,
+    companies: NASDAQ_TOP_COMPANIES,
+    defaults: {
+      initialAmount: 100000,
+      topN: 10,
+      rebalanceMonths: 3,
+      years: 3,
+    },
+    options: {
+      topNOptions: [5, 10, 15, 20, 25, 30, 50],
+      rebalanceMonthOptions: [
+        { value: 1, label: "Every 1 Month (Monthly)" },
+        { value: 3, label: "Every 3 Months (Quarterly)" },
+        { value: 6, label: "Every 6 Months (Semi-Annually)" },
+        { value: 12, label: "Every 12 Months (Annually)" },
+      ],
+      yearOptions: [
+        { value: 1, label: "Last 1 Year" },
+        { value: 2, label: "Last 2 Years" },
+        { value: 3, label: "Last 3 Years" },
+        { value: 5, label: "Last 5 Years" },
+        { value: 7, label: "Last 7 Years" },
+        { value: 10, label: "Last 10 Years" },
+      ],
+    },
+  });
+});
+
+app.post("/api/backtest/nasdaq-market-cap", async (req: Request, res: Response) => {
+  try {
+    const { initialAmount, topN, rebalanceMonths, years, rebalanceMode } = req.body || {};
+    const result = await runNasdaqMarketCapSimulation({
+      initialAmount: Number(initialAmount) || 100000,
+      topN: Number(topN) || 10,
+      rebalanceMonths: Number(rebalanceMonths) || 3,
+      years: Number(years) || 3,
+      rebalanceMode: rebalanceMode === "nasdaq-capped" ? "nasdaq-capped" : "target-reset",
+    });
+    res.json({ success: true, result });
+  } catch (err: any) {
+    console.error("Error in /api/backtest/nasdaq-market-cap:", err);
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to execute Nasdaq simulation backtest.",
+    });
+  }
+});
+
+app.get("/api/backtest/nasdaq-script", (req: Request, res: Response) => {
+  try {
+    const initialAmount = Number(req.query.initialAmount) || 100000;
+    const topN = Number(req.query.topN) || 10;
+    const rebalanceMonths = Number(req.query.rebalanceMonths) || 3;
+    const years = Number(req.query.years) || 3;
+    const rebalanceMode = req.query.rebalanceMode === "nasdaq-capped" ? "nasdaq-capped" : "target-reset";
+
+    const selectedTickers = NASDAQ_TOP_COMPANIES.slice(0, topN).map((c) => c.ticker);
+    const script = generateStandalonePythonScript({
+      initialAmount,
+      topN,
+      rebalanceMonths,
+      years,
+      rebalanceMode,
+      tickers: selectedTickers,
+    });
+
+    if (req.query.download === "true") {
+      res.setHeader("Content-Disposition", 'attachment; filename="nasdaq_rebalance_simulator.py"');
+      res.setHeader("Content-Type", "text/x-python");
+      res.send(script);
+    } else {
+      res.json({ success: true, script });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || "Failed to generate python script" });
   }
 });
 

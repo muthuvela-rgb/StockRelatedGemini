@@ -837,4 +837,91 @@ export interface MarketSentimentData {
   options_implications: OptionsImplications;
 }
 
+export interface NasdaqConstituent {
+  ticker: string;
+  name: string;
+  marketCap: number;
+  sector: string;
+  initialWeightPct: number;
+  endingWeightPct: number;
+  startPrice: number;
+  endPrice: number;
+  returnPct: number;
+  dollarContribution: number;
+}
+
+export interface RebalanceTrade {
+  ticker: string;
+  action: "BUY" | "SELL" | "HOLD";
+  previousShares: number;
+  newShares: number;
+  price: number;
+  tradeAmount: number;
+  newWeightPct: number;
+}
+
+export interface RebalanceEvent {
+  date: string;
+  periodIndex: number;
+  portfolioValue: number;
+  turnoverAmount: number;
+  turnoverPct: number;
+  trades: RebalanceTrade[];
+}
+
+export interface SimulationEquityPoint {
+  date: string;
+  portfolioValue: number;
+  buyAndHoldValue?: number;
+  qqqValue: number;
+  spyValue: number;
+  portfolioReturnPct: number;
+  qqqReturnPct: number;
+  spyReturnPct: number;
+  drawdownPct: number;
+}
+
+export interface SimulationMetrics {
+  initialAmount: number;
+  endingValue: number;
+  totalGain: number;
+  totalReturnPct: number;
+  cagrPct: number;
+  annualizedVolatilityPct: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  maxDrawdownPct: number;
+  buyAndHoldEndingValue?: number;
+  buyAndHoldTotalReturnPct?: number;
+  buyAndHoldCagrPct?: number;
+  qqqEndingValue: number;
+  qqqTotalReturnPct: number;
+  qqqCagrPct: number;
+  spyEndingValue: number;
+  spyTotalReturnPct: number;
+  spyCagrPct: number;
+  alphaPct: number;
+  beta: number;
+  totalRebalances: number;
+  cumulativeTurnover: number;
+}
+
+export interface NasdaqSimulationResult {
+  params: {
+    initialAmount: number;
+    topN: number;
+    rebalanceMonths: number;
+    years: number;
+    rebalanceMode?: "target-reset" | "nasdaq-capped";
+    startDate: string;
+    endDate: string;
+  };
+  metrics: SimulationMetrics;
+  constituents: NasdaqConstituent[];
+  rebalanceEvents: RebalanceEvent[];
+  equityCurve: SimulationEquityPoint[];
+  pythonScript: string;
+}
+
+
 

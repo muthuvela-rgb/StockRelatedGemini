@@ -22,6 +22,7 @@ import {
   AlertCircle,
   X,
   Gauge,
+  BarChart3,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -31,6 +32,7 @@ import { SUPERADMIN_EMAIL } from "../lib/firebase";
 export type ActiveTab =
   | "options-scanner"
   | "put-recommendations"
+  | "nasdaq-simulator"
   | "market-sentiment"
   | "fall-detector"
   | "technicals"
@@ -91,6 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
   const baseTabs = [
     { id: "options-scanner" as ActiveTab, label: "Put Scanner", icon: LineChart, badge: "OCC TIMS" },
     { id: "put-recommendations" as ActiveTab, label: "Put Recommendations", icon: ShieldCheck, badge: "3 Risk Tiers" },
+    { id: "nasdaq-simulator" as ActiveTab, label: "Nasdaq Simulator", icon: BarChart3, badge: "Backtest" },
     { id: "market-sentiment" as ActiveTab, label: "Market Sentiment", icon: Gauge, badge: "VIX & F&G" },
     { id: "fall-detector" as ActiveTab, label: "Fall Detector", icon: TrendingDown, badge: "Context" },
     { id: "technicals" as ActiveTab, label: "Technicals", icon: Activity },
