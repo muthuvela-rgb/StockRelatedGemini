@@ -12,6 +12,7 @@ import {
   ReferenceLine,
   ReferenceArea,
   Legend,
+  Brush,
 } from "recharts";
 import {
   TrendingUp,
@@ -35,6 +36,14 @@ import {
   ArrowDownRight,
   Sparkles,
   BarChart2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Plus,
+  Minus,
+  ChevronLeft,
+  ChevronRight,
+  MoveHorizontal,
 } from "lucide-react";
 import {
   HistoricalBar,
@@ -43,6 +52,7 @@ import {
   MultiTickerComparisonItem,
 } from "../types/stockChart";
 import { RebalancingAlertBanner } from "./RebalancingAlertBanner";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 
 interface StockChartsViewerProps {
   watchlist?: string[];
@@ -219,32 +229,6 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
     }
   };
 
-  // Calculate Y-axis domain with padding for price
-  const yDomain = useMemo(() => {
-    if (!chartData || !chartData.bars || chartData.bars.length === 0) return ["auto", "auto"];
-
-    let min = Infinity;
-    let max = -Infinity;
-
-    for (const b of chartData.bars) {
-      if (b.close > max) max = b.close;
-      if (b.close < min) min = b.close;
-      if (showBollinger && b.bollingerUpper !== null && b.bollingerUpper > max) max = b.bollingerUpper;
-      if (showBollinger && b.bollingerLower !== null && b.bollingerLower < min && b.bollingerLower > 0)
-        min = b.bollingerLower;
-      if (showSma20 && b.sma20 !== null) {
-        if (b.sma20 > max) max = b.sma20;
-        if (b.sma20 < min && b.sma20 > 0) min = b.sma20;
-      }
-    }
-
-    if (min === Infinity || max === -Infinity) return ["auto", "auto"];
-    const padding = (max - min) * 0.06;
-    const lowerBound = Math.max(0.01, Number((min - padding).toFixed(2)));
-    const upperBound = Number((max + padding).toFixed(2));
-    return [lowerBound, upperBound];
-  }, [chartData, showBollinger, showSma20]);
-
   // Enrich bars with 20-day Volume SMA and day direction
   const enrichedBars = useMemo(() => {
     if (!chartData || !chartData.bars) return [];
@@ -300,6 +284,140 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
       };
     });
   }, [enrichedBars, comparisonMode, chartData]);
+
+  // Zooming & Panning State (Synchronized across Main Chart and Sub-Pane)
+  const [zoomRange, setZoomRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
+  const [refAreaLeft, setRefAreaLeft] = useState<string | null>(null);
+  const [refAreaRight, setRefAreaRight] = useState<string | null>(null);
+  const [showBrush, setShowBrush] = useState<boolean>(true);
+
+  // Reset zoom whenever ticker, range, or interval changes
+  useEffect(() => {
+    setZoomRange(null);
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+  }, [activeTicker, selectedRange, selectedInterval]);
+
+  // Synchronized visible slices for Main Chart and Sub-Pane
+  const visibleChartData = useMemo(() => {
+    if (!zoomRange) return mergedChartData;
+    return mergedChartData.slice(zoomRange.startIndex, zoomRange.endIndex + 1);
+  }, [mergedChartData, zoomRange]);
+
+  const visibleEnrichedBars = useMemo(() => {
+    if (!zoomRange) return enrichedBars;
+    return enrichedBars.slice(zoomRange.startIndex, zoomRange.endIndex + 1);
+  }, [enrichedBars, zoomRange]);
+
+  // Calculate Y-axis domain with padding for price, adapting to zoom level
+  const yDomain = useMemo(() => {
+    const dataToUse = visibleChartData.length > 0 ? visibleChartData : (chartData?.bars || []);
+    if (dataToUse.length === 0) return ["auto", "auto"];
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (const b of dataToUse) {
+      if (b.close > max) max = b.close;
+      if (b.close < min) min = b.close;
+      if (showBollinger && b.bollingerUpper !== null && b.bollingerUpper > max) max = b.bollingerUpper;
+      if (showBollinger && b.bollingerLower !== null && b.bollingerLower < min && b.bollingerLower > 0)
+        min = b.bollingerLower;
+      if (showSma20 && b.sma20 !== null) {
+        if (b.sma20 > max) max = b.sma20;
+        if (b.sma20 < min && b.sma20 > 0) min = b.sma20;
+      }
+    }
+
+    if (min === Infinity || max === -Infinity) return ["auto", "auto"];
+    const padding = (max - min) * 0.06;
+    const lowerBound = Math.max(0.01, Number((min - padding).toFixed(2)));
+    const upperBound = Number((max + padding).toFixed(2));
+    return [lowerBound, upperBound];
+  }, [visibleChartData, chartData, showBollinger, showSma20]);
+
+  // Zoom handlers
+  const handleZoomIn = () => {
+    if (!mergedChartData || mergedChartData.length < 5) return;
+    const start = zoomRange ? zoomRange.startIndex : 0;
+    const end = zoomRange ? zoomRange.endIndex : mergedChartData.length - 1;
+    const span = end - start;
+    if (span <= 4) return;
+    const delta = Math.max(1, Math.floor(span * 0.2));
+    setZoomRange({
+      startIndex: start + delta,
+      endIndex: end - delta,
+    });
+  };
+
+  const handleZoomOut = () => {
+    if (!mergedChartData || mergedChartData.length < 5) return;
+    const start = zoomRange ? zoomRange.startIndex : 0;
+    const end = zoomRange ? zoomRange.endIndex : mergedChartData.length - 1;
+    const span = end - start;
+    const delta = Math.max(1, Math.floor(span * 0.25));
+    const newStart = Math.max(0, start - delta);
+    const newEnd = Math.min(mergedChartData.length - 1, end + delta);
+    if (newStart === 0 && newEnd === mergedChartData.length - 1) {
+      setZoomRange(null);
+    } else {
+      setZoomRange({ startIndex: newStart, endIndex: newEnd });
+    }
+  };
+
+  const handlePanLeft = () => {
+    if (!zoomRange || !mergedChartData) return;
+    const { startIndex, endIndex } = zoomRange;
+    const span = endIndex - startIndex;
+    const shift = Math.max(1, Math.floor(span * 0.2));
+    const newStart = Math.max(0, startIndex - shift);
+    const newEnd = newStart + span;
+    setZoomRange({ startIndex: newStart, endIndex: newEnd });
+  };
+
+  const handlePanRight = () => {
+    if (!zoomRange || !mergedChartData) return;
+    const { startIndex, endIndex } = zoomRange;
+    const span = endIndex - startIndex;
+    const shift = Math.max(1, Math.floor(span * 0.2));
+    const newEnd = Math.min(mergedChartData.length - 1, endIndex + shift);
+    const newStart = Math.max(0, newEnd - span);
+    setZoomRange({ startIndex: newStart, endIndex: newEnd });
+  };
+
+  const handleResetZoom = () => {
+    setZoomRange(null);
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+  };
+
+  const handleChartMouseDown = (e: any) => {
+    if (e && e.activeLabel) {
+      setRefAreaLeft(e.activeLabel);
+    }
+  };
+
+  const handleChartMouseMove = (e: any) => {
+    if (refAreaLeft && e && e.activeLabel) {
+      setRefAreaRight(e.activeLabel);
+    }
+  };
+
+  const handleChartMouseUp = () => {
+    if (refAreaLeft && refAreaRight && refAreaLeft !== refAreaRight && mergedChartData.length > 0) {
+      const idx1 = mergedChartData.findIndex((d) => d.date === refAreaLeft);
+      const idx2 = mergedChartData.findIndex((d) => d.date === refAreaRight);
+      if (idx1 !== -1 && idx2 !== -1) {
+        const start = Math.min(idx1, idx2);
+        const end = Math.max(idx1, idx2);
+        if (end - start >= 2) {
+          setZoomRange({ startIndex: start, endIndex: end });
+        }
+      }
+    }
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+  };
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -880,8 +998,68 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
             </span>
           </div>
 
-          {/* Chart Legend Summary */}
+          {/* Chart Legend Summary & Interactive Zoom Controls */}
           <div className="flex items-center gap-3 text-xs font-mono flex-wrap">
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-1 bg-slate-950/90 px-2 py-1 rounded-xl border border-slate-800 text-xs shadow-inner">
+              <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1 mr-1">
+                <ZoomIn className="w-3.5 h-3.5 text-blue-400" />
+                <span>Zoom</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+                title="Zoom In (+20%)"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+                title="Zoom Out (-20%)"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handlePanLeft}
+                disabled={!zoomRange}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition cursor-pointer"
+                title="Pan Left (Earlier)"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handlePanRight}
+                disabled={!zoomRange}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white disabled:opacity-30 transition cursor-pointer"
+                title="Pan Right (Later)"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                disabled={!zoomRange}
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition cursor-pointer flex items-center gap-1 ${
+                  zoomRange
+                    ? "bg-blue-600/30 text-blue-300 border border-blue-500/40 hover:bg-blue-600/50"
+                    : "text-slate-500 opacity-50 cursor-not-allowed"
+                }`}
+                title="Reset Zoom to 100%"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>
+                  {zoomRange
+                    ? `${Math.round(((zoomRange.endIndex - zoomRange.startIndex + 1) / (mergedChartData.length || 1)) * 100)}%`
+                    : "100%"}
+                </span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-1.5 text-emerald-400">
               <span className="w-3 h-0.5 bg-emerald-400 inline-block" />
               <span>{comparisonMode ? `${chartData?.primaryTicker} %` : "Price ($)"}</span>
@@ -910,6 +1088,21 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
           </div>
         </div>
 
+        {/* Zoom Drag Hint */}
+        {mergedChartData.length > 5 && (
+          <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 px-1 font-mono">
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <MoveHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Click & drag across chart to zoom in, or use slider below</span>
+            </span>
+            {zoomRange && (
+              <span className="text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/30">
+                Viewing {zoomRange.endIndex - zoomRange.startIndex + 1} of {mergedChartData.length} bars
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Loading Spinner overlay */}
         {loading && (
           <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center rounded-2xl z-20">
@@ -923,10 +1116,16 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
         )}
 
         {/* Recharts Main Canvas */}
-        <div className="h-[460px] w-full">
+        <div className="h-[490px] w-full">
           {mergedChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={mergedChartData} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+              <ComposedChart
+                data={mergedChartData}
+                margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                onMouseDown={handleChartMouseDown}
+                onMouseMove={handleChartMouseMove}
+                onMouseUp={handleChartMouseUp}
+              >
                 <defs>
                   {/* Price Area Gradient */}
                   <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1218,6 +1417,42 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                     );
                   }}
                 />
+
+                {/* Visual drag box for drag-to-zoom */}
+                {refAreaLeft && refAreaRight && (
+                  <ReferenceArea
+                    yAxisId="price"
+                    x1={refAreaLeft}
+                    x2={refAreaRight}
+                    stroke="#818cf8"
+                    strokeOpacity={0.6}
+                    fill="#6366f1"
+                    fillOpacity={0.25}
+                  />
+                )}
+
+                {/* Interactive Zoom/Pan Brush Timeline */}
+                {showBrush && mergedChartData.length > 5 && (
+                  <Brush
+                    dataKey="date"
+                    height={26}
+                    stroke="#6366f1"
+                    fill="#0b0f19"
+                    travellerWidth={10}
+                    startIndex={zoomRange ? zoomRange.startIndex : 0}
+                    endIndex={zoomRange ? zoomRange.endIndex : mergedChartData.length - 1}
+                    onChange={(range) => {
+                      if (range && typeof range.startIndex === "number" && typeof range.endIndex === "number") {
+                        if (range.startIndex === 0 && range.endIndex === mergedChartData.length - 1) {
+                          setZoomRange(null);
+                        } else {
+                          setZoomRange({ startIndex: range.startIndex, endIndex: range.endIndex });
+                        }
+                      }
+                    }}
+                    tickFormatter={formatXAxisTick}
+                  />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
@@ -1326,7 +1561,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
           <div className="h-[180px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               {rsiVolumeMode === "combined" ? (
-                <ComposedChart data={enrichedBars} margin={{ top: 8, right: 30, left: 10, bottom: 5 }}>
+                <ComposedChart data={visibleEnrichedBars} margin={{ top: 8, right: 30, left: 10, bottom: 5 }}>
                   <XAxis dataKey="date" hide />
                   {/* Left Y-Axis: RSI (0-100) */}
                   <YAxis
@@ -1357,11 +1592,11 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   <Bar
                     yAxisId="vol"
                     dataKey="volume"
-                    barSize={Math.max(2, Math.min(8, Math.floor(600 / (enrichedBars.length || 1))))}
+                    barSize={Math.max(2, Math.min(8, Math.floor(600 / (visibleEnrichedBars.length || 1))))}
                     isAnimationActive={false}
                     name="Volume"
                   >
-                    {enrichedBars.map((entry, index) => (
+                    {visibleEnrichedBars.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
                         fill={entry.isUpDay ? "#10b981" : "#f43f5e"}
@@ -1414,7 +1649,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   />
                 </ComposedChart>
               ) : rsiVolumeMode === "rsi" ? (
-                <ComposedChart data={enrichedBars} margin={{ top: 8, right: 30, left: 10, bottom: 5 }}>
+                <ComposedChart data={visibleEnrichedBars} margin={{ top: 8, right: 30, left: 10, bottom: 5 }}>
                   <XAxis dataKey="date" hide />
                   <YAxis
                     domain={[0, 100]}
@@ -1459,7 +1694,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   />
                 </ComposedChart>
               ) : (
-                <ComposedChart data={enrichedBars} margin={{ top: 8, right: 30, left: 10, bottom: 5 }}>
+                <ComposedChart data={visibleEnrichedBars} margin={{ top: 8, right: 30, left: 10, bottom: 5 }}>
                   <XAxis dataKey="date" hide />
                   <YAxis
                     stroke="#64748b"
@@ -1469,11 +1704,11 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   />
                   <Bar
                     dataKey="volume"
-                    barSize={Math.max(2, Math.min(8, Math.floor(600 / (enrichedBars.length || 1))))}
+                    barSize={Math.max(2, Math.min(8, Math.floor(600 / (visibleEnrichedBars.length || 1))))}
                     isAnimationActive={false}
                     name="Volume"
                   >
-                    {enrichedBars.map((entry, index) => (
+                    {visibleEnrichedBars.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
                         fill={entry.isUpDay ? "#10b981" : "#f43f5e"}
@@ -1547,7 +1782,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
             </button>
           </div>
 
-          <div className="overflow-x-auto max-h-96">
+          <TableTopScrollbar tableContainerClassName="overflow-x-auto max-h-96" label="Scroll Historical Data Horizontally">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 sticky top-0 backdrop-blur-xs">
                 <tr>
@@ -1597,7 +1832,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   ))}
               </tbody>
             </table>
-          </div>
+          </TableTopScrollbar>
         </div>
       )}
     </div>

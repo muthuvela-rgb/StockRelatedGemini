@@ -8,6 +8,7 @@ import {
   Tooltip,
   Legend,
   CartesianGrid,
+  Brush,
 } from "recharts";
 import { MacroHistoricalPoint } from "../../types";
 import { Activity, Layers, Maximize2, RefreshCw } from "lucide-react";
@@ -236,6 +237,16 @@ export const HistoricalMacroChart: React.FC<HistoricalMacroChartProps> = ({
                   <Line type="monotone" dataKey="us30y" name="US 30Y Treasury Yield (%)" stroke="#a855f7" strokeWidth={1.5} dot={false} />
                   <Line type="monotone" dataKey="us3m" name="US 3M T-Bill Yield (%)" stroke="#10b981" strokeWidth={1.5} strokeDasharray="3 3" dot={false} />
                 </>
+              )}
+
+              {data.length > 5 && (
+                <Brush
+                  dataKey="date"
+                  height={22}
+                  stroke="#06b6d4"
+                  fill="#090d16"
+                  travellerWidth={8}
+                />
               )}
             </LineChart>
           </ResponsiveContainer>

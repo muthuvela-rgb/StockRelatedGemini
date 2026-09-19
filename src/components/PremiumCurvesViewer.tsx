@@ -33,11 +33,13 @@ import {
   Area,
   ComposedChart,
   ReferenceLine,
-  ReferenceArea
+  ReferenceArea,
+  Brush
 } from "recharts";
 import { PremiumCurveAnalysis, PremiumVsExpirationAnalysis } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 import {
   SortCriterion,
   ColumnDefinition,
@@ -1017,6 +1019,15 @@ export const PremiumCurvesViewer: React.FC = () => {
                         />
                       );
                     })}
+                    {(expAnalysis.range_chart_data?.length || 0) > 4 && (
+                      <Brush
+                        dataKey="shortLabel"
+                        height={22}
+                        stroke="#06b6d4"
+                        fill="#090d16"
+                        travellerWidth={8}
+                      />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -1041,7 +1052,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                     presets={STRIKE_RANGE_PRESETS}
                   />
 
-                  <div className="overflow-x-auto">
+                  <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Matrix Horizontally">
                     <table className="w-full text-left text-xs select-none">
                       <thead>
                         <tr className="border-b border-slate-800 text-slate-400 text-[11px]">
@@ -1138,7 +1149,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </TableTopScrollbar>
                 </div>
               )}
             </div>
@@ -1296,6 +1307,15 @@ export const PremiumCurvesViewer: React.FC = () => {
                     }) as any}
                     activeDot={false}
                   />
+                  {(chartData?.length || 0) > 4 && (
+                    <Brush
+                      dataKey="shortLabel"
+                      height={22}
+                      stroke="#06b6d4"
+                      fill="#090d16"
+                      travellerWidth={8}
+                    />
+                  )}
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -1486,6 +1506,16 @@ export const PremiumCurvesViewer: React.FC = () => {
                     />
                   );
                 })}
+                {(chartData?.length || 0) > 4 && (
+                  <Brush
+                    dataKey="strike"
+                    height={22}
+                    stroke="#3b82f6"
+                    fill="#090d16"
+                    travellerWidth={8}
+                    tickFormatter={(val) => `$${val}`}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>

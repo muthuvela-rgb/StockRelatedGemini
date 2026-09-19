@@ -43,8 +43,10 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Area,
-  ComposedChart
+  ComposedChart,
+  Brush
 } from "recharts";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 import {
   RecommendedPut,
   RiskTier,
@@ -1409,7 +1411,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       {/* TABLE VIEW */}
       {!loading && viewMode === "table" && currentList.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-          <div className="overflow-x-auto">
+          <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Recommendations Table Horizontally">
             <table className="w-full text-left border-collapse text-xs select-none">
               <thead>
                 <tr className="bg-slate-950/90 text-slate-400 border-b border-slate-800 font-mono text-[11px]">
@@ -1651,7 +1653,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 })}
               </tbody>
             </table>
-          </div>
+          </TableTopScrollbar>
         </div>
       )}
 
@@ -1803,6 +1805,16 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       strokeWidth={2.5}
                       dot={false}
                     />
+                    {payoffChartData.length > 5 && (
+                      <Brush
+                        dataKey="price"
+                        height={20}
+                        stroke="#10b981"
+                        fill="#0b0f19"
+                        travellerWidth={8}
+                        tickFormatter={(val) => `$${val}`}
+                      />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

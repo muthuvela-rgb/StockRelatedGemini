@@ -8,7 +8,8 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   Legend,
-  Area
+  Area,
+  Brush
 } from "recharts";
 import { PutOptionRecord } from "../types";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
@@ -263,6 +264,15 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                   />
                 );
               })}
+            {overlaidData.length > 5 && (
+              <Brush
+                dataKey="label"
+                height={22}
+                stroke="#6366f1"
+                fill="#090d16"
+                travellerWidth={8}
+              />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

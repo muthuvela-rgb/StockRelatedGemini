@@ -38,11 +38,13 @@ import {
   Line,
   ComposedChart,
   ReferenceLine,
-  ReferenceArea
+  ReferenceArea,
+  Brush
 } from "recharts";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { StatCard } from "./StatCard";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 import {
   SortCriterion,
   ColumnDefinition,
@@ -1370,6 +1372,15 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           activeDot={false}
                         />
                       )}
+                      {((isSingleStrikeSelected ? singleStockExpData : singleStockStrikeData)?.length || 0) > 4 && (
+                        <Brush
+                          dataKey={isSingleStrikeSelected ? "expiration" : "strike"}
+                          height={24}
+                          stroke="#06b6d4"
+                          fill="#090d16"
+                          travellerWidth={10}
+                        />
+                      )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -1764,7 +1775,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           />
         </div>
 
-        <div className="overflow-x-auto">
+        <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Results Table Horizontally">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
@@ -1956,7 +1967,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               )}
             </tbody>
           </table>
-        </div>
+        </TableTopScrollbar>
       </div>
     </div>
   );

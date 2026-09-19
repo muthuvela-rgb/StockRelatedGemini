@@ -10,7 +10,8 @@ import {
   Tooltip as RechartsTooltip,
   Legend,
   ReferenceLine,
-  ReferenceArea
+  ReferenceArea,
+  Brush
 } from "recharts";
 import { TrendingUp, Target, Calendar, DollarSign, MousePointerClick, Percent, Award } from "lucide-react";
 import { PutOptionRecord } from "../types";
@@ -648,6 +649,15 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                   );
                 }) as any}
                 activeDot={false}
+              />
+            )}
+            {chartData.length > 5 && (
+              <Brush
+                dataKey="shortLabel"
+                height={20}
+                stroke={themeColor}
+                fill="#090d16"
+                travellerWidth={8}
               />
             )}
           </ComposedChart>
