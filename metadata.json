@@ -1,6 +1,6 @@
 {
   "name": "StockRelated Options & Stock Analytics",
-  "description": "Comprehensive stock, options, and macro analysis toolkit with live gold, silver, oil, and bitcoin (USD & INR) feeds, US Treasury yields, FOMC Federal Reserve calendar, Nasdaq rebalancing simulator, Black-Scholes Greeks, SEC EDGAR reports, and earnings call transcripts.",
+  "description": "Comprehensive stock, options, and macro analysis toolkit with up to 50-year historical price charting, overlaid 20-day SMA, Bollinger Bands, RSI(14) oscillator, live gold, silver, oil, and bitcoin (USD & INR) feeds, US Treasury yields, FOMC Federal Reserve calendar, Nasdaq rebalancing simulator, Black-Scholes Greeks, SEC EDGAR reports, and earnings call transcripts.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

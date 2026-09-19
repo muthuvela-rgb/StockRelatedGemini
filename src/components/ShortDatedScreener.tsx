@@ -25,6 +25,7 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { DeltaRangeSlider } from "./DeltaRangeSlider";
 
 type ShortDatedSortKey =
   | "ticker"
@@ -34,6 +35,7 @@ type ShortDatedSortKey =
   | "moneyness_pct"
   | "bid"
   | "implied_volatility"
+  | "delta"
   | "capital_basis"
   | "annualized_return_pct";
 
@@ -46,6 +48,13 @@ const SHORT_DATED_COLUMNS: ColumnDefinition<ShortDatedSortKey>[] = [
   { key: "current_price", label: "Spot Price", defaultDirection: "desc", numeric: true },
   { key: "bid", label: "Bid / Ask", defaultDirection: "desc", numeric: true },
   { key: "implied_volatility", label: "IV %", defaultDirection: "desc", numeric: true },
+  {
+    key: "delta",
+    label: "Delta (Δ)",
+    defaultDirection: "asc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => (r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : null),
+  },
   { key: "capital_basis", label: "Margin Basis", defaultDirection: "asc", numeric: true },
 ];
 
@@ -89,6 +98,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
   const [maxMoneyness, setMaxMoneyness] = useState(90.0);
   const [minMarketCapB, setMinMarketCapB] = useState(5.0);
   const [universe, setUniverse] = useState<"qqq" | "watchlist">("qqq");
+  const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<PutOptionRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -142,15 +152,23 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
 
   const handleSort = (field: ShortDatedSortKey, isShift: boolean = false) => {
     const defaultDir =
-      field === "ticker" || field === "expiration" || field === "strike" || field === "capital_basis"
+      field === "ticker" || field === "expiration" || field === "strike" || field === "capital_basis" || field === "delta"
         ? "asc"
         : "desc";
     setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
+  const displayRecords = useMemo(() => {
+    if (deltaRange[0] <= 0.001 && deltaRange[1] >= 0.999) return records;
+    return records.filter((r) => {
+      const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
+      return d >= deltaRange[0] && d <= deltaRange[1];
+    });
+  }, [records, deltaRange]);
+
   const sortedRecords = useMemo(() => {
-    return applyHierarchicalSort(records, sortCriteria, SHORT_DATED_COLUMNS);
-  }, [records, sortCriteria]);
+    return applyHierarchicalSort(displayRecords, sortCriteria, SHORT_DATED_COLUMNS);
+  }, [displayRecords, sortCriteria]);
 
   useEffect(() => {
     runShortScan();
@@ -230,6 +248,16 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs outline-none"
             />
           </div>
+        </div>
+
+        {/* Delta Greek Range Slider */}
+        <div className="mt-4 pt-4 border-t border-slate-800">
+          <DeltaRangeSlider
+            minDelta={deltaRange[0]}
+            maxDelta={deltaRange[1]}
+            onChange={setDeltaRange}
+            compact={true}
+          />
         </div>
       </div>
 
@@ -313,6 +341,13 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
                   className="px-3 py-3"
                 />
                 <TableSortHeader
+                  field="delta"
+                  label="Delta (Δ)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
                   field="capital_basis"
                   label="OCC Margin Basis"
                   criteria={sortCriteria}
@@ -332,7 +367,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
             <tbody className="divide-y divide-slate-800 font-mono">
               {sortedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-slate-500 font-sans">
+                  <td colSpan={10} className="px-6 py-12 text-center text-slate-500 font-sans">
                     {loading ? "Scanning short-dated options..." : "No contracts met the short-dated screener criteria."}
                   </td>
                 </tr>
@@ -356,6 +391,9 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
                       <span className="text-emerald-400 font-bold">${r.bid.toFixed(2)}</span> / ${r.ask.toFixed(2)}
                     </td>
                     <td className="px-3 py-3 text-slate-400">{r.implied_volatility}%</td>
+                    <td className="px-3 py-3 text-purple-300 font-medium">
+                      {r.delta !== null && r.delta !== undefined ? Math.abs(r.delta).toFixed(3) : "—"}
+                    </td>
                     <td className="px-3 py-3 text-slate-300">${r.capital_basis.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-sm font-bold text-emerald-400">

@@ -14,6 +14,7 @@ import {
 import { OptionGreeks, ExpirationChainData, FibonacciLevels } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { OptionPointDetailInspector } from "./OptionPointDetailInspector";
+import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import {
   Sliders,
   Maximize2,
@@ -61,6 +62,8 @@ interface OptionChainPremiumStrikePlotProps {
   onStrikeRangeChange: (newRange: [number, number]) => void;
   dataMinStrike: number;
   dataMaxStrike: number;
+  deltaRange?: [number, number];
+  onDeltaRangeChange?: (newRange: [number, number]) => void;
   onSelectContract?: (contract: OptionGreeks | null) => void;
   selectedContract?: OptionGreeks | null;
   selectedContractSymbol?: string | null;
@@ -117,6 +120,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   onStrikeRangeChange,
   dataMinStrike,
   dataMaxStrike,
+  deltaRange,
+  onDeltaRangeChange,
   onSelectContract,
   selectedContract,
   selectedContractSymbol,
@@ -128,6 +133,15 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const [highlightedExp, setHighlightedExp] = useState<string | null>(null);
   const [visibleExps, setVisibleExps] = useState<Set<string>>(() => new Set(allExpirations.slice(0, 12)));
   const [showAllExpsInPlot, setShowAllExpsInPlot] = useState(true);
+  const [internalDeltaRange, setInternalDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+
+  const activeDeltaRange = deltaRange || internalDeltaRange;
+  const handleDeltaChange = (newRange: [number, number]) => {
+    if (onDeltaRangeChange) {
+      onDeltaRangeChange(newRange);
+    }
+    setInternalDeltaRange(newRange);
+  };
 
   // Sync visible expirations when allExpirations changes
   React.useEffect(() => {
@@ -260,10 +274,14 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const singleExpChartData = useMemo(() => {
     if (isAllExp) return [];
 
-    // Map unique strikes in range
-    const filteredContracts = contracts.filter(
-      (c) => c.strike >= minSlider && c.strike <= maxSlider
-    );
+    const [dMin, dMax] = activeDeltaRange;
+    // Map unique strikes in strike and delta range
+    const filteredContracts = contracts.filter((c) => {
+      const matchStrike = c.strike >= minSlider && c.strike <= maxSlider;
+      const absDelta = c.delta !== null && c.delta !== undefined ? Math.abs(c.delta) : 0;
+      const matchDelta = absDelta >= dMin && absDelta <= dMax;
+      return matchStrike && matchDelta;
+    });
 
     const strikeMap = new Map<number, any>();
 
@@ -296,13 +314,14 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     });
 
     return Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
-  }, [isAllExp, contracts, minSlider, maxSlider, currentPrice, tab, selectedExp]);
+  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, currentPrice, tab, selectedExp]);
 
   // 2. DATA PREPARATION FOR ALL EXPIRATIONS MODE
   const allExpChartData = useMemo(() => {
     if (!isAllExp) return [];
 
-    // Collect all strikes across all chains within [minSlider, maxSlider]
+    const [dMin, dMax] = activeDeltaRange;
+    // Collect all strikes across all chains within [minSlider, maxSlider] and [dMin, dMax]
     const strikeSet = new Set<number>();
 
     allExpirations.forEach((exp) => {
@@ -310,7 +329,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       if (!chain) return;
       const list = tab === "puts" ? chain.puts : chain.calls;
       list.forEach((c) => {
-        if (c.strike >= minSlider && c.strike <= maxSlider) {
+        const absDelta = c.delta !== null && c.delta !== undefined ? Math.abs(c.delta) : 0;
+        if (c.strike >= minSlider && c.strike <= maxSlider && absDelta >= dMin && absDelta <= dMax) {
           strikeSet.add(c.strike);
         }
       });
@@ -318,7 +338,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
 
     // Also include contracts from direct list if allChainsMap isn't populated yet
     contracts.forEach((c) => {
-      if (c.strike >= minSlider && c.strike <= maxSlider) {
+      const absDelta = c.delta !== null && c.delta !== undefined ? Math.abs(c.delta) : 0;
+      if (c.strike >= minSlider && c.strike <= maxSlider && absDelta >= dMin && absDelta <= dMax) {
         strikeSet.add(c.strike);
       }
     });
@@ -339,13 +360,16 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
         }
 
         if (c) {
-          pt[exp] = getMetricValue(c, metric);
-          pt[`${exp}_contract`] = c;
+          const absDelta = c.delta !== null && c.delta !== undefined ? Math.abs(c.delta) : 0;
+          if (absDelta >= dMin && absDelta <= dMax) {
+            pt[exp] = getMetricValue(c, metric);
+            pt[`${exp}_contract`] = c;
+          }
         }
       });
       return pt;
     });
-  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, metric, currentPrice, selectedExp]);
+  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, metric, currentPrice, selectedExp]);
 
   // Handle strike slider adjustments
   const handleMinSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -589,6 +613,16 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
           >
             Full Range ({dataMinStrike} - {dataMaxStrike})
           </button>
+        </div>
+
+        {/* Delta Greek Range Slider */}
+        <div className="pt-3 mt-3 border-t border-slate-800/80">
+          <DeltaRangeSlider
+            minDelta={activeDeltaRange[0]}
+            maxDelta={activeDeltaRange[1]}
+            onChange={handleDeltaChange}
+            compact={true}
+          />
         </div>
       </div>
 

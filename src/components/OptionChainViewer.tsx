@@ -99,6 +99,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
   const [chainData, setChainData] = useState<OptionChainResponse | null>(null);
   const [selectedContract, setSelectedContract] = useState<OptionGreeks | null>(null);
   const [tableExpFilter, setTableExpFilter] = useState<string>("ALL");
+  const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
 
@@ -208,15 +209,17 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
-  // Filter rows by strike range and table expiration filter
+  // Filter rows by strike range, delta range, and table expiration filter
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       const matchStrike = r.strike >= strikeRange[0] && r.strike <= strikeRange[1];
       const matchExp =
         selectedExp !== "ALL" || tableExpFilter === "ALL" || !r.expiration || r.expiration === tableExpFilter;
-      return matchStrike && matchExp;
+      const absDelta = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
+      const matchDelta = absDelta >= deltaRange[0] && absDelta <= deltaRange[1];
+      return matchStrike && matchExp && matchDelta;
     });
-  }, [rows, strikeRange, selectedExp, tableExpFilter]);
+  }, [rows, strikeRange, deltaRange, selectedExp, tableExpFilter]);
 
   const optionChainColumns: ColumnDefinition<OptionChainSortKey>[] = useMemo(() => {
     const spot = chainData?.current_price || 0;
@@ -531,6 +534,8 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           onStrikeRangeChange={setStrikeRange}
           dataMinStrike={dataMinStrike}
           dataMaxStrike={dataMaxStrike}
+          deltaRange={deltaRange}
+          onDeltaRangeChange={setDeltaRange}
           selectedContract={selectedContract}
           selectedContractSymbol={selectedContract?.contractSymbol}
           onSelectContract={(c) => setSelectedContract(c)}
@@ -545,7 +550,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
       <div id="option-chain-table-container" className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl space-y-0">
         {/* Table Header Controls */}
         <div className="p-4 bg-slate-950/60 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="font-bold text-white">
               {tab === "puts" ? "Put Contracts" : "Call Contracts"} Table
             </span>
@@ -555,6 +560,11 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
             {(strikeRange[0] > dataMinStrike || strikeRange[1] < dataMaxStrike) && (
               <span className="text-[11px] text-cyan-400 font-mono">
                 (Strikes: ${strikeRange[0].toFixed(1)} – ${strikeRange[1].toFixed(1)})
+              </span>
+            )}
+            {(deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+              <span className="text-[11px] text-purple-400 font-mono bg-purple-950/40 px-2 py-0.5 rounded border border-purple-800/40">
+                Δ {deltaRange[0].toFixed(2)} – {deltaRange[1].toFixed(2)}
               </span>
             )}
           </div>

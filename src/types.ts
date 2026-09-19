@@ -28,6 +28,7 @@ export interface PutOptionRecord {
   ask_used_fallback: boolean;
   used_fallback?: boolean;
   usedFallback?: boolean;
+  delta?: number | null;
   market_cap?: number;
   fifty_two_week_high?: number | null;
   fifty_two_week_low?: number | null;

@@ -215,6 +215,43 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
         ]
       },
       {
+        id: "stock-charts",
+        title: "Stock Charts & Technicals",
+        badge: "Up to 50Y History",
+        icon: LineChart,
+        category: "Technical & Fall",
+        tagline: "Institutional-grade price charting with overlaid 20 SMA, Bollinger Bands, and RSI(14) oscillator.",
+        whatItDoes:
+          "Visualizes historical price action spanning from 1 month up to 50 full years of market data. Directly overlays the 20-day Simple Moving Average (SMA), 2-standard-deviation Bollinger Bands volatility channel, and Wilder's 14-period Relative Strength Index (RSI) right on the chart canvas, with automated technical annotations for overbought and oversold extremes.",
+        howToUse: [
+          "Enter one or more ticker symbols (e.g. 'NVDA, AAPL, IBM, SPY') in the search bar.",
+          "Select any duration preset from 1 Month up to 50 Years or Custom Date Range.",
+          "Toggle technical overlays (20-Day SMA in amber, Bollinger Bands in sky blue, RSI oscillator in purple, Volume, or Log scale).",
+          "Toggle multi-ticker comparison mode to inspect relative percentage returns across assets on the same timeline."
+        ],
+        keyMetrics: [
+          {
+            name: "20-Day SMA",
+            formulaOrRule: "20-bar rolling average of closing prices",
+            meaning: "Defines the short-to-medium term institutional baseline trend and support/resistance mean."
+          },
+          {
+            name: "Bollinger Bands (20, 2σ)",
+            formulaOrRule: "SMA(20) ± 2 × StdDev(20)",
+            meaning: "Contains ~95% of expected price distribution. Upper breaches signal expansion; lower breaches signal oversold tests."
+          },
+          {
+            name: "Wilder's RSI (14)",
+            formulaOrRule: "100 - [100 / (1 + AvgGain/AvgLoss)]",
+            meaning: "RSI > 70 denotes overbought momentum exhaustion; RSI < 30 denotes statistical oversold rebound probability."
+          }
+        ],
+        proTips: [
+          "Toggle Log Scale when examining 10-year to 50-year charts to clearly visualize compounding growth curves without visual scale compression.",
+          "Check Bollinger Bandwidth: when bandwidth contracts below 8%, an explosive volatility breakout typically follows."
+        ]
+      },
+      {
         id: "technicals",
         title: "Technicals Screener",
         badge: "Momentum & Support",

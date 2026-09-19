@@ -37,6 +37,7 @@ export type ActiveTab =
   | "macro-markets"
   | "market-sentiment"
   | "fall-detector"
+  | "stock-charts"
   | "technicals"
   | "short-puts"
   | "option-chain"
@@ -99,6 +100,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "macro-markets" as ActiveTab, label: "Macro Markets", icon: Globe, badge: "Gold/BTC/INR" },
     { id: "market-sentiment" as ActiveTab, label: "Market Sentiment", icon: Gauge, badge: "VIX & F&G" },
     { id: "fall-detector" as ActiveTab, label: "Fall Detector", icon: TrendingDown, badge: "Context" },
+    { id: "stock-charts" as ActiveTab, label: "Stock Charts", icon: LineChart, badge: "Up to 50Y" },
     { id: "technicals" as ActiveTab, label: "Technicals", icon: Activity },
     { id: "short-puts" as ActiveTab, label: "Short-Dated", icon: Clock },
     { id: "option-chain" as ActiveTab, label: "Option Chain & Greeks", icon: Layers },

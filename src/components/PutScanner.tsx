@@ -126,6 +126,13 @@ const PUT_SCANNER_COLUMNS: ColumnDefinition<keyof PutOptionRecord>[] = [
     numeric: true,
     extractor: (r: PutOptionRecord) => Number(r.annualized_return_pct_cash_secured.toFixed(2)),
   },
+  {
+    key: "delta",
+    label: "Delta (Δ)",
+    defaultDirection: "asc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => (r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : null),
+  },
 ];
 
 const PUT_SCANNER_PRESETS: SortPreset<keyof PutOptionRecord>[] = [
@@ -173,6 +180,7 @@ import { MultiStockOverlaidChart } from "./MultiStockOverlaidChart";
 import { SingleStockPlotCard } from "./SingleStockPlotCard";
 import { VerticalPutOptimizerPanel } from "./VerticalPutOptimizerPanel";
 import { VerticalPutSpread } from "../utils/verticalPutOptimizer";
+import { DeltaRangeSlider } from "./DeltaRangeSlider";
 
 interface PutScannerProps {
   watchlist: string[];
@@ -206,6 +214,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [filterMoneynessMax, setFilterMoneynessMax] = useState<number>(100);
   const [filterMinBid, setFilterMinBid] = useState<number>(0);
   const [filterSearch, setFilterSearch] = useState("");
+  const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -274,6 +283,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     if (filterSearch && !r.ticker.toLowerCase().includes(filterSearch.toLowerCase())) return false;
     if (r.moneyness_pct > filterMoneynessMax) return false;
     if (r.bid < filterMinBid) return false;
+    if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
+      const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
+      if (d < deltaRange[0] || d > deltaRange[1]) return false;
+    }
     return true;
   });
 
@@ -296,6 +309,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       "Volume",
       "OpenInterest",
       "IV%",
+      "Delta",
       "CapitalBasis",
       "AnnualizedReturn%",
       "AnnualizedReturnCashSecured%",
@@ -313,6 +327,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       r.volume,
       r.open_interest,
       r.implied_volatility,
+      r.delta !== null && r.delta !== undefined ? Math.abs(r.delta).toFixed(3) : "",
       r.capital_basis,
       r.annualized_return_pct,
       r.annualized_return_pct_cash_secured,
@@ -1725,6 +1740,16 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             </select>
           </div>
         </div>
+
+        {/* Delta Greek Range Slider */}
+        <div className="w-full pt-2.5 border-t border-slate-800/80">
+          <DeltaRangeSlider
+            minDelta={deltaRange[0]}
+            maxDelta={deltaRange[1]}
+            onChange={setDeltaRange}
+            compact={true}
+          />
+        </div>
       </div>
 
       {/* Results Table */}
@@ -1807,6 +1832,15 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                   className="px-3 py-3"
                 />
                 <TableSortHeader
+                  field="delta"
+                  label="Delta (Δ)"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
                   field="capital_basis"
                   label="Capital Basis"
                   criteria={sortCriteria}
@@ -1830,7 +1864,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             <tbody className="divide-y divide-slate-800">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
                     {loading ? (
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
@@ -1890,6 +1924,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       </td>
                       <td className="px-3 py-3 text-slate-400">
                         {r.implied_volatility ? `${r.implied_volatility.toFixed(1)}%` : "-"}
+                      </td>
+                      <td className="px-3 py-3 text-purple-300 font-medium">
+                        {r.delta !== null && r.delta !== undefined ? Math.abs(r.delta).toFixed(3) : "—"}
                       </td>
                       <td className="px-3 py-3 text-slate-300">
                         ${r.capital_basis.toFixed(2)}

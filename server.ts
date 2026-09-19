@@ -18,6 +18,7 @@ import {
   NASDAQ_100_COMPANIES,
   generateStandalonePythonScript,
 } from "./server/nasdaqSimulator";
+import { getHistoricalStockChart } from "./server/stockChart";
 
 const app = express();
 const PORT = 3000;
@@ -1805,6 +1806,49 @@ app.get("/api/quote", async (req: Request, res: Response) => {
   }
 });
 
+// Historical Stock Chart with Technicals (20 SMA, Bollinger Bands, RSI 14, Up to 50Y)
+app.get("/api/historical-chart", async (req: Request, res: Response) => {
+  try {
+    const rawTicker = ((req.query.ticker || req.query.symbol || req.query.tickers || "") as string).trim();
+    if (!rawTicker) {
+      return res.status(400).json({ error: "ticker query parameter is required" });
+    }
+
+    const tickerList = rawTicker
+      .split(/[,;\s]+/)
+      .map((t) => t.trim().toUpperCase())
+      .filter(Boolean);
+
+    const primaryTicker = tickerList[0] || "AAPL";
+    const comparisonTickers = tickerList.slice(1);
+
+    const range = ((req.query.range as string) || "1y").trim();
+    const interval = req.query.interval ? ((req.query.interval as string) || "").trim() : undefined;
+    const from = req.query.from ? (req.query.from as string).trim() : undefined;
+    const to = req.query.to ? (req.query.to as string).trim() : undefined;
+
+    const result = await getHistoricalStockChart({
+      ticker: primaryTicker,
+      comparisonTickers,
+      range,
+      interval,
+      from,
+      to,
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        error: `Unable to fetch historical price data for ${primaryTicker}. Please verify the ticker symbol.`,
+      });
+    }
+
+    res.json(result);
+  } catch (e: any) {
+    console.error("Error in /api/historical-chart:", e);
+    res.status(500).json({ error: e.message || "Failed to load historical chart data" });
+  }
+});
+
 // Technicals Screen
 app.get("/api/technicals", async (req: Request, res: Response) => {
   try {
@@ -2130,6 +2174,8 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
             };
           }
 
+          const greeks = calculateGreeks(strike, currentPrice, put.impliedVolatility || 0.3, dte, false);
+
           allRecords.push({
             ticker,
             expiration: exp.dateStr,
@@ -2149,6 +2195,7 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
             annualized_return_pct_cash_secured: Number(annualReturnCash.toFixed(2)),
             bid_used_fallback: bidFallback,
             ask_used_fallback: askFallback,
+            delta: greeks.delta,
             market_cap: meta.marketCap || undefined,
             fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
             fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
@@ -4039,8 +4086,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
       minBid = 0.35,
       minOpenInterest = 5,
       marginShockPct = 15.0,
-      minAnnualReturn = 8.0,
-      minAnnualMarginReturn = 8.0,
+      minAnnualReturn = 1.0,
+      minAnnualMarginReturn = 1.0,
     } = req.body;
 
     const tickerList: string[] = (
@@ -4201,7 +4248,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                 const annualReturnCash = (execBid / cashBasisPerShare) * (365 / exp.dte) * 100;
                 const annualReturnMargin = (execBid / marginBasisPerShare) * (365 / exp.dte) * 100;
 
-                const minReturnThreshold = minAnnualReturn || minAnnualMarginReturn || 5;
+                const minReturnThreshold = typeof minAnnualReturn === "number" ? minAnnualReturn : 1.0;
                 if (annualReturnCash < minReturnThreshold) continue;
 
                 const spreadPct = execBid > 0 && ask > 0 ? Number((((ask - execBid) / execBid) * 100).toFixed(1)) : 0;

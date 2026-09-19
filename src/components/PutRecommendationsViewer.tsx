@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { ActiveTab } from "./Header";
+import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import {
   LineChart,
   Line,
@@ -78,6 +79,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended" | "custom_range">("custom_range");
   const [minAnnualReturn, setMinAnnualReturn] = useState<number>(8);
   const [minBid, setMinBid] = useState<number>(0.35);
+  const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
   const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("score");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -206,8 +208,9 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           tickers: targetTickers,
           minDte: dteRange.minDte,
           maxDte: dteRange.maxDte,
-          minBid,
-          minAnnualMarginReturn: minAnnualReturn,
+          minBid: 0.20,
+          minAnnualReturn: 1.0,
+          minAnnualMarginReturn: 1.0,
           minOpenInterest: 3,
         }),
       });
@@ -433,7 +436,63 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
     setTableSortCriteria((prev) => removeSortLevel(key, prev));
   };
 
-  // Raw list filtered by risk tier and search term
+  // Dynamic tier statistics reflecting all active filters (search, Delta Greek range, Min Cash Return, Min Bid)
+  const tierStats = useMemo(() => {
+    if (!data) return null;
+
+    const filterItem = (r: RecommendedPut) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toUpperCase();
+        if (!r.ticker.includes(q) && !r.contract_symbol.includes(q)) return false;
+      }
+      if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
+        const d = r.greeks?.delta !== null && r.greeks?.delta !== undefined ? Math.abs(r.greeks.delta) : 0;
+        if (d < deltaRange[0] || d > deltaRange[1]) return false;
+      }
+      if (minAnnualReturn > 0) {
+        const cashReturn = r.annualized_return_cash_secured ?? 0;
+        if (cashReturn < minAnnualReturn) return false;
+      }
+      if (minBid > 0) {
+        const bid = r.bid ?? 0;
+        if (bid < minBid) return false;
+      }
+      return true;
+    };
+
+    const buildTier = (rawList: RecommendedPut[], defaultSummary: any) => {
+      const filtered = rawList.filter(filterItem);
+      if (filtered.length === 0) {
+        return {
+          count: 0,
+          avg_pop: 0,
+          avg_cash_return: 0,
+          avg_cushion: 0,
+          top_pick: null as RecommendedPut | null,
+        };
+      }
+      const avgPop = Number((filtered.reduce((acc, r) => acc + (r.probability_of_profit || 0), 0) / filtered.length).toFixed(1));
+      const avgCash = Number((filtered.reduce((acc, r) => acc + (r.annualized_return_cash_secured || 0), 0) / filtered.length).toFixed(1));
+      const avgCushion = Number((filtered.reduce((acc, r) => acc + (r.cushion_to_strike_pct || 0), 0) / filtered.length).toFixed(1));
+      const topPick = filtered[0] || null;
+      return {
+        count: filtered.length,
+        avg_pop: avgPop,
+        avg_cash_return: avgCash,
+        avg_cushion: avgCushion,
+        top_pick: topPick,
+      };
+    };
+
+    return {
+      least_risk: buildTier(data.least_risk, data.tier_summaries.least_risk),
+      medium_risk: buildTier(data.medium_risk, data.tier_summaries.medium_risk),
+      high_risk: buildTier(data.high_risk, data.tier_summaries.high_risk),
+      all: { count: data.all_recommendations.filter(filterItem).length },
+    };
+  }, [data, searchQuery, deltaRange, minAnnualReturn, minBid]);
+
+  // Raw list filtered by risk tier, search term, delta range, min annual cash return, and min bid
   const filteredList = useMemo(() => {
     if (!data) return [];
     let list: RecommendedPut[] = [];
@@ -447,8 +506,27 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       const q = searchQuery.trim().toUpperCase();
       list = list.filter((r) => r.ticker.includes(q) || r.contract_symbol.includes(q));
     }
+
+    // Filter by Delta Greek range
+    if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
+      list = list.filter((r) => {
+        const d = r.greeks?.delta !== null && r.greeks?.delta !== undefined ? Math.abs(r.greeks.delta) : 0;
+        return d >= deltaRange[0] && d <= deltaRange[1];
+      });
+    }
+
+    // Filter by Min Annual Cash Return %
+    if (minAnnualReturn > 0) {
+      list = list.filter((r) => (r.annualized_return_cash_secured ?? 0) >= minAnnualReturn);
+    }
+
+    // Filter by Min Bid Premium
+    if (minBid > 0) {
+      list = list.filter((r) => (r.bid ?? 0) >= minBid);
+    }
+
     return list;
-  }, [data, activeTierTab, searchQuery]);
+  }, [data, activeTierTab, searchQuery, deltaRange, minAnnualReturn, minBid]);
 
   // Unified sorted recommendations using hierarchical sorting across BOTH Cards and Table views
   const currentList = useMemo(() => {
@@ -661,16 +739,17 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </div>
             <input
               type="range"
-              min={5}
+              min={1}
               max={60}
-              step={5}
+              step={1}
               value={minAnnualReturn}
               onChange={(e) => setMinAnnualReturn(Number(e.target.value))}
               className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-              <span>5%</span>
-              <span>25%</span>
+              <span>1%</span>
+              <span>20%</span>
+              <span>40%</span>
               <span>60%</span>
             </div>
           </div>
@@ -717,6 +796,16 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <option value="theta">Daily Theta Decay ($/day/contract)</option>
             </select>
           </div>
+        </div>
+
+        {/* Delta Greek Range Slider */}
+        <div className="mt-4 pt-4 border-t border-slate-800/80">
+          <DeltaRangeSlider
+            minDelta={deltaRange[0]}
+            maxDelta={deltaRange[1]}
+            onChange={setDeltaRange}
+            compact={true}
+          />
         </div>
 
         {universe === "custom" && (
@@ -772,7 +861,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 </div>
               </div>
               <span className="text-2xl font-black text-emerald-400 font-mono">
-                {data.tier_summaries.least_risk.count}
+                {(tierStats?.least_risk ?? data.tier_summaries.least_risk).count}
               </span>
             </div>
 
@@ -783,23 +872,23 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800/80 font-mono text-[11px]">
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg POP</span>
-                <span className="text-emerald-300 font-bold">{data.tier_summaries.least_risk.avg_pop}%</span>
+                <span className="text-emerald-300 font-bold">{(tierStats?.least_risk ?? data.tier_summaries.least_risk).avg_pop}%</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg Cash Yield</span>
-                <span className="text-emerald-400 font-bold">{data.tier_summaries.least_risk.avg_cash_return}%</span>
+                <span className="text-emerald-400 font-bold">{(tierStats?.least_risk ?? data.tier_summaries.least_risk).avg_cash_return}%</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg Buffer</span>
-                <span className="text-slate-200 font-bold">{data.tier_summaries.least_risk.avg_cushion}%</span>
+                <span className="text-slate-200 font-bold">{(tierStats?.least_risk ?? data.tier_summaries.least_risk).avg_cushion}%</span>
               </div>
             </div>
 
-            {data.tier_summaries.least_risk.top_pick && (
+            {(tierStats?.least_risk.top_pick || data.tier_summaries.least_risk.top_pick) && (
               <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
                 <span className="text-slate-400">Top Pick:</span>
                 <span className="text-emerald-300 font-bold font-mono">
-                  {data.tier_summaries.least_risk.top_pick.ticker} ${data.tier_summaries.least_risk.top_pick.strike}P ({data.tier_summaries.least_risk.top_pick.annualized_return_cash_secured}% cash / {data.tier_summaries.least_risk.top_pick.annualized_return_margin}% PM)
+                  {(tierStats?.least_risk.top_pick || data.tier_summaries.least_risk.top_pick)?.ticker} ${(tierStats?.least_risk.top_pick || data.tier_summaries.least_risk.top_pick)?.strike}P ({(tierStats?.least_risk.top_pick || data.tier_summaries.least_risk.top_pick)?.annualized_return_cash_secured}% cash / {(tierStats?.least_risk.top_pick || data.tier_summaries.least_risk.top_pick)?.annualized_return_margin}% PM)
                 </span>
               </div>
             )}
@@ -825,7 +914,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 </div>
               </div>
               <span className="text-2xl font-black text-amber-400 font-mono">
-                {data.tier_summaries.medium_risk.count}
+                {(tierStats?.medium_risk ?? data.tier_summaries.medium_risk).count}
               </span>
             </div>
 
@@ -836,23 +925,23 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800/80 font-mono text-[11px]">
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg POP</span>
-                <span className="text-amber-300 font-bold">{data.tier_summaries.medium_risk.avg_pop}%</span>
+                <span className="text-amber-300 font-bold">{(tierStats?.medium_risk ?? data.tier_summaries.medium_risk).avg_pop}%</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg Cash Yield</span>
-                <span className="text-amber-400 font-bold">{data.tier_summaries.medium_risk.avg_cash_return}%</span>
+                <span className="text-amber-400 font-bold">{(tierStats?.medium_risk ?? data.tier_summaries.medium_risk).avg_cash_return}%</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg Buffer</span>
-                <span className="text-slate-200 font-bold">{data.tier_summaries.medium_risk.avg_cushion}%</span>
+                <span className="text-slate-200 font-bold">{(tierStats?.medium_risk ?? data.tier_summaries.medium_risk).avg_cushion}%</span>
               </div>
             </div>
 
-            {data.tier_summaries.medium_risk.top_pick && (
+            {(tierStats?.medium_risk.top_pick || data.tier_summaries.medium_risk.top_pick) && (
               <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
                 <span className="text-slate-400">Top Pick:</span>
                 <span className="text-amber-300 font-bold font-mono">
-                  {data.tier_summaries.medium_risk.top_pick.ticker} ${data.tier_summaries.medium_risk.top_pick.strike}P ({data.tier_summaries.medium_risk.top_pick.annualized_return_cash_secured}% cash / {data.tier_summaries.medium_risk.top_pick.annualized_return_margin}% PM)
+                  {(tierStats?.medium_risk.top_pick || data.tier_summaries.medium_risk.top_pick)?.ticker} ${(tierStats?.medium_risk.top_pick || data.tier_summaries.medium_risk.top_pick)?.strike}P ({(tierStats?.medium_risk.top_pick || data.tier_summaries.medium_risk.top_pick)?.annualized_return_cash_secured}% cash / {(tierStats?.medium_risk.top_pick || data.tier_summaries.medium_risk.top_pick)?.annualized_return_margin}% PM)
                 </span>
               </div>
             )}
@@ -878,7 +967,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 </div>
               </div>
               <span className="text-2xl font-black text-rose-400 font-mono">
-                {data.tier_summaries.high_risk.count}
+                {(tierStats?.high_risk ?? data.tier_summaries.high_risk).count}
               </span>
             </div>
 
@@ -889,23 +978,23 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800/80 font-mono text-[11px]">
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg POP</span>
-                <span className="text-rose-300 font-bold">{data.tier_summaries.high_risk.avg_pop}%</span>
+                <span className="text-rose-300 font-bold">{(tierStats?.high_risk ?? data.tier_summaries.high_risk).avg_pop}%</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg Cash Yield</span>
-                <span className="text-rose-400 font-bold">{data.tier_summaries.high_risk.avg_cash_return}%</span>
+                <span className="text-rose-400 font-bold">{(tierStats?.high_risk ?? data.tier_summaries.high_risk).avg_cash_return}%</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Avg Buffer</span>
-                <span className="text-slate-200 font-bold">{data.tier_summaries.high_risk.avg_cushion}%</span>
+                <span className="text-slate-200 font-bold">{(tierStats?.high_risk ?? data.tier_summaries.high_risk).avg_cushion}%</span>
               </div>
             </div>
 
-            {data.tier_summaries.high_risk.top_pick && (
+            {(tierStats?.high_risk.top_pick || data.tier_summaries.high_risk.top_pick) && (
               <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
                 <span className="text-slate-400">Top Pick:</span>
                 <span className="text-rose-300 font-bold font-mono">
-                  {data.tier_summaries.high_risk.top_pick.ticker} ${data.tier_summaries.high_risk.top_pick.strike}P ({data.tier_summaries.high_risk.top_pick.annualized_return_cash_secured}% cash / {data.tier_summaries.high_risk.top_pick.annualized_return_margin}% PM)
+                  {(tierStats?.high_risk.top_pick || data.tier_summaries.high_risk.top_pick)?.ticker} ${(tierStats?.high_risk.top_pick || data.tier_summaries.high_risk.top_pick)?.strike}P ({(tierStats?.high_risk.top_pick || data.tier_summaries.high_risk.top_pick)?.annualized_return_cash_secured}% cash / {(tierStats?.high_risk.top_pick || data.tier_summaries.high_risk.top_pick)?.annualized_return_margin}% PM)
                 </span>
               </div>
             )}
@@ -931,7 +1020,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
                 activeTierTab === "least_risk" ? "bg-emerald-600 text-emerald-100" : "bg-slate-800 text-emerald-400"
               }`}>
-                {data.least_risk.length}
+                {tierStats ? tierStats.least_risk.count : data.least_risk.length}
               </span>
             )}
           </button>
@@ -950,7 +1039,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
                 activeTierTab === "medium_risk" ? "bg-amber-600 text-amber-100" : "bg-slate-800 text-amber-400"
               }`}>
-                {data.medium_risk.length}
+                {tierStats ? tierStats.medium_risk.count : data.medium_risk.length}
               </span>
             )}
           </button>
@@ -969,7 +1058,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
                 activeTierTab === "high_risk" ? "bg-rose-600 text-rose-100" : "bg-slate-800 text-rose-400"
               }`}>
-                {data.high_risk.length}
+                {tierStats ? tierStats.high_risk.count : data.high_risk.length}
               </span>
             )}
           </button>
@@ -988,7 +1077,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
                 activeTierTab === "all" ? "bg-blue-700 text-blue-100" : "bg-slate-800 text-slate-400"
               }`}>
-                {data.all_recommendations.length}
+                {tierStats ? tierStats.all.count : data.all_recommendations.length}
               </span>
             )}
           </button>

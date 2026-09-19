@@ -19,6 +19,8 @@ import { JuniorInvestorAcademy } from "./components/JuniorInvestorAcademy";
 import { MarketSentiment } from "./components/MarketSentiment";
 import { NasdaqSimulator } from "./components/NasdaqSimulator";
 import { MacroDashboard } from "./components/macro/MacroDashboard";
+import { StockChartsViewer } from "./components/StockChartsViewer";
+import { RebalancingAlertBanner } from "./components/RebalancingAlertBanner";
 import { LineChart, BookOpen } from "lucide-react";
 
 const AppContent: React.FC = () => {
@@ -139,6 +141,13 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Prominent Global Index & ETF Rebalance Schedule Banner on Home Page */}
+        {(activeTab === "options-scanner" || activeTab === "put-recommendations") && (
+          <div className="mb-6">
+            <RebalancingAlertBanner variant="banner" onNavigateTab={setActiveTab} />
+          </div>
+        )}
+
         {activeTab === "put-recommendations" && (
           <PutRecommendationsViewer watchlist={watchlist} onNavigateTab={setActiveTab} />
         )}
@@ -156,6 +165,9 @@ const AppContent: React.FC = () => {
         )}
         {activeTab === "fall-detector" && (
           <FallDetector watchlist={watchlist} />
+        )}
+        {activeTab === "stock-charts" && (
+          <StockChartsViewer watchlist={watchlist} />
         )}
         {activeTab === "technicals" && (
           <TechnicalsScreener watchlist={watchlist} />
