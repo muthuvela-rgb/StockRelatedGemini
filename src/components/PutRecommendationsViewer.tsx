@@ -54,7 +54,8 @@ import {
   RecommendedPut,
   RiskTier,
   PutRecommendationsResponse,
-  AiPortfolioStrategy
+  AiPortfolioStrategy,
+  UserWatchlist,
 } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
@@ -76,18 +77,25 @@ interface PutRecommendationsViewerProps {
   watchlist: string[];
   initialCustomTicker?: string;
   onNavigateTab?: (tab: ActiveTab) => void;
+  watchlists?: UserWatchlist[];
+  activeWatchlistIndex?: number;
+  onSelectWatchlistIndex?: (index: number) => void;
 }
 
 export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> = ({
   watchlist,
   initialCustomTicker,
   onNavigateTab,
+  watchlists,
+  activeWatchlistIndex,
+  onSelectWatchlistIndex,
 }) => {
   // Filters & State
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
   const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended" | "custom_range">("custom_range");
   const [minAnnualReturn, setMinAnnualReturn] = useState<number>(8);
+  const [minBuffer, setMinBuffer] = useState<number>(0);
   const [minBid, setMinBid] = useState<number>(0.35);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
@@ -270,17 +278,24 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         }
       }
 
-      // If custom ticker has options, check if existing minAnnualReturn / minBid sliders are filtering everything out
+      // If custom ticker has options, check if existing minAnnualReturn / minBuffer / minBid sliders are filtering everything out
       if (resData.all_recommendations.length > 0) {
         const passesFilters = resData.all_recommendations.some(
-          (r) => (r.annualized_return_cash_secured || 0) >= minAnnualReturn && (r.bid || 0) >= minBid
+          (r) =>
+            (r.annualized_return_cash_secured || 0) >= minAnnualReturn &&
+            (r.cushion_to_strike_pct || 0) >= minBuffer &&
+            (r.bid || 0) >= minBid
         );
         if (!passesFilters) {
           // Relax filters so the user immediately sees the custom ticker's recommendations
           const maxCash = Math.max(...resData.all_recommendations.map((r) => r.annualized_return_cash_secured || 0));
+          const maxCushion = Math.max(...resData.all_recommendations.map((r) => r.cushion_to_strike_pct || 0));
           const maxB = Math.max(...resData.all_recommendations.map((r) => r.bid || 0));
           if (minAnnualReturn > maxCash && maxCash > 0) {
             setMinAnnualReturn(Math.max(1, Math.floor(maxCash)));
+          }
+          if (minBuffer > maxCushion && maxCushion >= 0) {
+            setMinBuffer(Math.max(0, Math.floor(maxCushion)));
           }
           if (minBid > maxB && maxB > 0) {
             setMinBid(Math.max(0.20, Number(maxB.toFixed(2))));
@@ -536,6 +551,10 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         const cashReturn = r.annualized_return_cash_secured ?? 0;
         if (cashReturn < minAnnualReturn) return false;
       }
+      if (minBuffer > 0) {
+        const cushion = r.cushion_to_strike_pct ?? 0;
+        if (cushion < minBuffer) return false;
+      }
       if (minBid > 0) {
         const bid = r.bid ?? 0;
         if (bid < minBid) return false;
@@ -573,9 +592,9 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       high_risk: buildTier(data.high_risk, data.tier_summaries.high_risk),
       all: { count: data.all_recommendations.filter(filterItem).length },
     };
-  }, [data, searchQuery, deltaRange, minAnnualReturn, minBid]);
+  }, [data, searchQuery, deltaRange, minAnnualReturn, minBuffer, minBid]);
 
-  // Raw list filtered by risk tier, search term, delta range, min annual cash return, and min bid
+  // Raw list filtered by risk tier, search term, delta range, min annual cash return, min buffer, and min bid
   const filteredList = useMemo(() => {
     if (!data) return [];
     let list: RecommendedPut[] = [];
@@ -603,13 +622,18 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       list = list.filter((r) => (r.annualized_return_cash_secured ?? 0) >= minAnnualReturn);
     }
 
+    // Filter by Min Downside Buffer (Cushion) %
+    if (minBuffer > 0) {
+      list = list.filter((r) => (r.cushion_to_strike_pct ?? 0) >= minBuffer);
+    }
+
     // Filter by Min Bid Premium
     if (minBid > 0) {
       list = list.filter((r) => (r.bid ?? 0) >= minBid);
     }
 
     return list;
-  }, [data, activeTierTab, searchQuery, deltaRange, minAnnualReturn, minBid]);
+  }, [data, activeTierTab, searchQuery, deltaRange, minAnnualReturn, minBuffer, minBid]);
 
   // Unified sorted recommendations using hierarchical sorting across BOTH Cards and Table views
   const currentList = useMemo(() => {
@@ -741,21 +765,50 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         )}
 
         {/* Filter Controls Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-5 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 pt-5 text-xs">
           {/* Universe Selector */}
           <div>
             <label className="block text-slate-400 font-medium mb-1.5 flex items-center justify-between">
               <span>Universe</span>
-              <span className="text-[10px] font-mono text-cyan-400">
-                {universe === "watchlist" ? `${watchlist.length} Tickers` : universe.toUpperCase()}
+              <span className="text-[10px] font-mono text-cyan-400 font-semibold">
+                {universe === "watchlist"
+                  ? `${watchlist.length} Tickers`
+                  : universe.startsWith("wl-")
+                  ? "Watchlist"
+                  : universe.toUpperCase()}
               </span>
             </label>
             <select
               value={universe}
-              onChange={(e: any) => setUniverse(e.target.value)}
+              onChange={(e: any) => {
+                const val = e.target.value;
+                if (val.startsWith("wl-")) {
+                  const idx = parseInt(val.replace("wl-", ""), 10);
+                  if (!isNaN(idx) && onSelectWatchlistIndex) {
+                    onSelectWatchlistIndex(idx);
+                  }
+                  setUniverse("watchlist");
+                  return;
+                }
+                setUniverse(val);
+              }}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
-              <option value="watchlist">My Watchlist ({watchlist.length} tickers)</option>
+              {watchlists && watchlists.length === 3 ? (
+                <>
+                  <option value="wl-0">
+                    Watchlist 1: {watchlists[0].name} ({watchlists[0].tickers.length} tickers) {activeWatchlistIndex === 0 ? "★" : ""}
+                  </option>
+                  <option value="wl-1">
+                    Watchlist 2: {watchlists[1].name} ({watchlists[1].tickers.length} tickers) {activeWatchlistIndex === 1 ? "★" : ""}
+                  </option>
+                  <option value="wl-2">
+                    Watchlist 3: {watchlists[2].name} ({watchlists[2].tickers.length} tickers) {activeWatchlistIndex === 2 ? "★" : ""}
+                  </option>
+                </>
+              ) : (
+                <option value="watchlist">My Watchlist ({watchlist.length} tickers)</option>
+              )}
               <option value="qqq">QQQ Tech Leaders (15 mega-caps)</option>
               <option value="spy">SPY Blue Chips (13 market leaders)</option>
               <option value="custom">Custom Tickers...</option>
@@ -834,6 +887,36 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <span>20%</span>
               <span>40%</span>
               <span>60%</span>
+            </div>
+          </div>
+
+          {/* Min Buffer (Downside Cushion) Slider */}
+          <div>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-slate-400 font-medium flex items-center gap-1">
+                <span>Min Buffer (Cushion)</span>
+                {minBuffer > 0 && (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                    Active
+                  </span>
+                )}
+              </label>
+              <span className="text-emerald-400 font-bold font-mono">≥ {minBuffer}%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={50}
+              step={1}
+              value={minBuffer}
+              onChange={(e) => setMinBuffer(Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            />
+            <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+              <span>0% (All)</span>
+              <span>15%</span>
+              <span>30%</span>
+              <span>50%</span>
             </div>
           </div>
 
@@ -1313,7 +1396,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               {data && data.all_recommendations.length > 0
-                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Min Return ${minAnnualReturn}%, Min Bid $${minBid.toFixed(2)}, or Tier selection) filtered them out.`
+                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Min Return ${minAnnualReturn}%, Min Buffer ${minBuffer}%, Min Bid $${minBid.toFixed(2)}, or Tier selection) filtered them out.`
                 : `No contracts found matching DTE ${dteRange.minDte}–${dteRange.maxDte} days. Try expanding your expiration horizon or relaxing filter thresholds.`}
             </p>
           </div>
@@ -1353,13 +1436,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <button
               onClick={() => {
                 setMinAnnualReturn(1);
+                setMinBuffer(0);
                 setMinBid(0.20);
                 setDeltaRange([0.0, 1.0]);
                 setSearchQuery("");
               }}
               className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl cursor-pointer transition border border-slate-700"
             >
-              Reset Return & Bid Filters
+              Reset All Filters
             </button>
 
             {horizon !== "all" && (

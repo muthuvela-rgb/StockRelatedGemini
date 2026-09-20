@@ -52,6 +52,7 @@ interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   watchlistCount: number;
+  activeWatchlistName?: string;
   onOpenSavedTrades?: () => void;
   onOpenUserGuide?: () => void;
 }
@@ -60,6 +61,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   watchlistCount,
+  activeWatchlistName,
   onOpenSavedTrades,
   onOpenUserGuide,
 }) => {
@@ -107,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "premium-curves" as ActiveTab, label: "Premium Curves", icon: Search },
     { id: "sec-earnings" as ActiveTab, label: "SEC Earnings", icon: FileSpreadsheet },
     { id: "earnings-transcripts" as ActiveTab, label: "Earnings Transcripts", icon: MessageSquareQuote, badge: "Alpha Vantage" },
-    { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount },
+    { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount, badge: activeWatchlistName || "3 Lists" },
     { id: "junior-academy" as ActiveTab, label: "Junior Academy", icon: GraduationCap, badge: "Age 11+" },
   ];
 

@@ -24,7 +24,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
-import { AccessLogEntry, AccessEventType } from "../types";
+import { AccessLogEntry, AccessEventType, UserWatchlist } from "../types";
 
 export const SUPERADMIN_EMAIL = "muthu.vela@gmail.com";
 
@@ -84,8 +84,28 @@ export async function signOutUser(): Promise<void> {
   await signOut(auth);
 }
 
-// User Profile & Watchlist Persistence
-export async function fetchUserWatchlist(uid?: string): Promise<string[] | null> {
+// User Profile & 3-Watchlist Persistence
+export const DEFAULT_USER_WATCHLISTS: UserWatchlist[] = [
+  {
+    id: "wl-1",
+    name: "Core Portfolio",
+    tickers: ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"],
+  },
+  {
+    id: "wl-2",
+    name: "Tech & Options Leaders",
+    tickers: ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"],
+  },
+  {
+    id: "wl-3",
+    name: "High Volatility & Growth",
+    tickers: ["TSLA", "NVDA", "PLTR", "ARM", "AMD", "COIN", "MSTR", "SMCI", "MARA"],
+  },
+];
+
+export async function fetchUserWatchlists(
+  uid?: string
+): Promise<{ watchlists: UserWatchlist[]; activeIndex: number } | null> {
   const effectiveUid = uid || auth.currentUser?.uid;
   if (!effectiveUid) return null;
 
@@ -94,28 +114,80 @@ export async function fetchUserWatchlist(uid?: string): Promise<string[] | null>
     const snap = await getDoc(userRef);
     if (snap.exists()) {
       const data = snap.data();
+      let activeIndex = typeof data?.activeWatchlistIndex === "number" ? data.activeWatchlistIndex : 0;
+      if (activeIndex < 0 || activeIndex > 2) activeIndex = 0;
+
+      // 1. Check if structured 3-watchlists array exists
+      if (Array.isArray(data?.watchlists) && data.watchlists.length > 0) {
+        const loadedList: UserWatchlist[] = [];
+        for (let i = 0; i < 3; i++) {
+          const item = data.watchlists[i];
+          const defaultItem = DEFAULT_USER_WATCHLISTS[i];
+          if (item) {
+            const cleanTickers: string[] = Array.isArray(item.tickers)
+              ? Array.from(new Set(item.tickers.map((t: any) => String(t).trim().toUpperCase()))).filter((t): t is string => Boolean(t))
+              : defaultItem.tickers;
+            loadedList.push({
+              id: item.id || `wl-${i + 1}`,
+              name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : defaultItem.name,
+              tickers: cleanTickers,
+            });
+          } else {
+            loadedList.push(defaultItem);
+          }
+        }
+        return { watchlists: loadedList, activeIndex };
+      }
+
+      // 2. Legacy fallback: check single watchlist array and migrate to slot 1
       if (Array.isArray(data?.watchlist) && data.watchlist.length > 0) {
-        const cleanList = Array.from(
+        const cleanList: string[] = Array.from(
           new Set(data.watchlist.map((t: any) => String(t).trim().toUpperCase()))
-        ).filter(Boolean);
-        return cleanList;
+        ).filter((t): t is string => Boolean(t));
+        const migratedList: UserWatchlist[] = [
+          {
+            id: "wl-1",
+            name: "Core Portfolio",
+            tickers: cleanList,
+          },
+          DEFAULT_USER_WATCHLISTS[1],
+          DEFAULT_USER_WATCHLISTS[2],
+        ];
+        return { watchlists: migratedList, activeIndex: 0 };
       }
     }
   } catch (err) {
-    console.error("Error fetching user watchlist from Firestore:", err);
+    console.error("Error fetching user watchlists from Firestore:", err);
   }
   return null;
 }
 
-export async function saveUserWatchlistToCloud(uid: string | undefined, watchlist: string[]): Promise<string[]> {
+export async function saveUserWatchlistsToCloud(
+  uid: string | undefined,
+  watchlists: UserWatchlist[],
+  activeIndex: number = 0
+): Promise<{ watchlists: UserWatchlist[]; activeIndex: number }> {
   const effectiveUid = uid || auth.currentUser?.uid;
   if (!effectiveUid) {
-    throw new Error("User must be authenticated to push watchlist to Cloud Firestore.");
+    throw new Error("User must be authenticated to push watchlists to Cloud Firestore.");
   }
 
-  const cleanList = Array.from(
-    new Set(watchlist.map((t) => String(t).trim().toUpperCase()))
-  ).filter(Boolean);
+  // Ensure exactly 3 watchlists are properly sanitized
+  const sanitizedWatchlists: UserWatchlist[] = [];
+  for (let i = 0; i < 3; i++) {
+    const wl = watchlists[i] || DEFAULT_USER_WATCHLISTS[i];
+    const cleanTickers = Array.from(
+      new Set((wl.tickers || []).map((t) => String(t).trim().toUpperCase()))
+    ).filter(Boolean);
+    sanitizedWatchlists.push({
+      id: wl.id || `wl-${i + 1}`,
+      name: wl.name && wl.name.trim() ? wl.name.trim() : DEFAULT_USER_WATCHLISTS[i].name,
+      tickers: cleanTickers,
+    });
+  }
+
+  const safeActiveIndex = Math.min(Math.max(0, activeIndex), 2);
+  const activeTickers = sanitizedWatchlists[safeActiveIndex].tickers;
 
   try {
     const userRef = doc(db, "users", effectiveUid);
@@ -128,17 +200,45 @@ export async function saveUserWatchlistToCloud(uid: string | undefined, watchlis
         email: currentUser?.email || "",
         displayName: currentUser?.displayName || "Trader",
         photoURL: currentUser?.photoURL || "",
-        watchlist: cleanList,
+        watchlist: activeTickers,
+        watchlists: sanitizedWatchlists,
+        activeWatchlistIndex: safeActiveIndex,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
-    console.log(`[Firestore] Saved ${cleanList.length} watchlist tickers for user ${effectiveUid}`);
-    return cleanList;
+    console.log(`[Firestore] Saved 3 watchlists for user ${effectiveUid} (active index: ${safeActiveIndex})`);
+    return { watchlists: sanitizedWatchlists, activeIndex: safeActiveIndex };
   } catch (err) {
-    console.error("Error saving user watchlist to Firestore:", err);
+    console.error("Error saving user watchlists to Firestore:", err);
     throw err;
   }
+}
+
+// Legacy wrappers for backward compatibility with existing components
+export async function fetchUserWatchlist(uid?: string): Promise<string[] | null> {
+  const res = await fetchUserWatchlists(uid);
+  if (!res) return null;
+  return res.watchlists[res.activeIndex]?.tickers || res.watchlists[0]?.tickers || null;
+}
+
+export async function saveUserWatchlistToCloud(uid: string | undefined, watchlist: string[]): Promise<string[]> {
+  const effectiveUid = uid || auth.currentUser?.uid;
+  const current = await fetchUserWatchlists(effectiveUid);
+  const watchlists = current ? [...current.watchlists] : [...DEFAULT_USER_WATCHLISTS];
+  const activeIdx = current ? current.activeIndex : 0;
+
+  const cleanList = Array.from(
+    new Set(watchlist.map((t) => String(t).trim().toUpperCase()))
+  ).filter(Boolean);
+
+  watchlists[activeIdx] = {
+    ...watchlists[activeIdx],
+    tickers: cleanList,
+  };
+
+  await saveUserWatchlistsToCloud(effectiveUid, watchlists, activeIdx);
+  return cleanList;
 }
 
 // Saved Trades / Bookmarked Recommendations Persistence

@@ -33,52 +33,38 @@ const AppContent: React.FC = () => {
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [customTickerForRecs, setCustomTickerForRecs] = useState<string | undefined>(undefined);
 
-  const { user, loading, syncCloudWatchlist, loadCloudWatchlist } = useAuth();
+  const {
+    user,
+    loading,
+    watchlists,
+    activeWatchlistIndex,
+    setActiveWatchlistIndex,
+    updateWatchlistAtIndex,
+    renameWatchlistAtIndex,
+    syncCloudWatchlists,
+    loadCloudWatchlists,
+  } = useAuth();
 
-  // Initial load synchronization:
-  // 1. First check user's Firestore cloud watchlist
-  // 2. If present, load it and sync to backend server /api/watchlist
-  // 3. If no cloud watchlist exists yet, fetch server /api/watchlist and seed cloud
+  const activeWatchlist = watchlists[activeWatchlistIndex] || watchlists[0] || {
+    id: "wl-1",
+    name: "Watchlist 1",
+    tickers: watchlist,
+  };
+
+  const currentWatchlist = activeWatchlist.tickers && activeWatchlist.tickers.length > 0
+    ? activeWatchlist.tickers
+    : watchlist;
+
+  // Sync active watchlist tickers to backend server whenever active list or selection changes
   useEffect(() => {
-    if (!user) return;
-    let isMounted = true;
-
-    async function initializeWatchlist() {
-      try {
-        const cloudList = await loadCloudWatchlist();
-        if (!isMounted) return;
-
-        if (cloudList && Array.isArray(cloudList) && cloudList.length > 0) {
-          setWatchlist(cloudList);
-          // Sync cloud list to backend server so all server calculations match
-          fetch("/api/watchlist", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tickers: cloudList }),
-          }).catch((err) => console.error("Error syncing cloud watchlist to server:", err));
-        } else {
-          // If no personal cloud list exists yet, load server watchlist and seed cloud
-          const res = await fetch("/api/watchlist");
-          const data = await res.json();
-          if (!isMounted) return;
-          const initialList = (data.tickers && Array.isArray(data.tickers) && data.tickers.length > 0)
-            ? data.tickers
-            : watchlist;
-          setWatchlist(initialList);
-          // Seed cloud document with this initial watchlist
-          syncCloudWatchlist(initialList).catch((err) => console.error("Error seeding cloud watchlist:", err));
-        }
-      } catch (err) {
-        console.error("Error initializing watchlist:", err);
-      }
+    if (currentWatchlist && currentWatchlist.length > 0) {
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers: currentWatchlist }),
+      }).catch((err) => console.error("Error syncing active watchlist to server:", err));
     }
-
-    initializeWatchlist();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [user?.uid]);
+  }, [activeWatchlistIndex, currentWatchlist]);
 
   const handleUpdateWatchlist = async (newWatchlist: string[]) => {
     const cleanList = Array.from(
@@ -87,23 +73,17 @@ const AppContent: React.FC = () => {
 
     setWatchlist(cleanList);
 
-    // 1. Central server persistence
-    const serverPromise = fetch("/api/watchlist", {
+    // 1. Update in AuthContext (persists to Cloud Firestore if logged in)
+    await updateWatchlistAtIndex(activeWatchlistIndex, cleanList);
+
+    // 2. Central server persistence
+    fetch("/api/watchlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tickers: cleanList }),
     }).catch((e) => {
       console.error("Error saving watchlist to server:", e);
     });
-
-    // 2. Firestore Cloud database persistence if authenticated
-    const cloudPromise = user
-      ? syncCloudWatchlist(cleanList).catch((cloudErr) => {
-          console.error("Error saving watchlist to Cloud Firestore:", cloudErr);
-        })
-      : Promise.resolve();
-
-    await Promise.allSettled([serverPromise, cloudPromise]);
   };
 
   const handleSelectTickerFromModal = (ticker: string) => {
@@ -138,7 +118,8 @@ const AppContent: React.FC = () => {
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        watchlistCount={watchlist.length}
+        watchlistCount={currentWatchlist.length}
+        activeWatchlistName={activeWatchlist.name}
         onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
         onOpenUserGuide={() => setIsUserGuideOpen(true)}
       />
@@ -154,7 +135,10 @@ const AppContent: React.FC = () => {
 
         {activeTab === "put-recommendations" && (
           <PutRecommendationsViewer
-            watchlist={watchlist}
+            watchlist={currentWatchlist}
+            watchlists={watchlists}
+            activeWatchlistIndex={activeWatchlistIndex}
+            onSelectWatchlistIndex={setActiveWatchlistIndex}
             initialCustomTicker={customTickerForRecs}
             onNavigateTab={setActiveTab}
           />
@@ -166,39 +150,45 @@ const AppContent: React.FC = () => {
           <MacroDashboard />
         )}
         {activeTab === "options-scanner" && (
-          <PutScanner watchlist={watchlist} />
+          <PutScanner watchlist={currentWatchlist} />
         )}
         {activeTab === "market-sentiment" && (
           <MarketSentiment onNavigateTab={setActiveTab} />
         )}
         {activeTab === "fall-detector" && (
-          <FallDetector watchlist={watchlist} />
+          <FallDetector watchlist={currentWatchlist} />
         )}
         {activeTab === "stock-charts" && (
-          <StockChartsViewer watchlist={watchlist} />
+          <StockChartsViewer watchlist={currentWatchlist} />
         )}
         {activeTab === "technicals" && (
-          <TechnicalsScreener watchlist={watchlist} />
+          <TechnicalsScreener watchlist={currentWatchlist} />
         )}
         {activeTab === "short-puts" && (
-          <ShortDatedScreener watchlist={watchlist} />
+          <ShortDatedScreener watchlist={currentWatchlist} />
         )}
         {activeTab === "option-chain" && (
-          <OptionChainViewer watchlist={watchlist} />
+          <OptionChainViewer watchlist={currentWatchlist} />
         )}
         {activeTab === "premium-curves" && (
           <PremiumCurvesViewer />
         )}
         {activeTab === "sec-earnings" && (
-          <SecEarningsViewer watchlist={watchlist} />
+          <SecEarningsViewer watchlist={currentWatchlist} />
         )}
         {activeTab === "earnings-transcripts" && (
-          <EarningsTranscriptsViewer watchlist={watchlist} />
+          <EarningsTranscriptsViewer watchlist={currentWatchlist} />
         )}
         {activeTab === "watchlist" && (
           <WatchlistManager
-            watchlist={watchlist}
+            watchlist={currentWatchlist}
             onUpdateWatchlist={handleUpdateWatchlist}
+            watchlists={watchlists}
+            activeWatchlistIndex={activeWatchlistIndex}
+            onSelectWatchlistIndex={setActiveWatchlistIndex}
+            onUpdateWatchlistAtIndex={updateWatchlistAtIndex}
+            onRenameWatchlistAtIndex={renameWatchlistAtIndex}
+            onSyncCloudWatchlists={syncCloudWatchlists}
             onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
           />
         )}

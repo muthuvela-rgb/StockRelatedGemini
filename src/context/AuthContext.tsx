@@ -7,6 +7,9 @@ import {
   signOutUser,
   fetchUserWatchlist,
   saveUserWatchlistToCloud,
+  fetchUserWatchlists,
+  saveUserWatchlistsToCloud,
+  DEFAULT_USER_WATCHLISTS,
   SavedTradeItem,
   fetchSavedTradesFromCloud,
   saveTradeToCloud,
@@ -14,6 +17,7 @@ import {
   logAccessEvent,
   SUPERADMIN_EMAIL,
 } from "../lib/firebase";
+import { UserWatchlist } from "../types";
 
 interface AuthContextType {
   user: User | null;
@@ -23,7 +27,15 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   authError: string | null;
   clearAuthError: () => void;
-  // Cloud Watchlist sync
+  // 3-Watchlist System
+  watchlists: UserWatchlist[];
+  activeWatchlistIndex: number;
+  setActiveWatchlistIndex: (index: number) => void;
+  updateWatchlistAtIndex: (index: number, newTickers: string[], newName?: string) => Promise<void>;
+  renameWatchlistAtIndex: (index: number, newName: string) => Promise<void>;
+  syncCloudWatchlists: (watchlists: UserWatchlist[], activeIndex?: number) => Promise<void>;
+  loadCloudWatchlists: () => Promise<{ watchlists: UserWatchlist[]; activeIndex: number } | null>;
+  // Legacy Cloud Watchlist sync
   syncCloudWatchlist: (watchlist: string[]) => Promise<string[]>;
   loadCloudWatchlist: () => Promise<string[] | null>;
   // Saved Trades
@@ -40,6 +52,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [savedTrades, setSavedTrades] = useState<SavedTradeItem[]>([]);
+  const [watchlists, setWatchlists] = useState<UserWatchlist[]>(DEFAULT_USER_WATCHLISTS);
+  const [activeWatchlistIndex, setActiveWatchlistIndexState] = useState<number>(0);
 
   const isAdmin = Boolean(
     user?.email && user.email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase()
@@ -64,6 +78,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? "Superadmin session established"
               : "User signed in via Google account",
           });
+        }
+
+        try {
+          // Load 3 watchlists from cloud
+          const cloudData = await fetchUserWatchlists(currentUser.uid);
+          if (cloudData && cloudData.watchlists && cloudData.watchlists.length === 3) {
+            setWatchlists(cloudData.watchlists);
+            setActiveWatchlistIndexState(cloudData.activeIndex);
+          }
+        } catch (e) {
+          console.warn("Failed to load user watchlists from cloud:", e);
         }
 
         try {
@@ -125,6 +150,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const setActiveWatchlistIndex = (index: number) => {
+    const safeIdx = Math.min(Math.max(0, index), 2);
+    setActiveWatchlistIndexState(safeIdx);
+    if (user?.uid) {
+      saveUserWatchlistsToCloud(user.uid, watchlists, safeIdx).catch((err) =>
+        console.warn("Failed to persist active watchlist index to cloud:", err)
+      );
+    }
+  };
+
+  const updateWatchlistAtIndex = async (index: number, newTickers: string[], newName?: string) => {
+    const safeIdx = Math.min(Math.max(0, index), 2);
+    const cleanList = Array.from(
+      new Set(newTickers.map((t) => String(t).trim().toUpperCase()))
+    ).filter(Boolean);
+
+    const updated = watchlists.map((wl, i) => {
+      if (i === safeIdx) {
+        return {
+          ...wl,
+          name: newName && newName.trim() ? newName.trim() : wl.name,
+          tickers: cleanList,
+        };
+      }
+      return wl;
+    });
+
+    setWatchlists(updated);
+
+    if (user?.uid) {
+      try {
+        await saveUserWatchlistsToCloud(user.uid, updated, activeWatchlistIndex);
+      } catch (err) {
+        console.error("Error saving updated watchlist to cloud:", err);
+      }
+    }
+  };
+
+  const renameWatchlistAtIndex = async (index: number, newName: string) => {
+    const safeIdx = Math.min(Math.max(0, index), 2);
+    const cleanName = newName.trim() || `Watchlist ${safeIdx + 1}`;
+
+    const updated = watchlists.map((wl, i) => (i === safeIdx ? { ...wl, name: cleanName } : wl));
+    setWatchlists(updated);
+
+    if (user?.uid) {
+      try {
+        await saveUserWatchlistsToCloud(user.uid, updated, activeWatchlistIndex);
+      } catch (err) {
+        console.error("Error saving renamed watchlist to cloud:", err);
+      }
+    }
+  };
+
+  const syncCloudWatchlists = async (listsToSync: UserWatchlist[], activeIdx?: number) => {
+    const currentUid = user?.uid || auth.currentUser?.uid;
+    if (!currentUid) {
+      throw new Error("You must be signed in with Google to sync watchlists to Cloud.");
+    }
+    const safeActive = activeIdx !== undefined ? Math.min(Math.max(0, activeIdx), 2) : activeWatchlistIndex;
+    const res = await saveUserWatchlistsToCloud(currentUid, listsToSync, safeActive);
+    setWatchlists(res.watchlists);
+    setActiveWatchlistIndexState(res.activeIndex);
+  };
+
+  const loadCloudWatchlists = async (): Promise<{ watchlists: UserWatchlist[]; activeIndex: number } | null> => {
+    const currentUid = user?.uid || auth.currentUser?.uid;
+    if (!currentUid) return null;
+    const res = await fetchUserWatchlists(currentUid);
+    if (res) {
+      setWatchlists(res.watchlists);
+      setActiveWatchlistIndexState(res.activeIndex);
+    }
+    return res;
+  };
+
+  // Backward compatibility methods
   const syncCloudWatchlist = async (watchlist: string[]): Promise<string[]> => {
     const currentUid = user?.uid || auth.currentUser?.uid;
     if (!currentUid) {
@@ -134,19 +236,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       new Set(watchlist.map((t) => String(t).trim().toUpperCase()))
     ).filter(Boolean);
 
-    try {
-      const savedList = await saveUserWatchlistToCloud(currentUid, cleanList);
-      return savedList;
-    } catch (e: any) {
-      console.error("Cloud watchlist sync error:", e);
-      throw e;
-    }
+    await updateWatchlistAtIndex(activeWatchlistIndex, cleanList);
+    return cleanList;
   };
 
   const loadCloudWatchlist = async (): Promise<string[] | null> => {
-    const currentUid = user?.uid || auth.currentUser?.uid;
-    if (!currentUid) return null;
-    return await fetchUserWatchlist(currentUid);
+    const res = await loadCloudWatchlists();
+    if (!res) return null;
+    return res.watchlists[res.activeIndex]?.tickers || res.watchlists[0]?.tickers || null;
   };
 
   const refreshSavedTrades = async () => {
@@ -183,6 +280,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut: handleSignOut,
         authError,
         clearAuthError: () => setAuthError(null),
+        watchlists,
+        activeWatchlistIndex,
+        setActiveWatchlistIndex,
+        updateWatchlistAtIndex,
+        renameWatchlistAtIndex,
+        syncCloudWatchlists,
+        loadCloudWatchlists,
         syncCloudWatchlist,
         loadCloudWatchlist,
         savedTrades,
@@ -203,3 +307,4 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+

@@ -1004,6 +1004,12 @@ export interface MacroIntelligenceResponse {
   pythonScript: string;
 }
 
+export interface UserWatchlist {
+  id: string;
+  name: string;
+  tickers: string[];
+}
+
 
 
 

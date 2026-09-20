@@ -9,6 +9,18 @@
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
         "watchlist": { "type": "array", "items": { "type": "string" } },
+        "watchlists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "tickers": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "activeWatchlistIndex": { "type": "number" },
         "createdAt": { "type": "string" },
         "lastLoginAt": { "type": "string" }
       }
