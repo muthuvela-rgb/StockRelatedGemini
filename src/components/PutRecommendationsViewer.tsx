@@ -50,6 +50,7 @@ import {
   Brush
 } from "recharts";
 import { TableTopScrollbar } from "./TableTopScrollbar";
+import { CspRsiDivergenceViewer } from "./CspRsiDivergenceViewer";
 import {
   RecommendedPut,
   RiskTier,
@@ -91,6 +92,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   onSelectWatchlistIndex,
 }) => {
   // Filters & State
+  const [activeMode, setActiveMode] = useState<"standard" | "csp_rsi_divergence">("standard");
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
   const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended" | "custom_range">("custom_range");
@@ -679,7 +681,54 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
   return (
     <div className="space-y-6">
-      {/* Hero Header & Control Bar */}
+      {/* Primary Sub-Mode Navigation Switcher */}
+      <div className="flex items-center justify-between flex-wrap gap-3 p-1.5 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setActiveMode("standard")}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
+              activeMode === "standard"
+                ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Put Recommendations (3 Risk Tiers)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveMode("csp_rsi_divergence")}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition cursor-pointer ${
+              activeMode === "csp_rsi_divergence"
+                ? "bg-gradient-to-r from-amber-500 to-emerald-500 text-slate-950 shadow-md shadow-amber-500/20"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+            }`}
+          >
+            <Flame className="w-4 h-4 text-amber-400" />
+            <span>CSP Candidate Selection (RSI Divergence Only)</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-amber-950/80 text-amber-300 border border-amber-500/40">
+              500+ Universe
+            </span>
+          </button>
+        </div>
+
+        <div className="text-[11px] text-slate-400 hidden lg:flex items-center gap-2 pr-3">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Tradier Live Options &amp; Algorithmic Multi-Timeframe Screening</span>
+        </div>
+      </div>
+
+      {activeMode === "csp_rsi_divergence" ? (
+        <CspRsiDivergenceViewer
+          watchlist={watchlist}
+          watchlists={watchlists}
+          activeWatchlistIndex={activeWatchlistIndex}
+          onSelectWatchlistIndex={onSelectWatchlistIndex}
+          onSelectTradeForPayoff={(trade) => setSelectedTrade(trade)}
+        />
+      ) : (
+        <>
+          {/* Hero Header & Control Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 pb-6 border-b border-slate-800">
           <div>
@@ -1952,6 +2001,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </table>
           </TableTopScrollbar>
         </div>
+      )}
+        </>
       )}
 
       {/* PAYOFF & POSITION SIZING MODAL */}

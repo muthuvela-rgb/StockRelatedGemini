@@ -618,6 +618,109 @@ export interface RiskTierSummary {
   top_pick?: RecommendedPut;
 }
 
+// --- CSP CANDIDATE SELECTION BASED ON RSI DIVERGENCE ---
+export type CspDivergenceTier = "tier_1" | "tier_2" | "tier_3";
+
+export interface SwingLowPoint {
+  index: number;
+  price: number;
+  rsi: number;
+  date?: string;
+  timeframe: "daily" | "4h";
+}
+
+export interface CspRsiDivergenceCandidate {
+  ticker: string;
+  current_price: number;
+  tier: CspDivergenceTier;
+  tier_label: string;
+  
+  // Step 1: Indicators
+  rsi_daily: number | null;
+  rsi_4h: number | null;
+  rsi_weekly: number | null;
+  bb_lower: number | null;
+  bb_upper?: number | null;
+  bb_sma?: number | null;
+  vol_avg20: number | null;
+  vol_today: number | null;
+  vol_jump: number | null;
+  
+  // Step 2: RSI Exhaustion check (RSI_daily < 40 OR RSI_4h < 35)
+  rsi_exhaustion_passed: boolean;
+  rsi_exhaustion_reason: string;
+  
+  // Step 3: RSI Divergence check
+  divergence_passed: boolean;
+  divergence_timeframe: "daily" | "4h" | "both" | "none";
+  l1_swing_low?: SwingLowPoint | null;
+  l2_swing_low?: SwingLowPoint | null;
+  price_drop_pct?: number | null;
+  rsi_delta?: number | null;
+  divergence_type: "bullish_divergence" | "near_divergence_flat" | "early_4h_divergence" | "none";
+
+  // Step 4: Trend Regime (RSI_weekly > 45)
+  weekly_trend_passed: boolean;
+  weekly_trend_rsi: number | null;
+
+  // Step 5: Bollinger Band Proximity (Close <= BB_lower * 1.02)
+  bb_proximity_passed: boolean;
+  bb_distance_pct: number | null;
+
+  // Step 6: Volume Confirmation (Vol_jump >= 1.5 AND Candle_today is bullish OR neutral)
+  vol_confirmation_passed: boolean;
+  candle_status: "bullish" | "neutral" | "bearish";
+  candle_details?: {
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  };
+
+  // Step 7: Classification Rationale
+  classification_reason: string;
+
+  // Recommended CSP put option
+  recommended_put?: {
+    strike: number;
+    expiration: string;
+    dte: number;
+    bid: number;
+    ask: number;
+    moneyness_pct: number;
+    cushion_to_strike_pct: number;
+    annualized_return_cash: number;
+    annualized_return_margin: number;
+    daily_theta: number;
+    pop: number;
+    delta: number | null;
+    contract_symbol: string;
+    strike_vs_bb_lower: string;
+  } | null;
+}
+
+export interface CspRsiDivergenceResponse {
+  tier_1: CspRsiDivergenceCandidate[];
+  tier_2: CspRsiDivergenceCandidate[];
+  tier_3: CspRsiDivergenceCandidate[];
+  all_candidates: CspRsiDivergenceCandidate[];
+  stats: {
+    scanned_count: number;
+    tier_1_count: number;
+    tier_2_count: number;
+    tier_3_count: number;
+    rejected_count: number;
+    rejection_breakdown: {
+      exhaustion: number;
+      divergence: number;
+      weekly_trend: number;
+      bb_proximity: number;
+    };
+  };
+  universe_scanned: string;
+  timestamp: string;
+}
+
 export interface PutRecommendationsResponse {
   least_risk: RecommendedPut[];
   medium_risk: RecommendedPut[];

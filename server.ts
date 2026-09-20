@@ -19,6 +19,7 @@ import {
   generateStandalonePythonScript,
 } from "./server/nasdaqSimulator";
 import { getHistoricalStockChart } from "./server/stockChart";
+import { EXPANDED_500_UNIVERSE, getExpanded500Universe } from "./src/data/universe500";
 
 const app = express();
 const PORT = 3000;
@@ -265,6 +266,122 @@ function computeBollinger(closes: number[], period = 20, numStd = 2.0) {
     percent_b: Number(percentB.toFixed(3)),
     zone,
   };
+}
+
+// Compute full RSI series for divergence swing point identification
+function computeRsiSeries(closes: number[], period = 14): (number | null)[] {
+  const n = closes.length;
+  const result: (number | null)[] = new Array(n).fill(null);
+  if (n < period + 1) return result;
+
+  const deltas: number[] = [];
+  for (let i = 1; i < n; i++) {
+    deltas.push(closes[i] - closes[i - 1]);
+  }
+
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    if (deltas[i] > 0) avgGain += deltas[i];
+    else avgLoss += Math.abs(deltas[i]);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  result[period] = avgLoss === 0 ? 100 : Number((100 - 100 / (1 + avgGain / avgLoss)).toFixed(2));
+
+  for (let i = period + 1; i < n; i++) {
+    const dIndex = i - 1;
+    const gain = deltas[dIndex] > 0 ? deltas[dIndex] : 0;
+    const loss = deltas[dIndex] < 0 ? Math.abs(deltas[dIndex]) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    result[i] = avgLoss === 0 ? 100 : Number((100 - 100 / (1 + avgGain / avgLoss)).toFixed(2));
+  }
+
+  return result;
+}
+
+interface SwingPoint {
+  index: number;
+  price: number;
+  rsi: number;
+  timeframe: "daily" | "4h";
+}
+
+// Swing low detector: finds latest swing low L2 and prior swing low L1
+function findSwingLows(
+  prices: number[],
+  rsiSeries: (number | null)[],
+  minSeparation = 3,
+  lookback = 60,
+  timeframe: "daily" | "4h" = "daily"
+): { L1: SwingPoint; L2: SwingPoint } | null {
+  const n = prices.length;
+  if (n < 8) return null;
+  const startIndex = Math.max(0, n - lookback);
+  const troughs: SwingPoint[] = [];
+
+  // Identify local minima across the lookback window
+  for (let i = startIndex + 2; i < n - 1; i++) {
+    const p = prices[i];
+    const r = rsiSeries[i];
+    if (r === null || r === undefined) continue;
+    // Local minimum: price is less than or equal to surrounding bars
+    if (p <= prices[i - 1] && p <= prices[i - 2] && p <= prices[i + 1]) {
+      troughs.push({ index: i, price: p, rsi: r, timeframe });
+    }
+  }
+
+  // Also check if the latest bar (or previous bar) is at/near the current trough
+  const lastP = prices[n - 1];
+  const lastR = rsiSeries[n - 1];
+  if (lastR !== null && lastR !== undefined) {
+    if (lastP <= prices[n - 2] || (n >= 3 && lastP <= prices[n - 3])) {
+      const prevTrough = troughs[troughs.length - 1];
+      if (!prevTrough || (n - 1 - prevTrough.index) >= minSeparation) {
+        troughs.push({ index: n - 1, price: lastP, rsi: lastR, timeframe });
+      }
+    }
+  }
+
+  if (troughs.length < 2) {
+    // If not enough local troughs, find two lowest points separated by minSeparation
+    let minIdx1 = -1, minP1 = Infinity;
+    for (let i = startIndex; i < n - minSeparation; i++) {
+      if (rsiSeries[i] !== null && prices[i] < minP1) {
+        minP1 = prices[i];
+        minIdx1 = i;
+      }
+    }
+    let minIdx2 = -1, minP2 = Infinity;
+    for (let i = minIdx1 + minSeparation; i < n; i++) {
+      if (rsiSeries[i] !== null && prices[i] < minP2) {
+        minP2 = prices[i];
+        minIdx2 = i;
+      }
+    }
+    if (minIdx1 >= 0 && minIdx2 >= 0 && rsiSeries[minIdx1] !== null && rsiSeries[minIdx2] !== null) {
+      return {
+        L1: { index: minIdx1, price: Number(minP1.toFixed(2)), rsi: rsiSeries[minIdx1]!, timeframe },
+        L2: { index: minIdx2, price: Number(minP2.toFixed(2)), rsi: rsiSeries[minIdx2]!, timeframe },
+      };
+    }
+    return null;
+  }
+
+  const L2 = troughs[troughs.length - 1];
+  for (let j = troughs.length - 2; j >= 0; j--) {
+    const candidateL1 = troughs[j];
+    if (L2.index - candidateL1.index >= minSeparation) {
+      return {
+        L1: { ...candidateL1, price: Number(candidateL1.price.toFixed(2)), rsi: Number(candidateL1.rsi.toFixed(2)) },
+        L2: { ...L2, price: Number(L2.price.toFixed(2)), rsi: Number(L2.rsi.toFixed(2)) },
+      };
+    }
+  }
+
+  return null;
 }
 
 function computeHistoricalVol(closes: number[]) {
@@ -4665,6 +4782,59 @@ Provide an institutional-grade strategic allocation and trade recommendations in
         ],
       },
     });
+  }
+});
+
+// --- CSP CANDIDATE SELECTION BASED ON RSI DIVERGENCE ---
+import { runCspRsiDivergenceScan } from "./server/cspDivergenceEngine";
+
+app.post("/api/csp-rsi-divergence", async (req: Request, res: Response) => {
+  try {
+    const { universe = "watchlist", tickers, forceRefresh = false } = req.body || {};
+    let customList: string[] = [];
+    if (Array.isArray(tickers)) {
+      customList = tickers.map((t: string) => String(t).trim().toUpperCase()).filter(Boolean);
+    } else if (typeof tickers === "string" && tickers.trim()) {
+      customList = tickers.split(/[\s,]+/).map((t: string) => t.trim().toUpperCase()).filter(Boolean);
+    } else if (universe === "watchlist") {
+      customList = getWatchlist();
+    }
+
+    const result = await runCspRsiDivergenceScan(
+      universe,
+      customList.length > 0 ? customList : undefined,
+      Boolean(forceRefresh),
+      fetchMarketOptions
+    );
+    res.json(result);
+  } catch (e: any) {
+    console.error("Error in /api/csp-rsi-divergence:", e);
+    res.status(500).json({ error: e.message || "Failed to run CSP RSI divergence scan" });
+  }
+});
+
+app.get("/api/csp-rsi-divergence", async (req: Request, res: Response) => {
+  try {
+    const universe = (req.query.universe as any) || "watchlist";
+    const tickersParam = req.query.tickers as string;
+    const forceRefresh = req.query.forceRefresh === "true";
+    let customList: string[] = [];
+    if (tickersParam) {
+      customList = tickersParam.split(/[\s,]+/).map((t: string) => t.trim().toUpperCase()).filter(Boolean);
+    } else if (universe === "watchlist") {
+      customList = getWatchlist();
+    }
+
+    const result = await runCspRsiDivergenceScan(
+      universe,
+      customList.length > 0 ? customList : undefined,
+      forceRefresh,
+      fetchMarketOptions
+    );
+    res.json(result);
+  } catch (e: any) {
+    console.error("Error in GET /api/csp-rsi-divergence:", e);
+    res.status(500).json({ error: e.message || "Failed to run CSP RSI divergence scan" });
   }
 });
 
