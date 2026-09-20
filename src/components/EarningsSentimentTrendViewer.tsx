@@ -32,6 +32,7 @@ import {
   Legend,
   CartesianGrid,
   ReferenceLine,
+  Brush,
 } from "recharts";
 import { EarningsCallSentimentPoint, TickerSentimentHistory } from "../types";
 
@@ -458,6 +459,15 @@ export const EarningsSentimentTrendViewer: React.FC<EarningsSentimentTrendViewer
                         dot={{ r: 5, fill: "#06b6d4", stroke: "#0f172a", strokeWidth: 2 }}
                         activeDot={{ r: 7, fill: "#22d3ee", stroke: "#fff", strokeWidth: 2 }}
                       />
+                      {singleTickerChartData.length > 3 && (
+                        <Brush
+                          dataKey="quarter"
+                          height={20}
+                          stroke="#06b6d4"
+                          fill="#090d16"
+                          travellerWidth={8}
+                        />
+                      )}
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -769,6 +779,15 @@ export const EarningsSentimentTrendViewer: React.FC<EarningsSentimentTrendViewer
                           />
                         );
                       })}
+                      {comparativeChartData.length > 3 && (
+                        <Brush
+                          dataKey="quarter"
+                          height={20}
+                          stroke="#06b6d4"
+                          fill="#090d16"
+                          travellerWidth={8}
+                        />
+                      )}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

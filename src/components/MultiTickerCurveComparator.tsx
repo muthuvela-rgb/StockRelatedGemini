@@ -31,7 +31,8 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   Legend,
-  Area
+  Area,
+  Brush
 } from "recharts";
 import { MultiTickerCompareAnalysis, MultiTickerCompareResult, PremiumVsExpirationPoint } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
@@ -48,6 +49,7 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 
 type MultiTableSortKey =
   | "ticker"
@@ -779,6 +781,15 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                     />
                   );
                 })}
+                {data.overlaid_chart_data.length > 5 && (
+                  <Brush
+                    dataKey="label"
+                    height={22}
+                    stroke="#38bdf8"
+                    fill="#090d16"
+                    travellerWidth={8}
+                  />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
@@ -820,7 +831,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
             presets={COMPARATOR_PRESETS}
           />
 
-          <div className="overflow-x-auto">
+          <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Comparison Matrix Horizontally">
             <table className="w-full text-left text-xs select-none">
               <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
                 <tr>
@@ -981,7 +992,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                   })}
               </tbody>
             </table>
-          </div>
+          </TableTopScrollbar>
         </div>
       )}
     </div>

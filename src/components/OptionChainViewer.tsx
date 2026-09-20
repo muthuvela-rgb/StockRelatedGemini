@@ -32,6 +32,7 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 
 type OptionChainSortKey =
   | "expiration"
@@ -611,7 +612,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
         </div>
 
         {/* Table View */}
-        <div className="overflow-x-auto">
+        <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Options Chain Horizontally">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-800/90 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
@@ -857,7 +858,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
               )}
             </tbody>
           </table>
-        </div>
+        </TableTopScrollbar>
 
         {/* Pagination Controls */}
         {totalPages > 1 && (

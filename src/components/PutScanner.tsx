@@ -1645,6 +1645,16 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                           }) as any}
                         />
                       )}
+                      {multiStockMoneynessData.length > 5 && (
+                        <Brush
+                          dataKey="moneyness"
+                          height={22}
+                          stroke="#10b981"
+                          fill="#090d16"
+                          travellerWidth={8}
+                          tickFormatter={(val) => `${Number(val).toFixed(0)}%`}
+                        />
+                      )}
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>

@@ -10,6 +10,7 @@ import {
   Legend,
   AreaChart,
   Area,
+  Brush,
 } from "recharts";
 import { OptionGreeks, ExpirationChainData, FibonacciLevels } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
@@ -893,6 +894,16 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                   />
                 );
               })}
+              {allExpChartData.length > 5 && (
+                <Brush
+                  dataKey="strike"
+                  height={22}
+                  stroke="#38bdf8"
+                  fill="#090d16"
+                  travellerWidth={8}
+                  tickFormatter={(val) => `$${val}`}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -1135,6 +1146,16 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                       }
                     },
                   }}
+                />
+              )}
+              {singleExpChartData.length > 5 && (
+                <Brush
+                  dataKey="strike"
+                  height={22}
+                  stroke={tab === "puts" ? "#f43f5e" : "#10b981"}
+                  fill="#090d16"
+                  travellerWidth={8}
+                  tickFormatter={(val) => `$${val}`}
                 />
               )}
             </AreaChart>

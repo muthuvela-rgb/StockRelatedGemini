@@ -25,6 +25,7 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 
 type ShortDatedSortKey =
@@ -287,7 +288,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
           />
         </div>
 
-        <div className="overflow-x-auto">
+        <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Short-Dated Options Horizontally">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
               <tr>
@@ -405,7 +406,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
               )}
             </tbody>
           </table>
-        </div>
+        </TableTopScrollbar>
       </div>
     </div>
   );

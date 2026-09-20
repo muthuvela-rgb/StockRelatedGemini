@@ -27,6 +27,7 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { TableTopScrollbar } from "./TableTopScrollbar";
 
 type TechnicalsSortKey = keyof TechnicalsData | "bollinger_pct_b";
 
@@ -215,7 +216,7 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
             />
           </div>
 
-          <div className="overflow-x-auto">
+          <TableTopScrollbar tableContainerClassName="overflow-x-auto" label="Scroll Technicals Screener Horizontally">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-700/80 select-none">
                 <tr>
@@ -344,7 +345,7 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
                 )}
               </tbody>
             </table>
-          </div>
+          </TableTopScrollbar>
         </div>
 
         {/* Deep Inspector Drawer */}

@@ -33,6 +33,7 @@ import {
   CartesianGrid,
   AreaChart,
   Area,
+  Brush,
 } from "recharts";
 import { NasdaqSimulationResult, RebalanceEvent } from "../types";
 
@@ -725,6 +726,19 @@ export const NasdaqSimulator: React.FC = () => {
                         strokeDasharray="2 2"
                         dot={false}
                       />
+                      {result.equityCurve.length > 5 && (
+                        <Brush
+                          dataKey="date"
+                          height={20}
+                          stroke="#38bdf8"
+                          fill="#090d16"
+                          travellerWidth={8}
+                          tickFormatter={(d) => {
+                            const parts = d.split("-");
+                            return `${parts[1]}/${parts[0]?.slice(2)}`;
+                          }}
+                        />
+                      )}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -775,6 +789,19 @@ export const NasdaqSimulator: React.FC = () => {
                         fill="#f43f5e"
                         fillOpacity={0.25}
                       />
+                      {result.equityCurve.length > 5 && (
+                        <Brush
+                          dataKey="date"
+                          height={18}
+                          stroke="#f43f5e"
+                          fill="#090d16"
+                          travellerWidth={8}
+                          tickFormatter={(d) => {
+                            const parts = d.split("-");
+                            return `${parts[1]}/${parts[0]?.slice(2)}`;
+                          }}
+                        />
+                      )}
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>

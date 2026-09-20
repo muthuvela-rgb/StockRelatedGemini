@@ -29,6 +29,9 @@ import {
   ArrowDown,
   Bookmark,
   Gauge,
+  Play,
+  Search,
+  ArrowRight,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { ActiveTab } from "./Header";
@@ -71,10 +74,15 @@ import {
 
 interface PutRecommendationsViewerProps {
   watchlist: string[];
+  initialCustomTicker?: string;
   onNavigateTab?: (tab: ActiveTab) => void;
 }
 
-export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> = ({ watchlist, onNavigateTab }) => {
+export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> = ({
+  watchlist,
+  initialCustomTicker,
+  onNavigateTab,
+}) => {
   // Filters & State
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
@@ -183,24 +191,50 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
     }
   }, [horizon, customMinDte, customMaxDte]);
 
-  // Fetch Put Recommendations
-  const fetchRecommendations = async () => {
+  // Sync initialCustomTicker if passed from Saved Trades or external navigation
+  useEffect(() => {
+    if (initialCustomTicker && initialCustomTicker.trim()) {
+      const clean = initialCustomTicker.trim().toUpperCase();
+      setUniverse("custom");
+      setCustomTickers(clean);
+      fetchRecommendations([clean], "custom");
+    }
+  }, [initialCustomTicker]);
+
+  // Fetch Put Recommendations with robust custom ticker parsing and dynamic tier selection
+  const fetchRecommendations = async (
+    overrideTickers?: string[],
+    overrideUniverse?: "watchlist" | "qqq" | "spy" | "custom",
+    overrideDte?: { minDte: number; maxDte: number }
+  ) => {
     setLoading(true);
     setError(null);
 
+    const currentUniverse = overrideUniverse || universe;
     let targetTickers: string[] = [];
-    if (universe === "watchlist") {
+
+    if (overrideTickers && overrideTickers.length > 0) {
+      targetTickers = overrideTickers;
+    } else if (currentUniverse === "watchlist") {
       targetTickers = watchlist.length > 0 ? watchlist : ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"];
-    } else if (universe === "qqq") {
+    } else if (currentUniverse === "qqq") {
       targetTickers = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "COST", "PLTR", "AMAT", "NFLX", "QQQ"];
-    } else if (universe === "spy") {
+    } else if (currentUniverse === "spy") {
       targetTickers = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "JPM", "V", "XOM", "COST", "PEP", "SPY"];
     } else {
       targetTickers = customTickers
-        .split(",")
-        .map((t) => t.trim().toUpperCase())
+        .split(/[\s,]+/)
+        .map((t) => t.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, ""))
         .filter(Boolean);
     }
+
+    if (currentUniverse === "custom" && targetTickers.length === 0) {
+      setError("Please enter at least one valid ticker symbol (e.g. AMD, NVDA, TSLA).");
+      setLoading(false);
+      return;
+    }
+
+    const effectiveDte = overrideDte || dteRange;
 
     try {
       const res = await fetch("/api/put-recommendations", {
@@ -208,8 +242,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tickers: targetTickers,
-          minDte: dteRange.minDte,
-          maxDte: dteRange.maxDte,
+          minDte: effectiveDte.minDte,
+          maxDte: effectiveDte.maxDte,
           minBid: 0.20,
           minAnnualReturn: 1.0,
           minAnnualMarginReturn: 1.0,
@@ -223,12 +257,59 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
       const resData: PutRecommendationsResponse = await res.json();
       setData(resData);
+
+      // Intelligent tier switching for custom tickers / single-ticker scans:
+      // If the currently active tier has 0 recommendations, auto-select a tier with recommendations
+      if (resData.least_risk.length === 0) {
+        if (resData.medium_risk.length > 0) {
+          setActiveTierTab("medium_risk");
+        } else if (resData.high_risk.length > 0) {
+          setActiveTierTab("high_risk");
+        } else if (resData.all_recommendations.length > 0) {
+          setActiveTierTab("all");
+        }
+      }
+
+      // If custom ticker has options, check if existing minAnnualReturn / minBid sliders are filtering everything out
+      if (resData.all_recommendations.length > 0) {
+        const passesFilters = resData.all_recommendations.some(
+          (r) => (r.annualized_return_cash_secured || 0) >= minAnnualReturn && (r.bid || 0) >= minBid
+        );
+        if (!passesFilters) {
+          // Relax filters so the user immediately sees the custom ticker's recommendations
+          const maxCash = Math.max(...resData.all_recommendations.map((r) => r.annualized_return_cash_secured || 0));
+          const maxB = Math.max(...resData.all_recommendations.map((r) => r.bid || 0));
+          if (minAnnualReturn > maxCash && maxCash > 0) {
+            setMinAnnualReturn(Math.max(1, Math.floor(maxCash)));
+          }
+          if (minBid > maxB && maxB > 0) {
+            setMinBid(Math.max(0.20, Number(maxB.toFixed(2))));
+          }
+        }
+      }
     } catch (err: any) {
       console.error("Error fetching put recommendations:", err);
       setError(err.message || "Failed to load put recommendations");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleApplyCustomTickers = (directTickers?: string[]) => {
+    const listToScan = (directTickers && directTickers.length > 0)
+      ? directTickers
+      : customTickers
+          .split(/[\s,]+/)
+          .map((t) => t.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, ""))
+          .filter(Boolean);
+
+    if (listToScan.length === 0) {
+      setError("Please enter at least one valid ticker symbol.");
+      return;
+    }
+
+    setUniverse("custom");
+    fetchRecommendations(listToScan, "custom");
   };
 
   useEffect(() => {
@@ -611,7 +692,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </button>
 
             <button
-              onClick={fetchRecommendations}
+              onClick={() => fetchRecommendations()}
               disabled={loading}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
             >
@@ -811,21 +892,79 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         </div>
 
         {universe === "custom" && (
-          <div className="mt-4 pt-4 border-t border-slate-800/80 flex items-center gap-3">
-            <span className="text-slate-400 text-xs shrink-0">Tickers (comma separated):</span>
-            <input
-              type="text"
-              value={customTickers}
-              onChange={(e) => setCustomTickers(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-              placeholder="e.g. NVDA, AAPL, MSFT, AMD, GOOGL"
-            />
-            <button
-              onClick={fetchRecommendations}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg"
+          <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleApplyCustomTickers();
+              }}
+              className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
             >
-              Apply
-            </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="p-1 rounded bg-indigo-500/20 text-indigo-400">
+                  <Target className="w-4 h-4" />
+                </span>
+                <span className="text-slate-300 text-xs font-semibold">Custom Tickers:</span>
+              </div>
+
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={customTickers}
+                  onChange={(e) => setCustomTickers(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-lg px-3.5 py-2 text-xs text-white font-mono placeholder-slate-500 outline-none"
+                  placeholder="Enter tickers separated by commas or spaces, e.g. AMD, PLTR, TSLA, NVDA"
+                />
+                {customTickers && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomTickers("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-mono"
+                    title="Clear input"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-md shadow-indigo-600/30 flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Scanning...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Scan Tickers</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {/* Quick Preset Chips */}
+            <div className="flex items-center gap-2 flex-wrap text-xs text-slate-400">
+              <span className="text-[11px] text-slate-500">Popular Quick Presets:</span>
+              {["AMD", "PLTR", "TSLA", "SOFI", "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "ARM"].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => {
+                    setCustomTickers(t);
+                    handleApplyCustomTickers([t]);
+                  }}
+                  className="px-2 py-0.5 rounded bg-slate-800/90 hover:bg-indigo-600/30 hover:text-indigo-200 text-slate-300 font-mono text-[11px] border border-slate-700/80 transition cursor-pointer"
+                >
+                  +{t}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -834,7 +973,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       {error && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 text-rose-300 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={fetchRecommendations} className="underline text-rose-400 font-bold ml-2">
+          <button onClick={() => fetchRecommendations()} className="underline text-rose-400 font-bold ml-2">
             Retry
           </button>
         </div>
@@ -1086,7 +1225,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         </div>
 
         {/* Search & View Mode Switcher */}
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <div className="relative flex-1 sm:w-48">
             <input
               type="text"
@@ -1104,6 +1243,22 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               </button>
             )}
           </div>
+
+          {searchQuery.trim().length >= 2 && !data?.tickers_scanned.includes(searchQuery.trim().toUpperCase()) && (
+            <button
+              onClick={() => {
+                const sym = searchQuery.trim().toUpperCase();
+                setSearchQuery("");
+                setCustomTickers(sym);
+                handleApplyCustomTickers([sym]);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1 shadow-md shadow-indigo-600/20 cursor-pointer transition"
+              title={`Scan ${searchQuery.toUpperCase()} with full options chain`}
+            >
+              <Search className="w-3 h-3" />
+              <span>Scan "{searchQuery.trim().toUpperCase()}"</span>
+            </button>
+          )}
 
           <div className="flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-700">
             <button
@@ -1134,7 +1289,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           </div>
           <div className="space-y-1">
             <h3 className="text-base font-bold text-white font-display">
-              Scanning Watchlist Options Chains & Computing Greeks...
+              Scanning {universe.toUpperCase()} Options Chains & Computing Greeks...
             </h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
               Running Black-Scholes risk modeling, OCC TIMS margin calculations, Wilder RSI(14) and 20d Bollinger support tests across active tickers.
@@ -1145,22 +1300,80 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
       {/* Empty State */}
       {!loading && currentList.length === 0 && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
-          <Info className="w-8 h-8 text-slate-500 mx-auto" />
-          <h3 className="text-base font-bold text-slate-200">No put option contracts matched current criteria</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Try adjusting your Min Bid (${minBid.toFixed(2)}), lowering the Min Annual Return ({minAnnualReturn}%), or selecting "All Horizons".
-          </p>
-          <button
-            onClick={() => {
-              setMinAnnualReturn(5);
-              setMinBid(0.20);
-              setHorizon("all");
-            }}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 rounded-xl mt-2 cursor-pointer"
-          >
-            Relax Screen Filters
-          </button>
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-8 sm:p-12 text-center space-y-4 shadow-xl">
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center mx-auto text-slate-400">
+            <Info className="w-6 h-6" />
+          </div>
+
+          <div className="max-w-md mx-auto space-y-1">
+            <h3 className="text-base font-bold text-slate-200">
+              {data && data.all_recommendations.length > 0
+                ? `No contracts in "${activeTierTab === "all" ? "Combined" : activeTierTab.replace("_", " ")}" match active filters`
+                : "No put option contracts found for the scanned universe"}
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {data && data.all_recommendations.length > 0
+                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Min Return ${minAnnualReturn}%, Min Bid $${minBid.toFixed(2)}, or Tier selection) filtered them out.`
+                : `No contracts found matching DTE ${dteRange.minDte}–${dteRange.maxDte} days. Try expanding your expiration horizon or relaxing filter thresholds.`}
+            </p>
+          </div>
+
+          {/* Smart Action Buttons */}
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+            {data && data.medium_risk.length > 0 && activeTierTab !== "medium_risk" && (
+              <button
+                onClick={() => setActiveTierTab("medium_risk")}
+                className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold rounded-xl cursor-pointer transition flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>View Medium Risk ({data.medium_risk.length})</span>
+              </button>
+            )}
+
+            {data && data.high_risk.length > 0 && activeTierTab !== "high_risk" && (
+              <button
+                onClick={() => setActiveTierTab("high_risk")}
+                className="px-3.5 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold rounded-xl cursor-pointer transition flex items-center gap-1.5"
+              >
+                <Flame className="w-3.5 h-3.5" />
+                <span>View High Risk ({data.high_risk.length})</span>
+              </button>
+            )}
+
+            {data && data.all_recommendations.length > 0 && activeTierTab !== "all" && (
+              <button
+                onClick={() => setActiveTierTab("all")}
+                className="px-3.5 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-bold rounded-xl cursor-pointer transition flex items-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>View All Tiers ({data.all_recommendations.length})</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setMinAnnualReturn(1);
+                setMinBid(0.20);
+                setDeltaRange([0.0, 1.0]);
+                setSearchQuery("");
+              }}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl cursor-pointer transition border border-slate-700"
+            >
+              Reset Return & Bid Filters
+            </button>
+
+            {horizon !== "all" && (
+              <button
+                onClick={() => {
+                  setHorizon("all");
+                  fetchRecommendations(undefined, undefined, { minDte: 90, maxDte: 1000 });
+                }}
+                className="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-bold rounded-xl cursor-pointer transition border border-emerald-500/40"
+              >
+                Expand to All Horizons & Rescan
+              </button>
+            )}
+          </div>
         </div>
       )}
 

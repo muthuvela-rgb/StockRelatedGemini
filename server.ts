@@ -4090,9 +4090,38 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
       minAnnualMarginReturn = 1.0,
     } = req.body;
 
+    let rawTickers: string[] = [];
+    if (Array.isArray(tickers)) {
+      rawTickers = tickers;
+    } else if (typeof tickers === "string") {
+      rawTickers = tickers.split(/[\s,]+/);
+    } else if (!tickers) {
+      rawTickers = getWatchlist();
+    }
+
     const tickerList: string[] = (
-      Array.isArray(tickers) && tickers.length > 0 ? tickers : getWatchlist()
-    ).map((t: string) => String(t).trim().toUpperCase());
+      rawTickers.length > 0 ? rawTickers : getWatchlist()
+    )
+      .map((t: string) => String(t).trim().toUpperCase().replace(/[^A-Z0-9.-]/g, ""))
+      .filter(Boolean);
+
+    if (tickerList.length === 0) {
+      return res.json({
+        least_risk: [],
+        medium_risk: [],
+        high_risk: [],
+        all_recommendations: [],
+        tickers_scanned: [],
+        total_contracts_evaluated: 0,
+        tier_summaries: {
+          least_risk: { count: 0, avg_pop: 0, avg_margin_return: 0, avg_cash_return: 0, avg_cushion: 0, avg_theta: 0 },
+          medium_risk: { count: 0, avg_pop: 0, avg_margin_return: 0, avg_cash_return: 0, avg_cushion: 0, avg_theta: 0 },
+          high_risk: { count: 0, avg_pop: 0, avg_margin_return: 0, avg_cash_return: 0, avg_cushion: 0, avg_theta: 0 },
+        },
+        market_context: {},
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     const leastRiskList: any[] = [];
     const mediumRiskList: any[] = [];
