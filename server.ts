@@ -1,3 +1,6 @@
+import dns from "node:dns";
+dns.setDefaultResultOrder("ipv4first");
+
 import express, { Request, Response } from "express";
 import cors from "cors";
 import path from "path";
@@ -19,6 +22,7 @@ import {
   generateStandalonePythonScript,
 } from "./server/nasdaqSimulator";
 import { getHistoricalStockChart } from "./server/stockChart";
+import { getCompanyProfile } from "./server/companyProfile";
 import { EXPANDED_500_UNIVERSE, getExpanded500Universe } from "./src/data/universe500";
 
 const app = express();
@@ -1963,6 +1967,26 @@ app.get("/api/historical-chart", async (req: Request, res: Response) => {
   } catch (e: any) {
     console.error("Error in /api/historical-chart:", e);
     res.status(500).json({ error: e.message || "Failed to load historical chart data" });
+  }
+});
+
+// Company Profile & Overview for Stock Charts (Description, Year Went Public, Market Cap, Sector, HQ, Leadership)
+app.get("/api/company-profile", async (req: Request, res: Response) => {
+  try {
+    const rawTicker = ((req.query.ticker || req.query.symbol || "") as string).trim();
+    if (!rawTicker) {
+      return res.status(400).json({ error: "ticker query parameter is required" });
+    }
+
+    const profile = await getCompanyProfile(rawTicker, getGenAI());
+    if (!profile) {
+      return res.status(404).json({ error: `Company profile not found for ticker: ${rawTicker}` });
+    }
+
+    res.json(profile);
+  } catch (e: any) {
+    console.error("Error in /api/company-profile:", e);
+    res.status(500).json({ error: e.message || "Failed to load company profile" });
   }
 });
 

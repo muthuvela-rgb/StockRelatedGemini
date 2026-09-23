@@ -44,13 +44,16 @@ import {
   ChevronLeft,
   ChevronRight,
   MoveHorizontal,
+  X,
 } from "lucide-react";
 import {
   HistoricalBar,
   ChartTechnicalSummary,
   HistoricalChartResponse,
   MultiTickerComparisonItem,
+  CompanyProfile,
 } from "../types/stockChart";
+import { CompanyProfileCard } from "./CompanyProfileCard";
 import { RebalancingAlertBanner } from "./RebalancingAlertBanner";
 import { TableTopScrollbar } from "./TableTopScrollbar";
 
@@ -120,6 +123,38 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<HistoricalChartResponse | null>(null);
+  // Pinned/inspected chart point state (anchored to top-left corner)
+  const [pinnedBar, setPinnedBar] = useState<(HistoricalBar & Record<string, any>) | null>(null);
+
+  // Active stock company profile state (Description, IPO Year, Total Market Cap, etc.)
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // Fetch company profile whenever activeTicker changes
+  const fetchProfile = useCallback(async (ticker: string) => {
+    const sym = ticker.trim().toUpperCase();
+    if (!sym) return;
+    setProfileLoading(true);
+
+    try {
+      const res = await fetch(`/api/company-profile?ticker=${encodeURIComponent(sym)}`);
+      if (res.ok) {
+        const data: CompanyProfile = await res.json();
+        setCompanyProfile(data);
+      } else {
+        setCompanyProfile(null);
+      }
+    } catch (err) {
+      console.error("Error fetching company profile:", err);
+      setCompanyProfile(null);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfile(activeTicker);
+  }, [activeTicker, fetchProfile]);
 
   // Volume format helper
   const formatVolumeNumber = (vol: number | undefined | null): string => {
@@ -296,6 +331,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
     setZoomRange(null);
     setRefAreaLeft(null);
     setRefAreaRight(null);
+    setPinnedBar(null);
   }, [activeTicker, selectedRange, selectedInterval]);
 
   // Synchronized visible slices for Main Chart and Sub-Pane
@@ -588,6 +624,13 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
           )}
         </div>
       </div>
+
+      {/* Active Stock Company Overview Card (Description, IPO Year, Total Market Cap, Leadership, etc.) */}
+      <CompanyProfileCard
+        profile={companyProfile}
+        loading={profileLoading}
+        activeTicker={activeTicker}
+      />
 
       {/* Duration & Interval Toolbar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1116,7 +1159,99 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
         )}
 
         {/* Recharts Main Canvas */}
-        <div className="h-[490px] w-full">
+        <div className="relative h-[490px] w-full">
+          {/* Pinned Point Details HUD - Anchored to Top-Left Corner to never obstruct the plot */}
+          {pinnedBar && (
+            <div className="absolute top-2 left-16 z-30 bg-slate-950/95 border-2 border-cyan-400 ring-2 ring-cyan-500/20 rounded-xl p-3 shadow-2xl text-xs font-mono backdrop-blur-md min-w-[230px] max-w-[290px] animate-in fade-in duration-100">
+              <div className="text-slate-300 font-bold border-b border-slate-800 pb-1.5 mb-2 font-sans flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                    📌 Pinned
+                  </span>
+                  <span className="text-white font-mono">{pinnedBar.date}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400 font-bold">{chartData?.primaryTicker}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPinnedBar(null);
+                    }}
+                    className="text-slate-400 hover:text-white p-0.5 rounded hover:bg-slate-800 transition-colors"
+                    title="Unpin point"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-emerald-400 font-semibold">Close:</span>
+                  <span className="text-white font-bold">${pinnedBar.close?.toFixed(2)}</span>
+                </div>
+                {pinnedBar.open && (
+                  <div className="flex justify-between items-center text-slate-400">
+                    <span>Open:</span>
+                    <span>${pinnedBar.open.toFixed(2)}</span>
+                  </div>
+                )}
+                {pinnedBar.high && pinnedBar.low && (
+                  <div className="flex justify-between items-center text-slate-400">
+                    <span>High / Low:</span>
+                    <span>
+                      ${pinnedBar.high.toFixed(2)} / ${pinnedBar.low.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {showSma20 && pinnedBar.sma20 !== null && (
+                  <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                    <span className="text-amber-400">20 SMA:</span>
+                    <span className="text-amber-300 font-semibold">${pinnedBar.sma20.toFixed(2)}</span>
+                  </div>
+                )}
+                {showBollinger && pinnedBar.bollingerUpper !== null && (
+                  <div className="flex justify-between items-center text-[11px] text-sky-400">
+                    <span>BB Upper / Lower:</span>
+                    <span>
+                      ${pinnedBar.bollingerUpper.toFixed(2)} / ${pinnedBar.bollingerLower?.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {pinnedBar.rsi14 !== null && (
+                  <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                    <span className="text-purple-400">RSI (14):</span>
+                    <span
+                      className={`font-bold ${
+                        pinnedBar.rsi14 >= 70
+                          ? "text-rose-400"
+                          : pinnedBar.rsi14 <= 30
+                          ? "text-emerald-400"
+                          : "text-purple-300"
+                      }`}
+                    >
+                      {pinnedBar.rsi14.toFixed(1)}{" "}
+                      {pinnedBar.rsi14 >= 70 ? "(Overbought)" : pinnedBar.rsi14 <= 30 ? "(Oversold)" : ""}
+                    </span>
+                  </div>
+                )}
+                {pinnedBar.volume > 0 && (
+                  <div className="flex justify-between items-center text-slate-400 pt-1 text-[11px]">
+                    <span>Volume:</span>
+                    <span className={pinnedBar.close >= (pinnedBar.open ?? pinnedBar.close) ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
+                      {pinnedBar.volume.toLocaleString()}{" "}
+                      <span className="text-[10px]">({pinnedBar.close >= (pinnedBar.open ?? pinnedBar.close) ? "Up Vol" : "Down Vol"})</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="mt-2 pt-1 border-t border-slate-800/80 text-[10px] text-slate-400 flex justify-between items-center">
+                <span>Click chart or [✕] to unpin</span>
+              </div>
+            </div>
+          )}
+
           {mergedChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
@@ -1125,6 +1260,15 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                 onMouseDown={handleChartMouseDown}
                 onMouseMove={handleChartMouseMove}
                 onMouseUp={handleChartMouseUp}
+                onClick={(e: any) => {
+                  if (refAreaLeft && refAreaRight && refAreaLeft !== refAreaRight) return;
+                  if (e && e.activePayload && e.activePayload.length > 0) {
+                    const clicked = e.activePayload[0].payload as HistoricalBar & Record<string, any>;
+                    if (clicked && clicked.date) {
+                      setPinnedBar((prev) => (prev?.date === clicked.date ? null : clicked));
+                    }
+                  }
+                }}
               >
                 <defs>
                   {/* Price Area Gradient */}
@@ -1339,17 +1483,21 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   </>
                 )}
 
-                {/* Custom Interactive Tooltip */}
+                {/* Custom Interactive Tooltip - Anchored to Top-Left Corner to never obstruct the plot */}
                 <Tooltip
+                  position={{ x: 65, y: 12 }}
+                  isAnimationActive={false}
                   content={({ active, payload, label }) => {
+                    // Suppress hover tooltip if a point is already pinned to avoid visual collision
+                    if (pinnedBar) return null;
                     if (!active || !payload || payload.length === 0) return null;
                     const data = payload[0].payload as HistoricalBar & Record<string, any>;
 
                     return (
-                      <div className="bg-slate-950/95 border border-slate-700/80 rounded-xl p-3 shadow-2xl text-xs font-mono backdrop-blur-md min-w-[220px]">
+                      <div className="bg-slate-950/95 border border-slate-700/80 rounded-xl p-3 shadow-2xl text-xs font-mono backdrop-blur-md min-w-[220px] max-w-[280px]">
                         <div className="text-slate-400 font-bold border-b border-slate-800 pb-1 mb-2 font-sans flex items-center justify-between">
-                          <span>{data.date}</span>
-                          <span className="text-[10px] text-slate-500">{chartData?.primaryTicker}</span>
+                          <span className="text-white">{data.date}</span>
+                          <span className="text-[10px] text-slate-400 font-bold">{chartData?.primaryTicker}</span>
                         </div>
 
                         <div className="space-y-1">
@@ -1407,11 +1555,17 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                           )}
 
                           {data.volume > 0 && (
-                            <div className="flex justify-between items-center text-slate-500 pt-1 text-[10px]">
+                            <div className="flex justify-between items-center text-slate-400 pt-1 text-[11px]">
                               <span>Volume:</span>
-                              <span>{data.volume.toLocaleString()}</span>
+                              <span className={data.close >= (data.open ?? data.close) ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
+                                {data.volume.toLocaleString()}{" "}
+                                <span className="text-[10px]">({data.close >= (data.open ?? data.close) ? "Up Vol" : "Down Vol"})</span>
+                              </span>
                             </div>
                           )}
+                        </div>
+                        <div className="mt-2 pt-1 border-t border-slate-800/80 text-[10px] text-slate-500 text-center">
+                          Click chart to pin point
                         </div>
                       </div>
                     );
@@ -1618,6 +1772,8 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   />
 
                   <Tooltip
+                    position={{ x: 65, y: 8 }}
+                    isAnimationActive={false}
                     content={({ active, payload }) => {
                       if (!active || !payload || payload.length === 0) return null;
                       const d = payload[0].payload;
@@ -1673,6 +1829,8 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                     name="Wilder's RSI (14)"
                   />
                   <Tooltip
+                    position={{ x: 65, y: 8 }}
+                    isAnimationActive={false}
                     content={({ active, payload }) => {
                       if (!active || !payload || payload.length === 0) return null;
                       const d = payload[0].payload;
@@ -1726,6 +1884,8 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                     name="20-Day Volume SMA"
                   />
                   <Tooltip
+                    position={{ x: 65, y: 8 }}
+                    isAnimationActive={false}
                     content={({ active, payload }) => {
                       if (!active || !payload || payload.length === 0) return null;
                       const d = payload[0].payload;

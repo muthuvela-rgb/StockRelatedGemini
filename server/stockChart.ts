@@ -139,32 +139,39 @@ function getPeriodTimestamps(
  * Fetch raw Yahoo Finance chart series
  */
 async function fetchYahooRawChart(ticker: string, period1: number, period2: number, interval: string) {
-  try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-      ticker
-    )}?period1=${period1}&period2=${period2}&interval=${interval}&includeAdjustedClose=true`;
+  const hosts = ["query2.finance.yahoo.com", "query1.finance.yahoo.com"];
+  for (const host of hosts) {
+    try {
+      const url = `https://${host}/v8/finance/chart/${encodeURIComponent(
+        ticker
+      )}?period1=${period1}&period2=${period2}&interval=${interval}&includeAdjustedClose=true`;
 
-    const res = await fetch(url, { headers: HTTP_HEADERS });
-    if (!res.ok) {
-      // Fallback without period1=0 if 0 is rejected
-      if (period1 === 0) {
-        const fallbackUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-          ticker
-        )}?range=max&interval=${interval}`;
-        const fbRes = await fetch(fallbackUrl, { headers: HTTP_HEADERS });
-        if (fbRes.ok) {
-          const json = await fbRes.json();
-          return json?.chart?.result?.[0] || null;
+      const res = await fetch(url, { headers: HTTP_HEADERS, signal: AbortSignal.timeout(6500) });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.chart?.result?.[0]) {
+          return json.chart.result[0];
         }
       }
-      return null;
+
+      // Fallback without period1=0 if 0 is rejected
+      if (period1 === 0) {
+        const fallbackUrl = `https://${host}/v8/finance/chart/${encodeURIComponent(
+          ticker
+        )}?range=max&interval=${interval}`;
+        const fbRes = await fetch(fallbackUrl, { headers: HTTP_HEADERS, signal: AbortSignal.timeout(6500) });
+        if (fbRes.ok) {
+          const json = await fbRes.json();
+          if (json?.chart?.result?.[0]) {
+            return json.chart.result[0];
+          }
+        }
+      }
+    } catch {
+      // Continue to next host fallback
     }
-    const json = await res.json();
-    return json?.chart?.result?.[0] || null;
-  } catch (err) {
-    console.error(`Error fetching Yahoo raw chart for ${ticker}:`, err);
-    return null;
   }
+  return null;
 }
 
 /**

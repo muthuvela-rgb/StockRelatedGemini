@@ -863,6 +863,8 @@ export const PremiumCurvesViewer: React.FC = () => {
                       }}
                     />
                     <RechartsTooltip
+                      position={{ x: 65, y: 15 }}
+                      isAnimationActive={false}
                       content={({ active, payload, label }) => {
                         if (!active || !payload || !payload.length) return null;
                         const row = payload[0]?.payload;

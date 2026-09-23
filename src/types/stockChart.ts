@@ -76,3 +76,33 @@ export interface HistoricalChartResponse {
   comparisons?: MultiTickerComparisonItem[];
   availableRanges: string[];
 }
+
+export interface CompanyProfile {
+  ticker: string;
+  name: string;
+  shortDescription: string;
+  longDescription: string;
+  ipoYear: number | null;
+  ipoDate: string | null;
+  yearsPublic: number | null;
+  marketCap: number | null;
+  formattedMarketCap: string;
+  sector: string | null;
+  industry: string | null;
+  headquarters: string | null;
+  country: string | null;
+  website: string | null;
+  employees: number | null;
+  formattedEmployees: string | null;
+  ceo: string | null;
+  exchange: string | null;
+  currency: string | null;
+  currentPrice: number | null;
+  peRatio: number | null;
+  forwardPE: number | null;
+  dividendYield: number | null;
+  beta: number | null;
+  fiftyTwoWeekHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  isEtf: boolean;
+}

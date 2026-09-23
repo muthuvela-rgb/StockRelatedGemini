@@ -67,6 +67,8 @@ export const EXPANDED_500_UNIVERSE: string[] = [
   "QQQ", "SPY", "IWM", "DIA", "SMH", "SOXX", "XLE", "XLF", "XLK", "XLV"
 ];
 
+export { SP500_COMPONENTS, SMH_COMPONENTS, QQQ_COMPONENTS } from "./universePresets";
+
 // Helper to get unique trimmed tickers
 export function getExpanded500Universe(): string[] {
   return Array.from(new Set(EXPANDED_500_UNIVERSE.map((t) => t.trim().toUpperCase()))).filter(Boolean);

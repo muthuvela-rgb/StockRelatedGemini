@@ -1,4 +1,5 @@
 import { EXPANDED_500_UNIVERSE } from "../src/data/universe500";
+import { SP500_COMPONENTS, SMH_COMPONENTS, QQQ_COMPONENTS } from "../src/data/universePresets";
 import type { CspRsiDivergenceCandidate, CspRsiDivergenceResponse, SwingLowPoint } from "../src/types";
 
 const HTTP_HEADERS = {
@@ -183,6 +184,35 @@ export function findSwingLows(
   return null;
 }
 
+// Helper to query Yahoo Finance chart with host fallback and timeout
+async function fetchYahooChart(
+  ticker: string,
+  range: string,
+  interval: string,
+  timeoutMs = 5000
+): Promise<any | null> {
+  const hosts = ["query2.finance.yahoo.com", "query1.finance.yahoo.com"];
+  for (const host of hosts) {
+    try {
+      const url = `https://${host}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
+      const res = await fetch(url, {
+        headers: HTTP_HEADERS,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const quote = json?.chart?.result?.[0]?.indicators?.quote?.[0];
+        if (quote && Array.isArray(quote.close) && quote.close.length > 0) {
+          return quote;
+        }
+      }
+    } catch {
+      // Continue to next host fallback
+    }
+  }
+  return null;
+}
+
 // Fetch multi-timeframe candles (Daily, 4-Hour via 60m aggregation, Weekly)
 async function fetchMultiTimeframeCandles(ticker: string, forceRefresh = false) {
   const now = Date.now();
@@ -194,21 +224,8 @@ async function fetchMultiTimeframeCandles(ticker: string, forceRefresh = false) 
   }
 
   try {
-    const [dRes, hRes, wRes] = await Promise.all([
-      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=6mo&interval=1d`, {
-        headers: HTTP_HEADERS,
-      }),
-      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1mo&interval=60m`, {
-        headers: HTTP_HEADERS,
-      }),
-      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1y&interval=1wk`, {
-        headers: HTTP_HEADERS,
-      }),
-    ]);
-
-    if (!dRes.ok) return null;
-    const dJson = await dRes.json();
-    const dQ = dJson?.chart?.result?.[0]?.indicators?.quote?.[0];
+    // 1. Fetch Daily historical data (1 year gives ~250 trading days for accurate RSI & Bollinger Bands)
+    const dQ = await fetchYahooChart(ticker, "1y", "1d", 6000);
     if (!dQ) return null;
 
     const dailyCloses: number[] = (dQ.close || []).filter((x: any) => x !== null && x !== undefined);
@@ -220,11 +237,19 @@ async function fetchMultiTimeframeCandles(ticker: string, forceRefresh = false) 
     if (dailyCloses.length < 20) return null;
     const currentPrice = Number(dailyCloses[dailyCloses.length - 1].toFixed(2));
 
-    // 4-Hour closes aggregated from 60-minute bars (4 hourly bars per 4h candle)
+    // 2. Derive weekly closes directly from daily bars (reliable, zero extra network overhead)
+    const weeklyCloses: number[] = [];
+    for (let i = 0; i < dailyCloses.length; i += 5) {
+      weeklyCloses.push(dailyCloses[i]);
+    }
+    if (dailyCloses.length > 0 && weeklyCloses[weeklyCloses.length - 1] !== dailyCloses[dailyCloses.length - 1]) {
+      weeklyCloses.push(dailyCloses[dailyCloses.length - 1]);
+    }
+
+    // 3. 4-Hour closes aggregated from 60-minute bars (4 hourly bars per 4h candle)
     let closes4h: number[] = [];
-    if (hRes.ok) {
-      const hJson = await hRes.json();
-      const hQ = hJson?.chart?.result?.[0]?.indicators?.quote?.[0];
+    try {
+      const hQ = await fetchYahooChart(ticker, "1mo", "60m", 3500);
       const hCloses: number[] = (hQ?.close || []).filter((x: any) => x !== null && x !== undefined);
       if (hCloses.length >= 12) {
         for (let i = 0; i < hCloses.length; i += 4) {
@@ -232,25 +257,13 @@ async function fetchMultiTimeframeCandles(ticker: string, forceRefresh = false) 
           if (chunk.length > 0) closes4h.push(chunk[chunk.length - 1]);
         }
       }
-    }
-    // Fallback if 4h has insufficient data: derive 4h from smoothed daily/intraday
-    if (closes4h.length < 15) {
-      closes4h = dailyCloses.slice(-30);
+    } catch {
+      // Intraday fetch failure gracefully handled by fallback
     }
 
-    // Weekly closes
-    let weeklyCloses: number[] = [];
-    if (wRes.ok) {
-      const wJson = await wRes.json();
-      const wQ = wJson?.chart?.result?.[0]?.indicators?.quote?.[0];
-      weeklyCloses = (wQ?.close || []).filter((x: any) => x !== null && x !== undefined);
-    }
-    if (weeklyCloses.length < 15) {
-      // Sample every 5 trading days if weekly endpoint is truncated
-      weeklyCloses = [];
-      for (let i = 0; i < dailyCloses.length; i += 5) {
-        weeklyCloses.push(dailyCloses[i]);
-      }
+    // Fallback if 4h has insufficient data: derive from smoothed daily/intraday
+    if (closes4h.length < 15) {
+      closes4h = dailyCloses.slice(-30);
     }
 
     const candleData = {
@@ -266,8 +279,8 @@ async function fetchMultiTimeframeCandles(ticker: string, forceRefresh = false) 
 
     candleCache.set(ticker, { timestamp: now, data: candleData });
     return candleData;
-  } catch (e) {
-    console.error(`Error fetching multi-timeframe candles for ${ticker}:`, e);
+  } catch (e: any) {
+    console.warn(`[cspDivergenceEngine] Warning fetching candles for ${ticker}: ${e?.message || e}`);
     return null;
   }
 }
@@ -285,11 +298,19 @@ async function fetchBestCspPutOption(
       optResult = await optionsFetcher(ticker).catch(() => null);
     }
     if (!optResult) {
-      const url = `https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(ticker)}`;
-      const res = await fetch(url, { headers: HTTP_HEADERS });
-      if (res.ok) {
-        const json = await res.json();
-        optResult = json?.optionChain?.result?.[0];
+      const hosts = ["query2.finance.yahoo.com", "query1.finance.yahoo.com"];
+      for (const host of hosts) {
+        try {
+          const url = `https://${host}/v7/finance/options/${encodeURIComponent(ticker)}`;
+          const res = await fetch(url, { headers: HTTP_HEADERS, signal: AbortSignal.timeout(4500) });
+          if (res.ok) {
+            const json = await res.json();
+            optResult = json?.optionChain?.result?.[0];
+            if (optResult) break;
+          }
+        } catch {
+          // Fallback to next host
+        }
       }
     }
 
@@ -431,7 +452,25 @@ export async function evaluateCspRsiDivergenceForTicker(
   const vol20Window = dailyVolumes.slice(-20);
   const vol_avg20 = vol20Window.reduce((a, b) => a + b, 0) / (Math.min(vol20Window.length, 20) || 1);
   const vol_today = dailyVolumes[dailyVolumes.length - 1] || 0;
-  const vol_jump = vol_avg20 > 0 ? Number((vol_today / vol_avg20).toFixed(2)) : 1.0;
+
+  // STRICT UP-VOLUME BASELINE: Only consider historical sessions with positive price action (Up Volume).
+  // Exclude down volume sessions from the institutional accumulation baseline.
+  const upVolumes20: number[] = [];
+  const lookbackBars = Math.min(20, dailyCloses.length);
+  const startLookback = dailyCloses.length - lookbackBars;
+  for (let i = startLookback; i < dailyCloses.length; i++) {
+    const c = dailyCloses[i];
+    const o = dailyOpens[i] ?? c;
+    const pC = i > 0 ? dailyCloses[i - 1] : o;
+    const isUp = c > o || (c === o && c >= pC);
+    if (isUp) {
+      const v = dailyVolumes[i] || 0;
+      if (v > 0) upVolumes20.push(v);
+    }
+  }
+  const vol_up_avg20 = upVolumes20.length > 0
+    ? upVolumes20.reduce((a, b) => a + b, 0) / upVolumes20.length
+    : vol_avg20;
 
   // STEP 2 — Check RSI Exhaustion
   // Relaxed criteria: RSI_daily < 40 OR RSI_4h < 35
@@ -519,30 +558,37 @@ export async function evaluateCspRsiDivergenceForTicker(
     };
   }
 
-  // STEP 6 — Check Volume Confirmation
-  // Relaxed criteria: Vol_jump >= 1.5 AND Candle_today is bullish OR neutral
+  // STEP 6 — Check Volume Confirmation (UP-VOLUME ONLY; Down Volume Disregarded)
   const openToday = dailyOpens[dailyOpens.length - 1] || currentPrice;
   const highToday = dailyHighs[dailyHighs.length - 1] || currentPrice;
   const lowToday = dailyLows[dailyLows.length - 1] || currentPrice;
   const closeToday = currentPrice;
+  const prevClose = dailyCloses.length >= 2 ? dailyCloses[dailyCloses.length - 2] : openToday;
+
+  // Strict Up-Volume verification: Today MUST be an Up Day (Close > Open or Close >= Open with Close >= Prev Close).
+  // Down sessions have down volume (distribution/selling pressure), which is strictly excluded from RSI divergence algorithm!
+  const isUpDay = closeToday > openToday || (closeToday >= openToday && closeToday >= prevClose);
+  const isDownDay = closeToday < openToday && closeToday < prevClose;
 
   let candleStatus: "bullish" | "neutral" | "bearish" = "bearish";
-  if (closeToday >= openToday) {
+  if (isUpDay) {
     candleStatus = "bullish";
+  } else if (!isDownDay) {
+    candleStatus = "neutral";
   } else {
-    const range = highToday - lowToday;
-    const lowerWick = closeToday - lowToday;
-    const isNearFlat = Math.abs(closeToday - openToday) / (openToday || 1) <= 0.0035;
-    if (range > 0 && lowerWick / range >= 0.38) {
-      candleStatus = "neutral";
-    } else if (isNearFlat) {
-      candleStatus = "neutral";
-    } else {
-      candleStatus = "bearish";
-    }
+    candleStatus = "bearish";
   }
 
-  const volConfirmationPassed = vol_jump >= 1.5 && (candleStatus === "bullish" || candleStatus === "neutral");
+  // Up-Volume for today: only counted if today is an up session. If today is down, up volume is 0!
+  const up_vol_today = isUpDay ? vol_today : 0;
+
+  // Up-Volume Surge Ratio vs 20-Day Historical Up-Volume Baseline
+  const vol_jump = isUpDay && vol_up_avg20 > 0
+    ? Number((up_vol_today / vol_up_avg20).toFixed(2))
+    : 0;
+
+  // Volume Confirmation: ONLY Up Volume qualifies. Down volume is completely excluded and fails confirmation.
+  const volConfirmationPassed = isUpDay && vol_jump >= 1.5;
 
   // STEP 7 — Classification
   let tier: "tier_1" | "tier_2" | "tier_3" = "tier_2";
@@ -552,11 +598,15 @@ export async function evaluateCspRsiDivergenceForTicker(
   if (passesExhaustion && divergencePassed && weeklyTrendPassed && bbProximityPassed && volConfirmationPassed) {
     tier = "tier_1";
     tierLabel = "Tier-1: Strong CSP Candidate";
-    classificationReason = `All 6 criteria passed! RSI exhaustion (${rsi_daily ? `Daily ${rsi_daily}` : `4H ${rsi_4h}`}), confirmed ${divergenceTimeframe} divergence, Weekly trend healthy (${rsi_weekly}), within 2% of BB Lower, and volume surge ${vol_jump}x on ${candleStatus} candle.`;
+    classificationReason = `All 6 criteria passed! RSI exhaustion (${rsi_daily ? `Daily ${rsi_daily}` : `4H ${rsi_4h}`}), confirmed ${divergenceTimeframe} divergence, Weekly trend healthy (${rsi_weekly}), within 2% of BB Lower, and confirmed Up-Volume surge ${vol_jump}x 20d up-volume avg on green candle (down volume excluded).`;
   } else if (passesExhaustion && divergencePassed && weeklyTrendPassed && bbProximityPassed && !volConfirmationPassed) {
     tier = "tier_2";
     tierLabel = "Tier-2: Moderate CSP Candidate";
-    classificationReason = `Passed exhaustion, divergence, weekly trend, and BB lower proximity. Downgraded to Tier-2 due to unconfirmed volume (${vol_jump}x vs 1.5x threshold or ${candleStatus} candle).`;
+    classificationReason = `Passed exhaustion, divergence, weekly trend, and BB lower proximity. Downgraded to Tier-2: ${
+      !isUpDay
+        ? "Today is a down volume candle (down volume excluded - algorithm requires up volume only)"
+        : `Up-volume surge insufficient (${vol_jump}x vs 1.5x up-volume threshold)`
+    }.`;
   } else if (isTier3WatchlistRsi && has4hDivergence && weeklyTrendPassed) {
     tier = "tier_3";
     tierLabel = "Tier-3: Watchlist Candidate";
@@ -589,6 +639,9 @@ export async function evaluateCspRsiDivergenceForTicker(
     vol_avg20: Math.round(vol_avg20),
     vol_today,
     vol_jump,
+    vol_up_avg20: Math.round(vol_up_avg20),
+    vol_up_today: up_vol_today,
+    is_up_volume: isUpDay,
     rsi_exhaustion_passed: passesExhaustion,
     rsi_exhaustion_reason: passesExhaustion
       ? `RSI exhausted (Daily ${rsi_daily ?? "N/A"}, 4H ${rsi_4h ?? "N/A"})`
@@ -621,7 +674,7 @@ export async function evaluateCspRsiDivergenceForTicker(
 
 // --- FULL UNIVERSE SCAN RUNNER ---
 export async function runCspRsiDivergenceScan(
-  universe: "expanded_500" | "qqq" | "spy" | "watchlist" | "custom",
+  universe: "sp500" | "smh" | "qqq" | "expanded_500" | "spy" | "watchlist" | "custom" | string,
   customTickers?: string[],
   forceRefresh = false,
   optionsFetcher?: (ticker: string) => Promise<any>
@@ -637,35 +690,33 @@ export async function runCspRsiDivergenceScan(
   }
 
   let tickersToScan: string[] = [];
+  let universeLabel = String(universe);
 
-  if (universe === "expanded_500") {
-    tickersToScan = EXPANDED_500_UNIVERSE;
+  if (universe === "sp500" || universe === "spy") {
+    tickersToScan = SP500_COMPONENTS;
+    universeLabel = "All components of S&P 500";
+  } else if (universe === "smh") {
+    tickersToScan = SMH_COMPONENTS;
+    universeLabel = "All components of SMH";
   } else if (universe === "qqq") {
-    tickersToScan = [
-      "NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "GOOG", "TSLA", "AVGO",
-      "META", "WMT", "INTC", "CSCO", "COST", "PLTR", "AMAT", "LRCX", "NFLX", "PANW",
-      "SPCX", "KLAC", "TXN", "AMGN", "SNDK", "LIN", "MRVL", "CRWD", "TMUS", "PEP",
-      "STX", "GILD", "ADI", "SHOP", "QCOM", "BKNG", "ASML", "WDC", "ISRG", "VRTX",
-      "SBUX", "FTNT", "ADP", "ADBE", "ARM", "CEG", "INTU", "MELI", "APP", "MAR",
-      "CMCSA", "CSX", "MNST", "DASH", "CDNS", "REGN", "MDLZ", "CTAS", "ABNB", "DDOG"
-    ];
-  } else if (universe === "spy") {
-    tickersToScan = [
-      "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "UNH", "JNJ",
-      "JPM", "XOM", "V", "PG", "MA", "AVGO", "HD", "CVX", "MRK", "ABBV",
-      "COST", "PEP", "ADBE", "WMT", "BAC", "MCD", "CSCO", "CRM", "NFLX", "ACN"
-    ];
+    tickersToScan = QQQ_COMPONENTS;
+    universeLabel = "All components of QQQ";
+  } else if (universe === "expanded_500") {
+    tickersToScan = EXPANDED_500_UNIVERSE;
+    universeLabel = "Expanded 500+ Universe";
+  } else if (universe === "watchlist") {
+    tickersToScan = customTickers && customTickers.length > 0 ? customTickers : [];
+    universeLabel = "My Watchlist";
   } else if (universe === "custom" && customTickers && customTickers.length > 0) {
     tickersToScan = customTickers;
+    universeLabel = "Custom Tickers";
   } else if (customTickers && customTickers.length > 0) {
     tickersToScan = customTickers;
+    universeLabel = "Custom Tickers";
   } else {
-    // Default fallback to high-liquid tech & market leaders
-    tickersToScan = [
-      "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "TSLA", "META", "AMD", "INTC", "MU",
-      "AVGO", "PLTR", "QCOM", "ARM", "SHOP", "NFLX", "COIN", "CRWD", "SNOW", "DDOG",
-      "MRVL", "AMAT", "LRCX", "KLAC", "SMCI", "UBER", "DASH", "SPOT", "PANW", "FTNT"
-    ];
+    // Default fallback to S&P 500
+    tickersToScan = SP500_COMPONENTS;
+    universeLabel = "All components of S&P 500";
   }
 
   // Deduplicate and sanitize
@@ -683,8 +734,8 @@ export async function runCspRsiDivergenceScan(
   };
   let rejectedCount = 0;
 
-  // Process in concurrent batches of 8 for high throughput without throttling
-  const batchSize = 8;
+  // Process in concurrent batches of 6 for high throughput without connection throttling
+  const batchSize = 6;
   for (let i = 0; i < uniqueTickers.length; i += batchSize) {
     const batch = uniqueTickers.slice(i, i + batchSize);
     const results = await Promise.all(
@@ -739,7 +790,7 @@ export async function runCspRsiDivergenceScan(
       rejected_count: rejectedCount,
       rejection_breakdown: rejectionBreakdown,
     },
-    universe_scanned: universe,
+    universe_scanned: universeLabel,
     timestamp: new Date().toISOString(),
   };
 

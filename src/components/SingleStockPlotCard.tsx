@@ -395,8 +395,10 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
               />
             )}
 
-            {/* Hover Tooltip */}
+            {/* Hover Tooltip - Anchored to top-left corner so it does not obstruct the plot */}
             <RechartsTooltip
+              position={{ x: 65, y: 15 }}
+              isAnimationActive={false}
               content={({ active, payload }) => {
                 if (!active || !payload || !payload.length) return null;
                 const pt = payload[0]?.payload;

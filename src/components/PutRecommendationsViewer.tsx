@@ -2113,6 +2113,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       tickFormatter={(val) => `$${val}`}
                     />
                     <RechartsTooltip
+                      position={{ x: 65, y: 15 }}
+                      isAnimationActive={false}
                       content={({ active, payload }) => {
                         if (!active || !payload || !payload.length) return null;
                         const d: any = payload[0].payload;

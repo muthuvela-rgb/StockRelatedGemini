@@ -193,15 +193,26 @@ async function fetchYahooQuote(symbol: string): Promise<{
   sparkline?: number[];
 }> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    const result = json?.chart?.result?.[0];
+    let result: any = null;
+    for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
+      try {
+        const url = `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          result = json?.chart?.result?.[0];
+          if (result) break;
+        }
+      } catch {
+        // Try fallback host
+      }
+    }
+    if (!result) throw new Error(`Failed to fetch quote for ${symbol}`);
     const meta = result?.meta;
     const closes: number[] = result?.indicators?.quote?.[0]?.close?.filter((c: any) => typeof c === "number" && !isNaN(c)) || [];
 
@@ -615,15 +626,26 @@ export async function getMacroHistoricalData(duration = "1y"): Promise<MacroHist
   await Promise.all(
     symbolsToFetch.map(async ({ key, symbol }) => {
       try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d`;
-        const res = await fetch(url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-        });
-        if (!res.ok) return;
-        const json = await res.json();
-        const result = json?.chart?.result?.[0];
+        let result: any = null;
+        for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
+          try {
+            const url = `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d`;
+            const res = await fetch(url, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              },
+              signal: AbortSignal.timeout(6000),
+            });
+            if (res.ok) {
+              const json = await res.json();
+              result = json?.chart?.result?.[0];
+              if (result) break;
+            }
+          } catch {
+            // Try fallback
+          }
+        }
+        if (!result) return;
         const timestamps: number[] = result?.timestamp || [];
         const closes: number[] = result?.indicators?.quote?.[0]?.close || [];
 

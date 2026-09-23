@@ -659,6 +659,8 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                   }}
                 />
                 <RechartsTooltip
+                  position={{ x: 65, y: 15 }}
+                  isAnimationActive={false}
                   content={({ active, payload, label }) => {
                     if (!active || !payload || !payload.length) return null;
                     const rowData = payload[0]?.payload;

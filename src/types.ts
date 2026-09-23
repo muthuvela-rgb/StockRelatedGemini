@@ -645,6 +645,9 @@ export interface CspRsiDivergenceCandidate {
   vol_avg20: number | null;
   vol_today: number | null;
   vol_jump: number | null;
+  vol_up_avg20?: number | null;
+  vol_up_today?: number | null;
+  is_up_volume?: boolean;
   
   // Step 2: RSI Exhaustion check (RSI_daily < 40 OR RSI_4h < 35)
   rsi_exhaustion_passed: boolean;
@@ -667,7 +670,7 @@ export interface CspRsiDivergenceCandidate {
   bb_proximity_passed: boolean;
   bb_distance_pct: number | null;
 
-  // Step 6: Volume Confirmation (Vol_jump >= 1.5 AND Candle_today is bullish OR neutral)
+  // Step 6: Up-Volume Confirmation (Vol_jump >= 1.5x of 20d Up-Volume Avg on green candle; down volume excluded)
   vol_confirmation_passed: boolean;
   candle_status: "bullish" | "neutral" | "bearish";
   candle_details?: {

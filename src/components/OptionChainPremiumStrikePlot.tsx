@@ -778,6 +778,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 }}
               />
               <Tooltip
+                position={{ x: 65, y: 15 }}
+                isAnimationActive={false}
                 cursor={false}
                 content={({ active, payload, label }) => {
                   if (!active || !payload || !payload.length) return null;
@@ -980,6 +982,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 }}
               />
               <Tooltip
+                position={{ x: 65, y: 15 }}
+                isAnimationActive={false}
                 cursor={false}
                 content={({ active, payload }) => {
                   if (!active || !payload || !payload.length) return null;
