@@ -27,10 +27,12 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   authError: string | null;
   clearAuthError: () => void;
-  // 3-Watchlist System
+  // Multi-Watchlist System
   watchlists: UserWatchlist[];
   activeWatchlistIndex: number;
   setActiveWatchlistIndex: (index: number) => void;
+  createWatchlist: (name: string, tickers: string[], setAsActive?: boolean) => Promise<void>;
+  deleteWatchlistAtIndex: (index: number) => Promise<void>;
   updateWatchlistAtIndex: (index: number, newTickers: string[], newName?: string) => Promise<void>;
   renameWatchlistAtIndex: (index: number, newName: string) => Promise<void>;
   syncCloudWatchlists: (watchlists: UserWatchlist[], activeIndex?: number) => Promise<void>;
@@ -151,7 +153,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setActiveWatchlistIndex = (index: number) => {
-    const safeIdx = Math.min(Math.max(0, index), 2);
+    const safeIdx = Math.min(Math.max(0, index), Math.max(0, watchlists.length - 1));
     setActiveWatchlistIndexState(safeIdx);
     if (user?.uid) {
       saveUserWatchlistsToCloud(user.uid, watchlists, safeIdx).catch((err) =>
@@ -160,8 +162,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const createWatchlist = async (name: string, tickers: string[], setAsActive: boolean = true) => {
+    const cleanName = name.trim() || `Watchlist ${watchlists.length + 1}`;
+    const cleanList = Array.from(
+      new Set(tickers.map((t) => String(t).trim().toUpperCase()))
+    ).filter(Boolean);
+
+    const newId = `wl-${Date.now()}`;
+    const newWatchlist: UserWatchlist = {
+      id: newId,
+      name: cleanName,
+      tickers: cleanList,
+    };
+
+    const updated = [...watchlists, newWatchlist];
+    const newIndex = setAsActive ? updated.length - 1 : activeWatchlistIndex;
+
+    setWatchlists(updated);
+    if (setAsActive) {
+      setActiveWatchlistIndexState(newIndex);
+    }
+
+    if (user?.uid) {
+      try {
+        await saveUserWatchlistsToCloud(user.uid, updated, newIndex);
+      } catch (err) {
+        console.error("Error saving newly created watchlist to cloud:", err);
+      }
+    }
+  };
+
+  const deleteWatchlistAtIndex = async (index: number) => {
+    if (watchlists.length <= 1) {
+      throw new Error("Cannot delete the only remaining watchlist.");
+    }
+    const safeIdx = Math.min(Math.max(0, index), watchlists.length - 1);
+    const updated = watchlists.filter((_, i) => i !== safeIdx);
+
+    let nextActiveIndex = activeWatchlistIndex;
+    if (activeWatchlistIndex === safeIdx) {
+      nextActiveIndex = Math.max(0, safeIdx - 1);
+    } else if (activeWatchlistIndex > safeIdx) {
+      nextActiveIndex = activeWatchlistIndex - 1;
+    }
+    nextActiveIndex = Math.min(Math.max(0, nextActiveIndex), updated.length - 1);
+
+    setWatchlists(updated);
+    setActiveWatchlistIndexState(nextActiveIndex);
+
+    if (user?.uid) {
+      try {
+        await saveUserWatchlistsToCloud(user.uid, updated, nextActiveIndex);
+      } catch (err) {
+        console.error("Error saving watchlists to cloud after deletion:", err);
+      }
+    }
+  };
+
   const updateWatchlistAtIndex = async (index: number, newTickers: string[], newName?: string) => {
-    const safeIdx = Math.min(Math.max(0, index), 2);
+    const safeIdx = Math.min(Math.max(0, index), Math.max(0, watchlists.length - 1));
     const cleanList = Array.from(
       new Set(newTickers.map((t) => String(t).trim().toUpperCase()))
     ).filter(Boolean);
@@ -189,7 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const renameWatchlistAtIndex = async (index: number, newName: string) => {
-    const safeIdx = Math.min(Math.max(0, index), 2);
+    const safeIdx = Math.min(Math.max(0, index), Math.max(0, watchlists.length - 1));
     const cleanName = newName.trim() || `Watchlist ${safeIdx + 1}`;
 
     const updated = watchlists.map((wl, i) => (i === safeIdx ? { ...wl, name: cleanName } : wl));
@@ -209,7 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUid) {
       throw new Error("You must be signed in with Google to sync watchlists to Cloud.");
     }
-    const safeActive = activeIdx !== undefined ? Math.min(Math.max(0, activeIdx), 2) : activeWatchlistIndex;
+    const safeActive = activeIdx !== undefined ? Math.min(Math.max(0, activeIdx), Math.max(0, listsToSync.length - 1)) : activeWatchlistIndex;
     const res = await saveUserWatchlistsToCloud(currentUid, listsToSync, safeActive);
     setWatchlists(res.watchlists);
     setActiveWatchlistIndexState(res.activeIndex);
@@ -283,6 +342,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         watchlists,
         activeWatchlistIndex,
         setActiveWatchlistIndex,
+        createWatchlist,
+        deleteWatchlistAtIndex,
         updateWatchlistAtIndex,
         renameWatchlistAtIndex,
         syncCloudWatchlists,

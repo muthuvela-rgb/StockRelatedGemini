@@ -25,6 +25,7 @@ import {
 } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
 import { AccessLogEntry, AccessEventType, UserWatchlist } from "../types";
+import { QQQ_COMPONENTS } from "../data/universePresets";
 
 export const SUPERADMIN_EMAIL = "muthu.vela@gmail.com";
 
@@ -84,7 +85,7 @@ export async function signOutUser(): Promise<void> {
   await signOut(auth);
 }
 
-// User Profile & 3-Watchlist Persistence
+// User Profile & Multi-Watchlist Persistence
 export const DEFAULT_USER_WATCHLISTS: UserWatchlist[] = [
   {
     id: "wl-1",
@@ -101,6 +102,11 @@ export const DEFAULT_USER_WATCHLISTS: UserWatchlist[] = [
     name: "High Volatility & Growth",
     tickers: ["TSLA", "NVDA", "PLTR", "ARM", "AMD", "COIN", "MSTR", "SMCI", "MARA"],
   },
+  {
+    id: "wl-qqq",
+    name: "QQQ Components (Nasdaq-100)",
+    tickers: QQQ_COMPONENTS,
+  },
 ];
 
 export async function fetchUserWatchlists(
@@ -115,27 +121,37 @@ export async function fetchUserWatchlists(
     if (snap.exists()) {
       const data = snap.data();
       let activeIndex = typeof data?.activeWatchlistIndex === "number" ? data.activeWatchlistIndex : 0;
-      if (activeIndex < 0 || activeIndex > 2) activeIndex = 0;
 
-      // 1. Check if structured 3-watchlists array exists
+      // 1. Check if structured watchlists array exists
       if (Array.isArray(data?.watchlists) && data.watchlists.length > 0) {
         const loadedList: UserWatchlist[] = [];
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < data.watchlists.length; i++) {
           const item = data.watchlists[i];
-          const defaultItem = DEFAULT_USER_WATCHLISTS[i];
           if (item) {
             const cleanTickers: string[] = Array.isArray(item.tickers)
               ? Array.from(new Set(item.tickers.map((t: any) => String(t).trim().toUpperCase()))).filter((t): t is string => Boolean(t))
-              : defaultItem.tickers;
+              : [];
             loadedList.push({
               id: item.id || `wl-${i + 1}`,
-              name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : defaultItem.name,
+              name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : `Watchlist ${i + 1}`,
               tickers: cleanTickers,
             });
-          } else {
-            loadedList.push(defaultItem);
           }
         }
+
+        // Ensure QQQ Components watchlist is present
+        const hasQqqList = loadedList.some(
+          (wl) => wl.name.toLowerCase().includes("qqq") || wl.id === "wl-qqq"
+        );
+        if (!hasQqqList) {
+          loadedList.push({
+            id: "wl-qqq",
+            name: "QQQ Components (Nasdaq-100)",
+            tickers: QQQ_COMPONENTS,
+          });
+        }
+
+        if (activeIndex < 0 || activeIndex >= loadedList.length) activeIndex = 0;
         return { watchlists: loadedList, activeIndex };
       }
 
@@ -152,6 +168,7 @@ export async function fetchUserWatchlists(
           },
           DEFAULT_USER_WATCHLISTS[1],
           DEFAULT_USER_WATCHLISTS[2],
+          DEFAULT_USER_WATCHLISTS[3],
         ];
         return { watchlists: migratedList, activeIndex: 0 };
       }
@@ -172,21 +189,20 @@ export async function saveUserWatchlistsToCloud(
     throw new Error("User must be authenticated to push watchlists to Cloud Firestore.");
   }
 
-  // Ensure exactly 3 watchlists are properly sanitized
-  const sanitizedWatchlists: UserWatchlist[] = [];
-  for (let i = 0; i < 3; i++) {
-    const wl = watchlists[i] || DEFAULT_USER_WATCHLISTS[i];
+  // Ensure all watchlists are properly sanitized
+  const baseList = watchlists && watchlists.length > 0 ? watchlists : DEFAULT_USER_WATCHLISTS;
+  const sanitizedWatchlists: UserWatchlist[] = baseList.map((wl, i) => {
     const cleanTickers = Array.from(
       new Set((wl.tickers || []).map((t) => String(t).trim().toUpperCase()))
     ).filter(Boolean);
-    sanitizedWatchlists.push({
+    return {
       id: wl.id || `wl-${i + 1}`,
-      name: wl.name && wl.name.trim() ? wl.name.trim() : DEFAULT_USER_WATCHLISTS[i].name,
+      name: wl.name && wl.name.trim() ? wl.name.trim() : (DEFAULT_USER_WATCHLISTS[i]?.name || `Watchlist ${i + 1}`),
       tickers: cleanTickers,
-    });
-  }
+    };
+  });
 
-  const safeActiveIndex = Math.min(Math.max(0, activeIndex), 2);
+  const safeActiveIndex = Math.min(Math.max(0, activeIndex), sanitizedWatchlists.length - 1);
   const activeTickers = sanitizedWatchlists[safeActiveIndex].tickers;
 
   try {
@@ -207,7 +223,7 @@ export async function saveUserWatchlistsToCloud(
       },
       { merge: true }
     );
-    console.log(`[Firestore] Saved 3 watchlists for user ${effectiveUid} (active index: ${safeActiveIndex})`);
+    console.log(`[Firestore] Saved ${sanitizedWatchlists.length} watchlists for user ${effectiveUid} (active index: ${safeActiveIndex})`);
     return { watchlists: sanitizedWatchlists, activeIndex: safeActiveIndex };
   } catch (err) {
     console.error("Error saving user watchlists to Firestore:", err);

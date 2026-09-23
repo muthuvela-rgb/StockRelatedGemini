@@ -20,10 +20,13 @@ import {
   FolderOpen,
   ArrowRight,
   ListFilter,
-  Info
+  Info,
+  X,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { UserWatchlist } from "../types";
+import { QQQ_COMPONENTS, SP500_COMPONENTS, SMH_COMPONENTS } from "../data/universePresets";
 
 interface WatchlistManagerProps {
   watchlist?: string[];
@@ -32,6 +35,8 @@ interface WatchlistManagerProps {
   watchlists?: UserWatchlist[];
   activeWatchlistIndex?: number;
   onSelectWatchlistIndex?: (index: number) => void;
+  onCreateWatchlist?: (name: string, tickers: string[]) => Promise<void>;
+  onDeleteWatchlistAtIndex?: (index: number) => Promise<void>;
   onUpdateWatchlistAtIndex?: (index: number, newTickers: string[], newName?: string) => Promise<void>;
   onRenameWatchlistAtIndex?: (index: number, newName: string) => Promise<void>;
   onSyncCloudWatchlists?: (watchlists: UserWatchlist[], activeIndex?: number) => Promise<void>;
@@ -39,29 +44,53 @@ interface WatchlistManagerProps {
 
 const PRESETS = [
   {
+    name: "All Components of QQQ (Nasdaq-100)",
+    description: "Full 110-stock universe of the Invesco QQQ Trust / Nasdaq-100 index (NVDA, AAPL, MSFT, AMZN, META, GOOGL, TSLA, AVGO, PLTR, AMD, etc.)",
+    tickers: QQQ_COMPONENTS,
+    badge: "110 Stocks • Nasdaq-100",
+    highlight: true,
+  },
+  {
     name: "Default Core Watchlist",
     description: "Core semiconductors, mega-cap tech leaders, and liquid growth equities",
     tickers: ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"],
+    badge: "15 Stocks • Core",
+    highlight: false,
   },
   {
     name: "Tech & Options Leaders",
     description: "Highest option chain liquidity, tight bid-ask spreads, and active retail & institutional volume",
     tickers: ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "META", "TSLA", "AMD", "PLTR", "QQQ"],
+    badge: "10 Stocks • High Volume",
+    highlight: false,
   },
   {
-    name: "Semiconductor Powerhouses",
+    name: "Semiconductor Leaders (SMH)",
     description: "Key semiconductor fabrication, equipment, memory, and fabless AI silicon designers",
-    tickers: ["NVDA", "AMD", "AVGO", "MU", "TSM", "ARM", "AMAT", "LRCX", "QCOM", "INTC"],
+    tickers: SMH_COMPONENTS,
+    badge: "28 Stocks • High IV",
+    highlight: false,
+  },
+  {
+    name: "S&P 500 Large-Cap Equities",
+    description: "Broadest exposure to US large-cap equities with deep options liquidity",
+    tickers: SP500_COMPONENTS,
+    badge: "503 Stocks • Large Cap",
+    highlight: false,
   },
   {
     name: "Big Tech Leaders",
     description: "Mega-cap balance sheet fortresses with consistent free cash flows",
     tickers: ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "NFLX"],
+    badge: "8 Stocks • Mega-Caps",
+    highlight: false,
   },
   {
     name: "High Options Volatility",
     description: "Elevated implied volatility offering rich options premiums and rapid theta decay",
     tickers: ["TSLA", "NVDA", "PLTR", "ARM", "AMD", "COIN", "MSTR", "SMCI", "MARA"],
+    badge: "9 Stocks • Rich Theta",
+    highlight: false,
   },
 ];
 
@@ -69,6 +98,8 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   watchlist: propWatchlist,
   onUpdateWatchlist: propOnUpdateWatchlist,
   onOpenSavedTrades,
+  onCreateWatchlist: propOnCreateWatchlist,
+  onDeleteWatchlistAtIndex: propOnDeleteWatchlistAtIndex,
 }) => {
   const {
     user,
@@ -76,6 +107,8 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     watchlists,
     activeWatchlistIndex,
     setActiveWatchlistIndex,
+    createWatchlist,
+    deleteWatchlistAtIndex,
     updateWatchlistAtIndex,
     renameWatchlistAtIndex,
     syncCloudWatchlists,
@@ -93,9 +126,15 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [cloudSyncing, setCloudSyncing] = useState(false);
 
-  // Rename modal / inline state
+  // Rename state
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(activeWatchlist.name);
+
+  // Create Watchlist Modal state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newWatchlistName, setNewWatchlistName] = useState("QQQ Components (Nasdaq-100)");
+  const [selectedPresetType, setSelectedPresetType] = useState<string>("qqq");
+  const [customTickersInput, setCustomTickersInput] = useState("");
 
   const handleSelectTab = (idx: number) => {
     setActiveWatchlistIndex(idx);
@@ -109,6 +148,71 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tickers: selectedList }),
     }).catch((err) => console.error("Error syncing active watchlist tab to server:", err));
+  };
+
+  const handleCreateNewWatchlist = async (name: string, tickers: string[]) => {
+    try {
+      const cleanList = Array.from(new Set(tickers.map((t) => t.trim().toUpperCase()))).filter(Boolean);
+      const cleanName = name.trim() || `Watchlist ${watchlists.length + 1}`;
+      if (propOnCreateWatchlist) {
+        await propOnCreateWatchlist(cleanName, cleanList);
+      } else {
+        await createWatchlist(cleanName, cleanList, true);
+      }
+
+      // Sync to backend server
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tickers: cleanList }),
+      }).catch((err) => console.error("Error updating server watchlist:", err));
+
+      if (propOnUpdateWatchlist) propOnUpdateWatchlist(cleanList);
+      setSaveStatus(`Created new watchlist "${cleanName}" (${cleanList.length} tickers)`);
+      setIsCreateModalOpen(false);
+      setTimeout(() => setSaveStatus(null), 3500);
+    } catch (err: any) {
+      setSaveStatus(`Create failed: ${err?.message || "Error"}`);
+      setTimeout(() => setSaveStatus(null), 4000);
+    }
+  };
+
+  const handleCreateOrSelectQqqWatchlist = async () => {
+    const qqqIndex = watchlists.findIndex(
+      (w) => w.id === "wl-qqq" || w.name.toLowerCase().includes("qqq")
+    );
+    if (qqqIndex !== -1) {
+      handleSelectTab(qqqIndex);
+      setSaveStatus(`Switched to "${watchlists[qqqIndex].name}" (${watchlists[qqqIndex].tickers.length} tickers)`);
+      setTimeout(() => setSaveStatus(null), 3000);
+    } else {
+      await handleCreateNewWatchlist("QQQ Components (Nasdaq-100)", QQQ_COMPONENTS);
+    }
+  };
+
+  const handleDeleteWatchlist = async (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (watchlists.length <= 1) {
+      setSaveStatus("Cannot delete the only watchlist");
+      setTimeout(() => setSaveStatus(null), 3000);
+      return;
+    }
+    const target = watchlists[idx];
+    if (!window.confirm(`Are you sure you want to delete watchlist "${target.name}" (${target.tickers.length} tickers)?`)) {
+      return;
+    }
+    try {
+      if (propOnDeleteWatchlistAtIndex) {
+        await propOnDeleteWatchlistAtIndex(idx);
+      } else {
+        await deleteWatchlistAtIndex(idx);
+      }
+      setSaveStatus(`Deleted "${target.name}"`);
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err: any) {
+      setSaveStatus(`Delete failed: ${err?.message || "Error"}`);
+      setTimeout(() => setSaveStatus(null), 3000);
+    }
   };
 
   const handleStartRename = () => {
@@ -294,7 +398,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top 3-Watchlist Selector & Header */}
+      {/* Top Multi-Watchlist Selector & Header */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
           <div>
@@ -306,97 +410,185 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                 Multi-Watchlist Manager
               </h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-mono font-bold">
-                3 Watchlists per User
+                {watchlists.length} Watchlist{watchlists.length > 1 ? "s" : ""} Available
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Switch between 3 distinct watchlists. The active list powers Put Recommendations, Options Scanner, Technicals, and Fall Detector.
+              Switch between persistent watchlists or create dedicated universe lists like QQQ. The active list powers Put Recommendations, Options Scanner, Technicals, and Fall Detector.
             </p>
           </div>
 
-          {saveStatus && (
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold animate-fade-in ${
-              saveStatus.toLowerCase().includes("fail") || saveStatus.toLowerCase().includes("error")
-                ? "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-            }`}>
-              {saveStatus.toLowerCase().includes("fail") || saveStatus.toLowerCase().includes("error") ? (
-                <AlertCircle className="w-4 h-4 text-rose-400" />
-              ) : (
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-              )}
-              <span>{saveStatus}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => {
+                setNewWatchlistName("QQQ Components (Nasdaq-100)");
+                setSelectedPresetType("qqq");
+                setIsCreateModalOpen(true);
+              }}
+              className="px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-blue-900/30 cursor-pointer transition active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New Watchlist</span>
+            </button>
+
+            {saveStatus && (
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold animate-fade-in ${
+                saveStatus.toLowerCase().includes("fail") || saveStatus.toLowerCase().includes("error")
+                  ? "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                  : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              }`}>
+                {saveStatus.toLowerCase().includes("fail") || saveStatus.toLowerCase().includes("error") ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                )}
+                <span>{saveStatus}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* 3 Watchlist Tabs Switcher */}
+        {/* Dedicated QQQ 1-Click Action Banner */}
+        <div className="bg-gradient-to-r from-slate-950 via-blue-950/40 to-slate-950 border border-cyan-500/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-white font-display">
+                  QQQ Constituents Watchlist (Nasdaq-100)
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold border border-cyan-500/30">
+                  {QQQ_COMPONENTS.length} Constituents
+                </span>
+                {watchlists.some((w) => w.name.toLowerCase().includes("qqq") || w.id === "wl-qqq") && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-semibold border border-emerald-500/30 flex items-center gap-1">
+                    <Check className="w-2.5 h-2.5" />
+                    Available in Slots
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                Full 110-stock Nasdaq-100 / QQQ universe (NVDA, AAPL, MSFT, AMZN, META, GOOGL, TSLA, AVGO, PLTR, AMD...). Perfect for comprehensive systematic options scanning.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCreateOrSelectQqqWatchlist}
+              className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-cyan-900/30 cursor-pointer transition active:scale-95"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>
+                {watchlists.some((w) => w.name.toLowerCase().includes("qqq") || w.id === "wl-qqq")
+                  ? "Load QQQ Watchlist"
+                  : "Create QQQ Watchlist"}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Watchlist Tabs Switcher */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-blue-400" />
-              <span>Select Active Watchlist Slot</span>
+              <span>Watchlist Slots ({watchlists.length})</span>
             </span>
             <span className="text-[11px] text-slate-400">
               Active slot: <span className="text-emerald-400 font-bold">{activeWatchlist.name}</span>
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {watchlists.map((wl, idx) => {
               const isActive = activeWatchlistIndex === idx;
+              const isQqq = wl.id === "wl-qqq" || wl.name.toLowerCase().includes("qqq");
               return (
                 <div
-                  key={wl.id}
+                  key={wl.id || idx}
                   onClick={() => handleSelectTab(idx)}
-                  className={`relative p-4 rounded-xl border transition-all cursor-pointer select-none text-left ${
+                  className={`relative p-3.5 rounded-xl border transition-all cursor-pointer select-none text-left flex flex-col justify-between group ${
                     isActive
                       ? "bg-blue-950/40 border-blue-500/80 shadow-lg shadow-blue-950/50 ring-1 ring-blue-500/50"
                       : "bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`p-1.5 rounded-lg ${isActive ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-400"}`}>
-                        <Bookmark className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-white">
-                            {wl.name}
-                          </span>
-                          {isActive && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          Slot {idx + 1} of 3
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`p-1.5 rounded-lg ${isActive ? "bg-blue-600 text-white" : isQqq ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : "bg-slate-800 text-slate-400"}`}>
+                          {isQqq ? <Sparkles className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
                         </span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-white truncate max-w-[130px]">
+                              {wl.name}
+                            </span>
+                            {isActive && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shrink-0">
+                                Active
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            Slot {idx + 1} of {watchlists.length}
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="text-right font-mono">
-                      <span className={`text-base font-bold ${isActive ? "text-blue-300" : "text-slate-300"}`}>
-                        {wl.tickers.length}
-                      </span>
-                      <span className="text-[10px] text-slate-500 block">tickers</span>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right font-mono">
+                          <span className={`text-base font-bold ${isActive ? "text-blue-300" : "text-slate-300"}`}>
+                            {wl.tickers.length}
+                          </span>
+                          <span className="text-[9px] text-slate-500 block leading-tight">tickers</span>
+                        </div>
+
+                        {watchlists.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteWatchlist(idx, e)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition cursor-pointer"
+                            title={`Delete "${wl.name}"`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                   {/* Tickers preview */}
                   <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="truncate max-w-[200px] font-mono text-[10px]">
-                      {wl.tickers.length > 0 ? wl.tickers.slice(0, 5).join(", ") + (wl.tickers.length > 5 ? "..." : "") : "(empty list)"}
+                    <span className="truncate max-w-[160px] font-mono text-[10px] text-slate-400">
+                      {wl.tickers.length > 0 ? wl.tickers.slice(0, 4).join(", ") + (wl.tickers.length > 4 ? ` +${wl.tickers.length - 4}` : "") : "(empty list)"}
                     </span>
-                    <span className={`text-[10px] font-semibold ${isActive ? "text-blue-400" : "text-slate-500"}`}>
+                    <span className={`text-[10px] font-semibold shrink-0 ${isActive ? "text-blue-400" : "text-slate-500"}`}>
                       {isActive ? "Selected" : "Click to load"}
                     </span>
                   </div>
                 </div>
               );
             })}
+
+            {/* Quick Add New Watchlist Card */}
+            <div
+              onClick={() => {
+                setNewWatchlistName(`Watchlist ${watchlists.length + 1}`);
+                setSelectedPresetType("qqq");
+                setIsCreateModalOpen(true);
+              }}
+              className="p-3.5 rounded-xl border border-dashed border-slate-800 hover:border-blue-500/70 bg-slate-950/30 hover:bg-blue-950/20 text-slate-400 hover:text-blue-300 transition-all cursor-pointer select-none flex flex-col justify-center items-center gap-2 group min-h-[90px]"
+            >
+              <div className="p-2 rounded-xl bg-slate-800/80 group-hover:bg-blue-600 group-hover:text-white transition">
+                <Plus className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-bold text-center">New Watchlist</span>
+              <span className="text-[10px] text-slate-500 text-center font-mono">Create with QQQ or custom</span>
+            </div>
           </div>
         </div>
 
@@ -642,14 +834,27 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
           {PRESETS.map((p) => (
             <div
               key={p.name}
-              className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3 flex flex-col justify-between"
+              className={`border rounded-xl p-4 space-y-3 flex flex-col justify-between ${
+                p.highlight
+                  ? "bg-gradient-to-b from-blue-950/40 via-slate-950/70 to-slate-950/90 border-cyan-500/40 shadow-lg shadow-cyan-950/30"
+                  : "bg-slate-950/60 border-slate-800"
+              }`}
             >
               <div>
-                <h4 className="text-xs font-bold text-white flex items-center justify-between">
-                  <span>{p.name}</span>
-                  <span className="text-[10px] font-mono text-slate-400">{p.tickers.length} tickers</span>
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                    {p.highlight && <Sparkles className="w-3.5 h-3.5 text-cyan-400" />}
+                    <span>{p.name}</span>
+                  </h4>
+                  <div className="flex items-center gap-1.5">
+                    {p.badge && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/25 font-mono font-bold">
+                        {p.badge}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
                   {p.description}
                 </p>
                 <div className="mt-2 text-[11px] text-cyan-400 font-mono bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800/80 overflow-hidden text-ellipsis whitespace-nowrap">
@@ -657,25 +862,221 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60">
                 <button
                   onClick={() => handleApplyPreset(p.tickers)}
                   className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs border border-slate-700 transition cursor-pointer flex items-center gap-1"
                 >
                   <Plus className="w-3 h-3" />
-                  <span>Append to {activeWatchlist.name}</span>
+                  <span>Append</span>
                 </button>
                 <button
                   onClick={() => handleReplaceWithPreset(p.tickers)}
                   className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-lg text-xs border border-blue-500/30 transition cursor-pointer"
                 >
-                  Replace All
+                  Replace Active
+                </button>
+                <button
+                  onClick={() => handleCreateNewWatchlist(p.name, p.tickers)}
+                  className="px-2.5 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 rounded-lg text-xs border border-cyan-500/30 transition cursor-pointer flex items-center gap-1 ml-auto"
+                  title={`Create brand new watchlist with all ${p.tickers.length} tickers`}
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>New Watchlist ({p.tickers.length})</span>
                 </button>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Create New Watchlist Modal */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400">
+                  <Bookmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white font-display">
+                    Create New Watchlist
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Set up a new persistent watchlist slot synced to Cloud & Server.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Watchlist Name
+                </label>
+                <input
+                  type="text"
+                  value={newWatchlistName}
+                  onChange={(e) => setNewWatchlistName(e.target.value)}
+                  placeholder="e.g. QQQ Components (Nasdaq-100), AI Hardware, High Yield..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-blue-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Choose Initial Universe / Preset
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div
+                    onClick={() => {
+                      setSelectedPresetType("qqq");
+                      setNewWatchlistName("QQQ Components (Nasdaq-100)");
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition select-none ${
+                      selectedPresetType === "qqq"
+                        ? "bg-cyan-950/40 border-cyan-500 ring-1 ring-cyan-500/50"
+                        : "bg-slate-950/60 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>QQQ Components</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/20 px-1.5 py-0.2 rounded font-bold">
+                        {QQQ_COMPONENTS.length} stocks
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      All 110 Nasdaq-100 constituents (NVDA, AAPL, MSFT, AMZN, META, TSLA...)
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      setSelectedPresetType("sp500");
+                      setNewWatchlistName("S&P 500 Large-Caps");
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition select-none ${
+                      selectedPresetType === "sp500"
+                        ? "bg-blue-950/40 border-blue-500 ring-1 ring-blue-500/50"
+                        : "bg-slate-950/60 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">S&P 500 Large-Cap</span>
+                      <span className="text-[10px] font-mono text-blue-300 bg-blue-500/20 px-1.5 py-0.2 rounded font-bold">
+                        503 stocks
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Broad US large-cap equities with deep options liquidity
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      setSelectedPresetType("smh");
+                      setNewWatchlistName("Semiconductor Leaders (SMH)");
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition select-none ${
+                      selectedPresetType === "smh"
+                        ? "bg-purple-950/40 border-purple-500 ring-1 ring-purple-500/50"
+                        : "bg-slate-950/60 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">SMH Semiconductors</span>
+                      <span className="text-[10px] font-mono text-purple-300 bg-purple-500/20 px-1.5 py-0.2 rounded font-bold">
+                        28 stocks
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Top chipmakers, foundries, & equipment designers
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      setSelectedPresetType("custom");
+                      setNewWatchlistName(`Watchlist ${watchlists.length + 1}`);
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition select-none ${
+                      selectedPresetType === "custom"
+                        ? "bg-emerald-950/40 border-emerald-500 ring-1 ring-emerald-500/50"
+                        : "bg-slate-950/60 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">Custom / Blank</span>
+                      <span className="text-[10px] font-mono text-slate-400">Manual</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Start fresh and enter your own custom symbols
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {selectedPresetType === "custom" && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Initial Tickers (comma or space separated)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={customTickersInput}
+                    onChange={(e) => setCustomTickersInput(e.target.value.toUpperCase())}
+                    placeholder="e.g. AAPL, NVDA, TSLA, AMZN, MSFT"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono uppercase outline-none focus:border-blue-500 placeholder:normal-case placeholder:font-sans"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  let tickers: string[] = [];
+                  if (selectedPresetType === "qqq") {
+                    tickers = QQQ_COMPONENTS;
+                  } else if (selectedPresetType === "sp500") {
+                    tickers = SP500_COMPONENTS;
+                  } else if (selectedPresetType === "smh") {
+                    tickers = SMH_COMPONENTS;
+                  } else {
+                    tickers = customTickersInput
+                      .split(/[\s,]+/)
+                      .map((t) => t.trim().toUpperCase())
+                      .filter(Boolean);
+                  }
+                  handleCreateNewWatchlist(newWatchlistName, tickers);
+                }}
+                className="px-5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl text-xs font-bold cursor-pointer transition shadow-lg active:scale-95 flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Create Watchlist</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -844,18 +844,12 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               }}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
-              {watchlists && watchlists.length === 3 ? (
-                <>
-                  <option value="wl-0">
-                    Watchlist 1: {watchlists[0].name} ({watchlists[0].tickers.length} tickers) {activeWatchlistIndex === 0 ? "★" : ""}
+              {watchlists && watchlists.length > 0 ? (
+                watchlists.map((w, idx) => (
+                  <option key={w.id || idx} value={`wl-${idx}`}>
+                    Watchlist {idx + 1}: {w.name} ({w.tickers.length} tickers) {activeWatchlistIndex === idx ? "★" : ""}
                   </option>
-                  <option value="wl-1">
-                    Watchlist 2: {watchlists[1].name} ({watchlists[1].tickers.length} tickers) {activeWatchlistIndex === 1 ? "★" : ""}
-                  </option>
-                  <option value="wl-2">
-                    Watchlist 3: {watchlists[2].name} ({watchlists[2].tickers.length} tickers) {activeWatchlistIndex === 2 ? "★" : ""}
-                  </option>
-                </>
+                ))
               ) : (
                 <option value="watchlist">My Watchlist ({watchlist.length} tickers)</option>
               )}

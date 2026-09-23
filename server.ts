@@ -78,19 +78,19 @@ function saveWatchlist(tickers: string[]) {
   }
 }
 
-// QQQ Constituents Snapshot
+// QQQ Constituents Snapshot (Full 110 constituents of Invesco QQQ Trust / Nasdaq-100)
 const QQQ_CONSTITUENTS = [
-  "NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "GOOG", "TSLA", "AVGO",
-  "META", "WMT", "INTC", "CSCO", "COST", "PLTR", "AMAT", "LRCX", "NFLX", "PANW",
-  "SPCX", "KLAC", "TXN", "AMGN", "SNDK", "LIN", "MRVL", "CRWD", "TMUS", "PEP",
-  "STX", "GILD", "ADI", "SHOP", "QCOM", "BKNG", "ASML", "WDC", "ISRG", "VRTX",
-  "SBUX", "FTNT", "ADP", "ADBE", "ARM", "CEG", "INTU", "MELI", "APP", "MAR",
-  "CMCSA", "CSX", "MNST", "DASH", "CDNS", "REGN", "MDLZ", "CTAS", "ABNB", "DDOG",
-  "SNPS", "ROST", "ORLY", "WBD", "HON", "AEP", "PCAR", "LITE", "BKR", "MPWR",
-  "PDD", "TER", "FAST", "FANG", "NXPI", "PYPL", "ADSK", "AXON", "XEL",
-  "ALAB", "NBIS", "CCEP", "FER", "EXC", "IDXX", "PAYX", "TTWO", "RKLB", "ODFL",
-  "KDP", "MCHP", "ROP", "CRWV", "TRI", "WDAY", "DXCM", "MSTR", "GEHC", "ALNY",
-  "CPRT", "KHC"
+  "AAPL", "ABNB", "ADBE", "ADI", "ADP", "ADSK", "AEP", "ALAB", "ALNY", "AMAT",
+  "AMD", "AMGN", "AMZN", "ANET", "APP", "ARM", "ASML", "AVGO", "AXON", "BIIB",
+  "BKNG", "BKR", "CCEP", "CDNS", "CEG", "CHTR", "CMCSA", "COST", "CPRT", "CRDO",
+  "CRWD", "CSCO", "CSX", "CTAS", "CTSH", "DASH", "DDOG", "DXCM", "EA", "EXC",
+  "FANG", "FAST", "FTNT", "GEHC", "GILD", "GOOG", "GOOGL", "HON", "IDXX", "INTC",
+  "INTU", "ISRG", "KDP", "KHC", "KLAC", "LIN", "LITE", "LRCX", "LULU", "MAR",
+  "MCHP", "MDB", "MDLZ", "MELI", "META", "MNST", "MPWR", "MRNA", "MRVL", "MSFT",
+  "MSTR", "MU", "NBIS", "NFLX", "NVDA", "NXPI", "ODFL", "ON", "ORLY", "PANW",
+  "PAYX", "PCAR", "PDD", "PEP", "PLTR", "PYPL", "QCOM", "REGN", "RKLB", "ROP",
+  "ROST", "SBUX", "SHOP", "SMCI", "SNPS", "STX", "TEAM", "TER", "TMUS", "TSLA",
+  "TTD", "TTWO", "TXN", "VRSK", "VRTX", "WBD", "WDC", "WDAY", "XEL", "ZS"
 ];
 
 const SPY_CONSTITUENTS = [

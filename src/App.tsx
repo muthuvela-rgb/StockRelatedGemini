@@ -40,6 +40,8 @@ const AppContent: React.FC = () => {
     watchlists,
     activeWatchlistIndex,
     setActiveWatchlistIndex,
+    createWatchlist,
+    deleteWatchlistAtIndex,
     updateWatchlistAtIndex,
     renameWatchlistAtIndex,
     syncCloudWatchlists,
@@ -197,6 +199,8 @@ const AppContent: React.FC = () => {
             watchlists={watchlists}
             activeWatchlistIndex={activeWatchlistIndex}
             onSelectWatchlistIndex={setActiveWatchlistIndex}
+            onCreateWatchlist={createWatchlist}
+            onDeleteWatchlistAtIndex={deleteWatchlistAtIndex}
             onUpdateWatchlistAtIndex={updateWatchlistAtIndex}
             onRenameWatchlistAtIndex={renameWatchlistAtIndex}
             onSyncCloudWatchlists={syncCloudWatchlists}
