@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { TechnicalsData } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
 import {
   SortCriterion,
@@ -291,8 +292,10 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
                         }`}
                       >
                         <td className="px-3 py-3 font-sans font-bold text-white flex items-center gap-1.5">
-                          <span>{item.ticker}</span>
-                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>}
+                          <TickerSymbolButton
+                            ticker={item.ticker}
+                            badge={isSelected ? <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> : undefined}
+                          />
                         </td>
                         <td className="px-3 py-3 text-slate-200">
                           {formatCurrency(item.current_price)}

@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import {
   ResponsiveContainer,
   LineChart,
@@ -855,7 +856,7 @@ export const NasdaqSimulator: React.FC = () => {
                           <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-bold font-sans">
                             {i + 1}
                           </span>
-                          <span className="font-bold text-white text-sm font-sans">{stock.ticker}</span>
+                          <TickerSymbolButton ticker={stock.ticker} />
                         </div>
                       </td>
                       <td className="py-3 px-4 font-sans">
@@ -967,7 +968,9 @@ export const NasdaqSimulator: React.FC = () => {
                             <tbody className="divide-y divide-slate-800/40">
                               {evt.trades.map((tr) => (
                                 <tr key={tr.ticker} className="hover:bg-slate-800/30">
-                                  <td className="py-1 font-bold text-white">{tr.ticker}</td>
+                                  <td className="py-1 font-bold text-white">
+                                    <TickerSymbolButton ticker={tr.ticker} showHudIcon={false} />
+                                  </td>
                                   <td className="py-1">
                                     <span
                                       className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${

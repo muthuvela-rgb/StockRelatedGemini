@@ -22,6 +22,7 @@ import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { StockChartsViewer } from "./components/StockChartsViewer";
 import { RebalancingAlertBanner } from "./components/RebalancingAlertBanner";
 import { FomcAlertBanner } from "./components/FomcAlertBanner";
+import { TickerHudProvider } from "./context/TickerHudContext";
 import { LineChart, BookOpen } from "lucide-react";
 
 const AppContent: React.FC = () => {
@@ -91,6 +92,15 @@ const AppContent: React.FC = () => {
     setActiveTab("put-recommendations");
   };
 
+  const handleNavigateTabWithTicker = (tab: ActiveTab, ticker?: string) => {
+    if (ticker) {
+      if (tab === "put-recommendations") {
+        setCustomTickerForRecs(ticker);
+      }
+    }
+    setActiveTab(tab);
+  };
+
   // Auth Gate: Checking session state
   if (loading) {
     return (
@@ -114,7 +124,8 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <TickerHudProvider onNavigateTab={handleNavigateTabWithTicker}>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -235,6 +246,7 @@ const AppContent: React.FC = () => {
         </div>
       </footer>
     </div>
+    </TickerHudProvider>
   );
 };
 

@@ -1233,7 +1233,17 @@ async function getTechnicalsForTicker(ticker: string) {
     }
   }
 
-  const allTimeHigh = Math.max(maxHigh, fiftyTwoWeekHigh || 0);
+  let allTimeHigh = Math.max(maxHigh, fiftyTwoWeekHigh || 0);
+  try {
+    const multiYearChart = await fetchYahooChart(ticker, "5y", "1wk");
+    const rawLongHighs = multiYearChart?.indicators?.quote?.[0]?.high || [];
+    for (const h of rawLongHighs) {
+      if (typeof h === "number" && !isNaN(h) && h > allTimeHigh) {
+        allTimeHigh = h;
+      }
+    }
+  } catch (e) {}
+
   const distanceToAth = currentPrice && allTimeHigh ? ((currentPrice - allTimeHigh) / allTimeHigh) * 100 : null;
   const distanceTo52w = currentPrice && fiftyTwoWeekHigh ? ((currentPrice - fiftyTwoWeekHigh) / fiftyTwoWeekHigh) * 100 : null;
 
@@ -1990,10 +2000,49 @@ app.get("/api/company-profile", async (req: Request, res: Response) => {
   }
 });
 
+// Full Technical Breakdown HUD endpoint (Technical Indicators, ATH, 52W Range, Volatility, Fibonacci, Profile, Sparkline)
+app.get("/api/stock-hud", async (req: Request, res: Response) => {
+  try {
+    const rawTicker = ((req.query.ticker || req.query.symbol || req.query.tickers || "") as string).trim().toUpperCase();
+    if (!rawTicker) {
+      return res.status(400).json({ error: "ticker query parameter is required" });
+    }
+
+    const [technicals, profile, chart] = await Promise.all([
+      getTechnicalsForTicker(rawTicker),
+      getCompanyProfile(rawTicker, getGenAI()).catch(() => null),
+      fetchMarketChart(rawTicker, "6mo", "1d").catch(() => null),
+    ]);
+
+    // Build mini sparkline points for HUD
+    const timestamps = chart?.timestamp || [];
+    const closes = chart?.indicators?.quote?.[0]?.close || [];
+    const sparkline: Array<{ date: string; close: number }> = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (closes[i] !== null && closes[i] !== undefined) {
+        sparkline.push({
+          date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+          close: Number(closes[i].toFixed(2)),
+        });
+      }
+    }
+
+    res.json({
+      ticker: rawTicker,
+      technicals,
+      profile,
+      sparkline: sparkline.slice(-60),
+    });
+  } catch (e: any) {
+    console.error("Error in /api/stock-hud:", e);
+    res.status(500).json({ error: e.message || "Failed to load stock HUD breakdown" });
+  }
+});
+
 // Technicals Screen
 app.get("/api/technicals", async (req: Request, res: Response) => {
   try {
-    const tickersParam = req.query.tickers as string;
+    const tickersParam = ((req.query.tickers || req.query.ticker || "") as string);
     const tickers = tickersParam
       ? tickersParam.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
       : getWatchlist();

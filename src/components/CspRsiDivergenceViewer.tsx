@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import type { CspRsiDivergenceCandidate, CspRsiDivergenceResponse, UserWatchlist } from "../types";
 import { SP500_COMPONENTS, SMH_COMPONENTS, QQQ_COMPONENTS } from "../data/universePresets";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 
 interface CspRsiDivergenceViewerProps {
   watchlist: string[];
@@ -760,7 +761,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xl font-extrabold text-white font-mono">{c.ticker}</span>
+                      <TickerSymbolButton ticker={c.ticker} className="text-xl font-extrabold font-mono" />
                       <span className="text-sm font-semibold text-slate-300">${c.current_price.toFixed(2)}</span>
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${

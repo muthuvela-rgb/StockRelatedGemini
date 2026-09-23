@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { FallenStock } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
 
 interface FallDetectorProps {
@@ -245,7 +246,7 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-white font-display">{stock.ticker}</span>
+                        <TickerSymbolButton ticker={stock.ticker} className="text-lg font-bold font-display" />
                         <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400 font-bold text-xs">
                           {formatPct(stock.pct_change, 2, true)}
                         </span>

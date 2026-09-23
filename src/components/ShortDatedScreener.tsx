@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
 import {
   SortCriterion,
@@ -376,7 +377,10 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
                 sortedRecords.map((r, i) => (
                   <tr key={i} className="hover:bg-slate-800/50 transition-colors">
                     <td className="px-4 py-3 font-sans font-bold text-white">
-                      {r.ticker}
+                      <TickerSymbolButton
+                        ticker={r.ticker}
+                        spotPrice={r.current_price}
+                      />
                     </td>
                     <td className="px-3 py-3 text-slate-300">
                       {r.expiration} <span className="text-amber-400 font-bold">({r.days_to_expiration}d)</span>

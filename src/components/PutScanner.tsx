@@ -43,6 +43,7 @@ import {
 } from "recharts";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
 import { TableTopScrollbar } from "./TableTopScrollbar";
 import {
@@ -1905,15 +1906,20 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       className="hover:bg-slate-800/50 transition-colors font-mono"
                     >
                       <td className="px-4 py-3 font-sans font-bold text-white flex items-center gap-2">
-                        <span>{r.ticker}</span>
-                        {r.bid_used_fallback && (
-                          <span
-                            className="text-[10px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-sans"
-                            title="Bid was 0, last traded price used as fallback"
-                          >
-                            fallback
-                          </span>
-                        )}
+                        <TickerSymbolButton
+                          ticker={r.ticker}
+                          spotPrice={r.current_price}
+                          badge={
+                            r.bid_used_fallback ? (
+                              <span
+                                className="text-[10px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-sans"
+                                title="Bid was 0, last traded price used as fallback"
+                              >
+                                fallback
+                              </span>
+                            ) : undefined
+                          }
+                        />
                       </td>
                       <td className="px-3 py-3 text-slate-300">
                         {r.expiration}{" "}

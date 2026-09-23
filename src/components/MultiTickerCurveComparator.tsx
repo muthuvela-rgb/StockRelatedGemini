@@ -50,6 +50,7 @@ import {
   TableSortHeader,
 } from "./HierarchicalSortControl";
 import { TableTopScrollbar } from "./TableTopScrollbar";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 
 type MultiTableSortKey =
   | "ticker"
@@ -912,12 +913,16 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                               className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
                               style={{ backgroundColor: color }}
                             />
-                            <span className="font-bold text-white text-sm">{item.ticker}</span>
-                            {idx === 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-sans font-bold">
-                                #1 Yield
-                              </span>
-                            )}
+                            <TickerSymbolButton
+                              ticker={item.ticker}
+                              badge={
+                                idx === 0 ? (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-sans font-bold">
+                                    #1 Yield
+                                  </span>
+                                ) : undefined
+                              }
+                            />
                           </div>
                         </td>
 

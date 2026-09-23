@@ -34,6 +34,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import { ActiveTab } from "./Header";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import {
@@ -1890,8 +1891,10 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       className="hover:bg-slate-800/40 transition-colors"
                     >
                       <td className="py-3 px-3.5">
-                        <div className="font-bold text-white">{item.ticker}</div>
-                        <div className="text-[10px] text-slate-400">${item.current_price.toFixed(2)}</div>
+                        <TickerSymbolButton
+                          ticker={item.ticker}
+                          spotPrice={item.current_price}
+                        />
                       </td>
                       <td className="py-3 px-3 font-bold text-cyan-300 text-sm">
                         ${item.strike.toFixed(2)}

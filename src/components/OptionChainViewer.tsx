@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { OptionChainResponse, OptionGreeks } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
+import { TickerSymbolButton } from "../context/TickerHudContext";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { OptionChainPremiumStrikePlot } from "./OptionChainPremiumStrikePlot";
 import {
@@ -471,8 +472,9 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
       {chainData && (
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-4">
-              <span className="font-bold text-white text-sm">{chainData.ticker} Spot Price:</span>
+            <div className="flex items-center gap-3">
+              <TickerSymbolButton ticker={chainData.ticker} className="text-base font-bold" />
+              <span className="text-slate-400 font-mono text-xs">Spot Price:</span>
               <span className="text-lg font-mono font-bold text-blue-400">${chainData.current_price.toFixed(2)}</span>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-slate-400 font-mono">
