@@ -324,7 +324,7 @@ export const OptionPointDetailInspector: React.FC<OptionPointDetailInspectorProp
                 : "bg-blue-500/20 text-blue-300 border-blue-500/30"
             }`}
           >
-            {isAtm ? "At-the-Money (ATM)" : isOtm ? `OTM (${bufferDisplay.toFixed(1)}% Cushion)` : "In-the-Money (ITM)"}
+            {isAtm ? "At-the-Money (ATM)" : isOtm ? `OTM (${bufferDisplay.toFixed(1)}% Moneyness)` : "In-the-Money (ITM)"}
           </span>
         </div>
 

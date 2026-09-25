@@ -66,7 +66,7 @@ const STRIKE_RANGE_COLUMNS: ColumnDefinition<StrikeRangeSortKey>[] = [
   { key: "avg_cash_return", label: "Avg Cash Return", defaultDirection: "desc", numeric: true },
   { key: "avg_margin_return", label: "Avg Margin Return", defaultDirection: "desc", numeric: true },
   { key: "avg_premium", label: "Avg Premium", defaultDirection: "desc", numeric: true },
-  { key: "cushion_to_strike_pct", label: "Downside Cushion %", defaultDirection: "desc", numeric: true },
+  { key: "cushion_to_strike_pct", label: "Moneyness %", defaultDirection: "desc", numeric: true },
   { key: "snapped_strike", label: "Listed Strike", defaultDirection: "asc", numeric: true },
   { key: "key", label: "Strike (% Spot)", defaultDirection: "asc", numeric: true, extractor: (s: any) => s.target_strike ?? 0 },
   { key: "avg_iv", label: "Avg IV %", defaultDirection: "desc", numeric: true },
@@ -75,8 +75,8 @@ const STRIKE_RANGE_COLUMNS: ColumnDefinition<StrikeRangeSortKey>[] = [
 
 const STRIKE_RANGE_PRESETS: SortPreset<StrikeRangeSortKey>[] = [
   {
-    label: "Yield Rank: Cash Return ➔ Cushion ➔ Premium",
-    description: "Highest average annualized cash return with secondary cushion safety",
+    label: "Yield Rank: Cash Return ➔ Moneyness ➔ Premium",
+    description: "Highest average annualized cash return with secondary moneyness safety",
     criteria: [
       { field: "avg_cash_return", direction: "desc" },
       { field: "cushion_to_strike_pct", direction: "desc" },
@@ -84,8 +84,8 @@ const STRIKE_RANGE_PRESETS: SortPreset<StrikeRangeSortKey>[] = [
     ],
   },
   {
-    label: "Downside Safety: Cushion ➔ Cash Return ➔ Strike",
-    description: "Deepest OTM buffer first, sorted by cash-secured return",
+    label: "Downside Safety: Moneyness ➔ Cash Return ➔ Strike",
+    description: "Deepest OTM moneyness buffer first, sorted by cash-secured return",
     criteria: [
       { field: "cushion_to_strike_pct", direction: "desc" },
       { field: "avg_cash_return", direction: "desc" },
@@ -623,7 +623,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                           { id: "premium", label: "Premium ($)" },
                           { id: "cash_return", label: "Cash Return (Ann %)" },
                           { id: "iv", label: "Implied Vol (IV %)" },
-                          { id: "cushion", label: "Cushion (%)" },
+                          { id: "cushion", label: "Moneyness (%)" },
                           { id: "margin_return", label: "Margin Return (Ann %)" },
                         ].map((m) => (
                           <button
@@ -854,7 +854,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                             : rangePlotMetric === "iv"
                             ? "Implied Volatility (IV %)"
                             : rangePlotMetric === "cushion"
-                            ? "Downside Cushion (%)"
+                            ? "Moneyness (% of Spot)"
                             : "Margin Return (Ann %)",
                         angle: -90,
                         position: "insideLeft",
@@ -892,7 +892,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                                 if (rangePlotMetric === "premium") valStr = `$${strikeData.premium.toFixed(2)}`;
                                 else if (rangePlotMetric === "cash_return") valStr = `${strikeData.annualized_return_cash_secured.toFixed(1)}%`;
                                 else if (rangePlotMetric === "iv") valStr = `${strikeData.implied_volatility.toFixed(1)}% IV`;
-                                else if (rangePlotMetric === "cushion") valStr = `${strikeData.cushion_to_strike_pct.toFixed(1)}% Cushion`;
+                                else if (rangePlotMetric === "cushion") valStr = `${strikeData.cushion_to_strike_pct.toFixed(1)}% Moneyness`;
                                 else valStr = `${strikeData.annualized_return_margin.toFixed(1)}%`;
 
                                 return (
@@ -1074,7 +1074,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                           />
                           <TableSortHeader
                             field="cushion_to_strike_pct"
-                            label="Downside Cushion"
+                            label="Moneyness %"
                             criteria={strikeSortCriteria}
                             onSortClick={handleStrikeSort}
                             className="pb-2 font-medium"
@@ -1131,7 +1131,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                                 <span className="text-slate-400 text-[10px] font-normal">(${s.target_strike})</span>
                               </td>
                               <td className="py-2.5 text-slate-300 font-semibold">${s.snapped_strike}</td>
-                              <td className="py-2.5 text-slate-300">{s.cushion_to_strike_pct}% OTM</td>
+                              <td className="py-2.5 text-cyan-300 font-semibold">{s.cushion_to_strike_pct}% Moneyness</td>
                               <td className="py-2.5 text-slate-200 font-semibold">${s.avg_premium.toFixed(2)}</td>
                               <td className="py-2.5 text-emerald-400 font-bold">{s.avg_cash_return.toFixed(1)}% /yr</td>
                               <td className="py-2.5 text-blue-400 font-medium">{s.avg_margin_return.toFixed(1)}% /yr</td>

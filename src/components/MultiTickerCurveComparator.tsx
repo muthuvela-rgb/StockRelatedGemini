@@ -270,7 +270,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
       case "iv":
         return "Implied Volatility (IV %)";
       case "cushion":
-        return "Downside Cushion (%)";
+        return "Moneyness (%)";
       case "margin_return":
         return "Margin Return (Ann %)";
     }
@@ -422,7 +422,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
               <option value="cash_return">💵 Cash-Secured Annual Return (%)</option>
               <option value="premium">💰 Option Premium ($)</option>
               <option value="iv">📈 Implied Volatility (IV %)</option>
-              <option value="cushion">🛡️ Downside Cushion to Strike (%)</option>
+              <option value="cushion">🎯 Moneyness to Strike (%)</option>
               <option value="margin_return">⚡ Annualized Margin Return (%)</option>
             </select>
           </div>
@@ -684,7 +684,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                             } else if (primaryMetric === "iv") {
                               valDisplay = `${contract.iv?.toFixed(1) || 0}% IV`;
                             } else if (primaryMetric === "cushion") {
-                              valDisplay = `${contract.cushion?.toFixed(1) || 0}% Cushion`;
+                              valDisplay = `${contract.cushion?.toFixed(1) || 0}% Moneyness`;
                             } else if (primaryMetric === "margin_return") {
                               valDisplay = `${contract.returnMargin?.toFixed(1) || 0}% Ann.`;
                             }

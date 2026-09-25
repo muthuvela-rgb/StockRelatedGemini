@@ -10,6 +10,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  RotateCcw,
+  SlidersHorizontal,
 } from "lucide-react";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
@@ -27,7 +29,13 @@ import {
   TableSortHeader,
 } from "./HierarchicalSortControl";
 import { TableTopScrollbar } from "./TableTopScrollbar";
-import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import {
+  MoneynessRangeSlider,
+  CashReturnRangeSlider,
+  OptionPremiumRangeSlider,
+  RsiRangeSlider,
+  DeltaRangeSlider,
+} from "./sliders";
 
 type ShortDatedSortKey =
   | "ticker"
@@ -96,10 +104,12 @@ interface ShortDatedScreenerProps {
 
 export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlist }) => {
   const [maxDte, setMaxDte] = useState(15);
-  const [minBid, setMinBid] = useState(2.0);
-  const [maxMoneyness, setMaxMoneyness] = useState(90.0);
   const [minMarketCapB, setMinMarketCapB] = useState(5.0);
   const [universe, setUniverse] = useState<"qqq" | "watchlist">("qqq");
+  const [moneynessRange, setMoneynessRange] = useState<[number, number]>([40, 95]);
+  const [cashReturnRange, setCashReturnRange] = useState<[number, number]>([0, 100]);
+  const [premiumRange, setPremiumRange] = useState<[number, number]>([2.0, 50]);
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<PutOptionRecord[]>([]);
@@ -123,8 +133,8 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
           minDays: 1,
           maxDays: maxDte,
           strikeMode: "band",
-          pctLow: 40,
-          pctHigh: maxMoneyness,
+          pctLow: 20,
+          pctHigh: 120,
           noMargin: true,
           marginShockPct: 15.0,
         }),
@@ -132,15 +142,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
 
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
-
-      const filtered = (data.records || []).filter((r: PutOptionRecord) => {
-        if (r.bid < minBid) return false;
-        if (r.moneyness_pct > maxMoneyness) return false;
-        if (r.market_cap && r.market_cap < minMarketCapB * 1e9) return false;
-        return true;
-      });
-
-      setRecords(filtered);
+      setRecords(data.records || []);
     } catch (e: any) {
       setError(e.message || "Failed to scan short-dated puts");
     } finally {
@@ -161,12 +163,38 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
   };
 
   const displayRecords = useMemo(() => {
-    if (deltaRange[0] <= 0.001 && deltaRange[1] >= 0.999) return records;
     return records.filter((r) => {
-      const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
-      return d >= deltaRange[0] && d <= deltaRange[1];
+      // 1. Delta Greek Range
+      if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
+        const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
+        if (d < deltaRange[0] || d > deltaRange[1]) return false;
+      }
+      // 2. Moneyness Band
+      if (r.moneyness_pct < moneynessRange[0] || r.moneyness_pct > moneynessRange[1]) {
+        return false;
+      }
+      // 3. Cash Return
+      const cashYield = r.annualized_return_pct_cash_secured ?? r.annualized_return_pct ?? 0;
+      if (cashYield < cashReturnRange[0]) return false;
+      if (cashReturnRange[1] < 100 && cashYield > cashReturnRange[1]) return false;
+
+      // 4. Premium
+      const prem = r.bid > 0 ? r.bid : (r.last_price > 0 ? r.last_price : 0);
+      if (prem < premiumRange[0]) return false;
+      if (premiumRange[1] < 50 && prem > premiumRange[1]) return false;
+
+      // 5. RSI (14) Momentum
+      if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+        if (r.rsi_14 !== null && r.rsi_14 !== undefined) {
+          if (r.rsi_14 < rsiRange[0] || r.rsi_14 > rsiRange[1]) return false;
+        }
+      }
+      // 6. Market Cap
+      if (r.market_cap && r.market_cap < minMarketCapB * 1e9) return false;
+
+      return true;
     });
-  }, [records, deltaRange]);
+  }, [records, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, minMarketCapB]);
 
   const sortedRecords = useMemo(() => {
     return applyHierarchicalSort(displayRecords, sortCriteria, SHORT_DATED_COLUMNS);
@@ -187,7 +215,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
               Short-Dated Put Screener (Weekly / High Theta)
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Filters for premium-rich short DTE (≤ {maxDte} days) options with strong safety cushion (moneyness ≤ {maxMoneyness}%) and liquid bid prices (≥ ${minBid}).
+              Screen for high-theta short DTE options with dynamic moneyness, cash return, premium, RSI momentum, and delta controls.
             </p>
           </div>
 
@@ -201,7 +229,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5">
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">Universe</label>
             <select
@@ -230,36 +258,80 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Min Bid Premium ($)</label>
-            <input
-              type="number"
-              step="0.25"
-              value={minBid}
-              onChange={(e) => setMinBid(parseFloat(e.target.value) || 0)}
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Min Market Cap</label>
+            <select
+              value={minMarketCapB}
+              onChange={(e) => setMinMarketCapB(parseFloat(e.target.value))}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Max Moneyness % (Safety)</label>
-            <input
-              type="number"
-              step="1"
-              value={maxMoneyness}
-              onChange={(e) => setMaxMoneyness(parseFloat(e.target.value) || 90)}
-              className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs outline-none"
-            />
+            >
+              <option value="1">$1 Billion+</option>
+              <option value="5">$5 Billion+</option>
+              <option value="10">$10 Billion+ (Large Cap)</option>
+              <option value="50">$50 Billion+ (Mega Cap)</option>
+            </select>
           </div>
         </div>
 
-        {/* Delta Greek Range Slider */}
-        <div className="mt-4 pt-4 border-t border-slate-800">
-          <DeltaRangeSlider
-            minDelta={deltaRange[0]}
-            maxDelta={deltaRange[1]}
-            onChange={setDeltaRange}
-            compact={true}
-          />
+        {/* 5-Slider Deck: Moneyness Band, Cash Return, Option Premium, RSI (14), and Delta Greek */}
+        <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                Dynamic Screener Filter Deck
+              </span>
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                <strong className={displayRecords.length === 0 ? "text-rose-400" : "text-amber-400"}>
+                  {displayRecords.length}
+                </strong>
+                {" "}/ {records.length} contracts
+              </span>
+            </div>
+
+            {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMoneynessRange([40, 95]);
+                  setCashReturnRange([0, 100]);
+                  setPremiumRange([2.0, 50]);
+                  setRsiRange([0, 100]);
+                  setDeltaRange([0.0, 1.0]);
+                }}
+                className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset All Filter Sliders</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <MoneynessRangeSlider
+              range={moneynessRange}
+              onChange={setMoneynessRange}
+            />
+            <CashReturnRangeSlider
+              range={cashReturnRange}
+              onChange={setCashReturnRange}
+            />
+            <OptionPremiumRangeSlider
+              range={premiumRange}
+              onChange={setPremiumRange}
+            />
+            <RsiRangeSlider
+              range={rsiRange}
+              onChange={setRsiRange}
+            />
+          </div>
+
+          {/* Delta Greek Range Slider - Moved to next line and made bigger so wide windows never squash it */}
+          <div className="mt-3.5 w-full">
+            <DeltaRangeSlider
+              range={deltaRange}
+              onChange={setDeltaRange}
+            />
+          </div>
         </div>
       </div>
 

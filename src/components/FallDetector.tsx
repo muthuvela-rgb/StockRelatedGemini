@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   TrendingDown,
   AlertTriangle,
@@ -18,6 +18,7 @@ import { FallenStock } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
+import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
 
 interface FallDetectorProps {
   watchlist: string[];
@@ -27,6 +28,7 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
   const [lookbackDays, setLookbackDays] = useState(7);
   const [fallThresholdPct, setFallThresholdPct] = useState(8.0);
   const [minMarketCapB, setMinMarketCapB] = useState(5.0); // $5B
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [universe, setUniverse] = useState<"qqq" | "watchlist" | "custom">("qqq");
   const [customTickers, setCustomTickers] = useState("NVDA, AMD, INTC, MU, TSLA, AAPL, AMZN, MSFT, META, GOOGL, NFLX, PLTR, ARM");
   const [loading, setLoading] = useState(false);
@@ -66,6 +68,18 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
   useEffect(() => {
     runDetector();
   }, [universe]);
+
+  const filteredResults = useMemo(() => {
+    return results.filter((stock) => {
+      if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+        const rsi = stock.technicals?.rsi_14;
+        if (rsi !== null && rsi !== undefined) {
+          if (rsi < rsiRange[0] || rsi > rsiRange[1]) return false;
+        }
+      }
+      return true;
+    });
+  }, [results, rsiRange]);
 
   return (
     <div className="space-y-6">
@@ -168,6 +182,18 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
             />
           </div>
         )}
+
+        {/* RSI (14) Momentum Range Slider */}
+        <div className="pt-4 mt-4 border-t border-slate-800">
+          <RsiRangeSlider
+            range={rsiRange}
+            onChange={setRsiRange}
+            badgeCount={{
+              filtered: filteredResults.length,
+              total: results.length,
+            }}
+          />
+        </div>
       </div>
 
       {error && (
@@ -188,9 +214,9 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
         />
         <StatCard
           label="Fallen Stocks Detected"
-          value={results.length}
-          subValue={`≥ ${fallThresholdPct}% drop`}
-          trend={results.length > 0 ? "down" : "neutral"}
+          value={filteredResults.length}
+          subValue={results.length !== filteredResults.length ? `Filtered from ${results.length} (≥ ${fallThresholdPct}% drop)` : `≥ ${fallThresholdPct}% drop`}
+          trend={filteredResults.length > 0 ? "down" : "neutral"}
           icon={<TrendingDown className="w-4 h-4 text-rose-400" />}
         />
         <StatCard
@@ -217,18 +243,22 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
           </div>
         )}
 
-        {!loading && results.length === 0 && (
+        {!loading && filteredResults.length === 0 && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
             <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto mb-3 opacity-80" />
-            <h3 className="text-base font-bold text-white">No Fallen Stocks Detected</h3>
+            <h3 className="text-base font-bold text-white">
+              {results.length > 0 ? "No Stocks Match RSI Filter" : "No Fallen Stocks Detected"}
+            </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-              No equities in the selected universe fell more than {fallThresholdPct}% over the last {lookbackDays} days with market cap ≥ ${minMarketCapB}B.
+              {results.length > 0
+                ? `${results.length} stocks fell ≥ ${fallThresholdPct}%, but none match current RSI range (${rsiRange[0]}–${rsiRange[1]}). Try resetting the RSI slider.`
+                : `No equities in the selected universe fell more than ${fallThresholdPct}% over the last ${lookbackDays} days with market cap ≥ $${minMarketCapB}B.`}
             </p>
           </div>
         )}
 
         {!loading &&
-          results.map((stock) => {
+          filteredResults.map((stock) => {
             const tech = stock.technicals;
             const ctx = stock.context;
             const rsi = tech?.rsi_14;

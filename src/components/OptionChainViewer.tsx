@@ -103,6 +103,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
   const [selectedContract, setSelectedContract] = useState<OptionGreeks | null>(null);
   const [tableExpFilter, setTableExpFilter] = useState<string>("ALL");
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
 
@@ -273,7 +274,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
-  // Filter rows by strike range, delta range, expiration days range, and table expiration filter
+  // Filter rows by strike range, delta range, expiration days range, RSI range, and table expiration filter
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       const matchStrike = r.strike >= strikeRange[0] && r.strike <= strikeRange[1];
@@ -283,9 +284,16 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
       const matchDelta = absDelta >= deltaRange[0] && absDelta <= deltaRange[1];
       const contractDte = getContractDte(r, selectedExp);
       const matchDte = contractDte >= dteRange[0] && contractDte <= dteRange[1];
-      return matchStrike && matchExp && matchDelta && matchDte;
+      let matchRsi = true;
+      if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+        const rsi = chainData?.rsi_14;
+        if (rsi !== null && rsi !== undefined) {
+          matchRsi = rsi >= rsiRange[0] && rsi <= rsiRange[1];
+        }
+      }
+      return matchStrike && matchExp && matchDelta && matchDte && matchRsi;
     });
-  }, [rows, strikeRange, deltaRange, dteRange, selectedExp, tableExpFilter, chainData]);
+  }, [rows, strikeRange, deltaRange, dteRange, rsiRange, selectedExp, tableExpFilter, chainData]);
 
   const optionChainColumns: ColumnDefinition<OptionChainSortKey>[] = useMemo(() => {
     const spot = chainData?.current_price || 0;
@@ -300,7 +308,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
       },
       {
         key: "cushion",
-        label: "Cushion / Moneyness %",
+        label: "Moneyness %",
         defaultDirection: "desc",
         numeric: true,
         extractor: (r: OptionGreeks) => {
@@ -396,7 +404,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [tab, selectedExp, tableExpFilter, strikeRange, deltaRange, dteRange, ticker, sortCriteria]);
+  }, [tab, selectedExp, tableExpFilter, strikeRange, deltaRange, dteRange, rsiRange, ticker, sortCriteria]);
 
   const paginatedRows = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -607,6 +615,8 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           onDteRangeChange={setDteRange}
           dataMinDte={minDteAvailable}
           dataMaxDte={maxDteAvailable}
+          rsiRange={rsiRange}
+          onRsiRangeChange={setRsiRange}
           selectedContract={selectedContract}
           selectedContractSymbol={selectedContract?.contractSymbol}
           onSelectContract={(c) => setSelectedContract(c)}
@@ -642,13 +652,40 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
               </span>
             )}
             {(strikeRange[0] > dataMinStrike || strikeRange[1] < dataMaxStrike) && (
-              <span className="text-[11px] text-cyan-400 font-mono">
-                (Strikes: ${strikeRange[0].toFixed(1)} – ${strikeRange[1].toFixed(1)})
+              <span className="text-[11px] text-sky-400 font-mono bg-sky-950/40 px-2 py-0.5 rounded border border-sky-800/40 flex items-center gap-1">
+                Strikes: ${strikeRange[0].toFixed(1)} – ${strikeRange[1].toFixed(1)}
+                <button
+                  onClick={() => setStrikeRange([dataMinStrike, dataMaxStrike])}
+                  className="text-sky-300 hover:text-white ml-0.5 font-bold cursor-pointer"
+                  title="Reset Strike Price filter"
+                >
+                  ×
+                </button>
               </span>
             )}
             {(deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
-              <span className="text-[11px] text-purple-400 font-mono bg-purple-950/40 px-2 py-0.5 rounded border border-purple-800/40">
-                Δ {deltaRange[0].toFixed(2)} – {deltaRange[1].toFixed(2)}
+              <span className="text-[11px] text-purple-400 font-mono bg-purple-950/40 px-2 py-0.5 rounded border border-purple-800/40 flex items-center gap-1">
+                |Δ| {deltaRange[0].toFixed(2)} – {deltaRange[1].toFixed(2)}
+                <button
+                  onClick={() => setDeltaRange([0.0, 1.0])}
+                  className="text-purple-300 hover:text-white ml-0.5 font-bold cursor-pointer"
+                  title="Reset Delta filter"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {(rsiRange[0] > 0 || rsiRange[1] < 100) && (
+              <span className="text-[11px] text-violet-400 font-mono bg-violet-950/40 px-2 py-0.5 rounded border border-violet-800/40 flex items-center gap-1">
+                <Activity className="w-3 h-3 text-violet-400" />
+                RSI: {rsiRange[0]} – {rsiRange[1]}
+                <button
+                  onClick={() => setRsiRange([0, 100])}
+                  className="text-violet-300 hover:text-white ml-0.5 font-bold cursor-pointer"
+                  title="Reset RSI filter"
+                >
+                  ×
+                </button>
               </span>
             )}
           </div>
@@ -717,11 +754,11 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
                 />
                 <TableSortHeader
                   field="cushion"
-                  label="Cushion / Moneyness"
+                  label="Moneyness %"
                   criteria={sortCriteria}
                   onSortClick={handleSort}
                   className="px-3 py-3"
-                  title={tab === "puts" ? "Downside safety cushion % from spot (and Moneyness %)" : "Upside cushion % from spot (and Moneyness %)"}
+                  title={tab === "puts" ? "Moneyness (% difference of Strike from Spot price)" : "Moneyness (% difference of Strike from Spot price)"}
                 />
                 <TableSortHeader
                   field="annReturn"
@@ -813,13 +850,14 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
                     ) : (
                       <div className="py-8 flex flex-col items-center justify-center gap-2.5">
                         <p className="text-slate-400 font-sans text-xs max-w-md">
-                          No option contracts found matching active criteria (DTE: {dteRange[0]}–{dteRange[1]}d, Strikes: ${strikeRange[0].toFixed(1)}–${strikeRange[1].toFixed(1)}, Delta: {deltaRange[0].toFixed(2)}–{deltaRange[1].toFixed(2)}).
+                          No option contracts found matching active criteria (DTE: {dteRange[0]}–{dteRange[1]}d, Strikes: ${strikeRange[0].toFixed(1)}–${strikeRange[1].toFixed(1)}, Delta: {deltaRange[0].toFixed(2)}–{deltaRange[1].toFixed(2)}{rsiRange[0] > 0 || rsiRange[1] < 100 ? `, RSI: ${rsiRange[0]}–${rsiRange[1]}` : ""}).
                         </p>
                         <button
                           onClick={() => {
                             setDteRange([minDteAvailable, maxDteAvailable]);
                             setStrikeRange([dataMinStrike, dataMaxStrike]);
                             setDeltaRange([0.0, 1.0]);
+                            setRsiRange([0, 100]);
                             setTableExpFilter("ALL");
                           }}
                           className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5 font-sans"

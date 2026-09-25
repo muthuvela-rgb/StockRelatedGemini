@@ -17,8 +17,11 @@ import { formatCurrency, formatPct } from "../lib/utils";
 import { OptionPointDetailInspector } from "./OptionPointDetailInspector";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
+import { StrikeRangeSlider } from "./sliders/StrikeRangeSlider";
+import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
 import {
   Sliders,
+  SlidersHorizontal,
   Maximize2,
   Minimize2,
   TrendingUp,
@@ -70,6 +73,8 @@ interface OptionChainPremiumStrikePlotProps {
   onDteRangeChange?: (newRange: [number, number]) => void;
   dataMinDte?: number;
   dataMaxDte?: number;
+  rsiRange?: [number, number];
+  onRsiRangeChange?: (newRange: [number, number]) => void;
   onSelectContract?: (contract: OptionGreeks | null) => void;
   selectedContract?: OptionGreeks | null;
   selectedContractSymbol?: string | null;
@@ -132,6 +137,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   onDteRangeChange,
   dataMinDte = 0,
   dataMaxDte = 365,
+  rsiRange,
+  onRsiRangeChange,
   onSelectContract,
   selectedContract,
   selectedContractSymbol,
@@ -145,6 +152,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const [showAllExpsInPlot, setShowAllExpsInPlot] = useState(true);
   const [internalDeltaRange, setInternalDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [internalDteRange, setInternalDteRange] = useState<[number, number]>([dataMinDte, dataMaxDte]);
+  const [internalRsiRange, setInternalRsiRange] = useState<[number, number]>([0, 100]);
 
   const activeDeltaRange = deltaRange || internalDeltaRange;
   const handleDeltaChange = (newRange: [number, number]) => {
@@ -161,6 +169,31 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     }
     setInternalDteRange(newRange);
   };
+
+  const activeRsiRange = rsiRange || internalRsiRange;
+  const handleRsiChange = (newRange: [number, number]) => {
+    if (onRsiRangeChange) {
+      onRsiRangeChange(newRange);
+    }
+    setInternalRsiRange(newRange);
+  };
+
+  const handleResetAllSliders = () => {
+    onStrikeRangeChange([dataMinStrike, dataMaxStrike]);
+    handleDeltaChange([0.0, 1.0]);
+    handleDteChange([dataMinDte, dataMaxDte]);
+    handleRsiChange([0, 100]);
+  };
+
+  const hasAnyActiveSlider =
+    strikeRange[0] > dataMinStrike ||
+    strikeRange[1] < dataMaxStrike ||
+    activeDeltaRange[0] > 0.001 ||
+    activeDeltaRange[1] < 0.999 ||
+    activeDteRange[0] > dataMinDte ||
+    activeDteRange[1] < dataMaxDte ||
+    activeRsiRange[0] > 0 ||
+    activeRsiRange[1] < 100;
 
   const getExpDte = (exp: string): number => {
     const chain = allChainsMap[exp];
@@ -309,6 +342,13 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const singleExpChartData = useMemo(() => {
     if (isAllExp) return [];
 
+    // Filter by RSI if ticker RSI is known
+    const matchRsi =
+      rsi_14 === null ||
+      rsi_14 === undefined ||
+      (rsi_14 >= activeRsiRange[0] && rsi_14 <= activeRsiRange[1]);
+    if (!matchRsi) return [];
+
     const [dMin, dMax] = activeDeltaRange;
     const [minDte, maxDte] = activeDteRange;
     // Map unique strikes in strike, delta, and DTE range
@@ -352,11 +392,18 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     });
 
     return Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
-  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, currentPrice, tab, selectedExp]);
+  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, currentPrice, tab, selectedExp]);
 
   // 2. DATA PREPARATION FOR ALL EXPIRATIONS MODE
   const allExpChartData = useMemo(() => {
     if (!isAllExp) return [];
+
+    // Filter by RSI if ticker RSI is known
+    const matchRsi =
+      rsi_14 === null ||
+      rsi_14 === undefined ||
+      (rsi_14 >= activeRsiRange[0] && rsi_14 <= activeRsiRange[1]);
+    if (!matchRsi) return [];
 
     const [dMin, dMax] = activeDeltaRange;
     const [minDte, maxDte] = activeDteRange;
@@ -417,7 +464,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       });
       return pt;
     });
-  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, metric, currentPrice, selectedExp]);
+  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, metric, currentPrice, selectedExp]);
 
   // Handle strike slider adjustments
   const handleMinSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -535,157 +582,76 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
         </div>
       </div>
 
-      {/* Strike Price Range Slider Controls */}
-      <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* 4-Slider Range & Filter Deck (Exact same look and feel as Put Option Scanner) */}
+      <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-bold text-white uppercase tracking-wider">
-              Strike Price Range Slider
+            <SlidersHorizontal className="w-4 h-4 text-blue-400" />
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              Option Chain Range & Filter Deck
             </span>
-            <span className="text-xs text-slate-400 font-mono">
-              [${minSlider.toFixed(1)} - ${maxSlider.toFixed(1)}]
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-slate-400">
-              Min:{" "}
-              <strong className="text-slate-200 font-mono">${minSlider.toFixed(1)}</strong>{" "}
-              <span className="text-[11px] text-slate-400">
-                ({Number(pctFromSpotMin) > 0 ? `+${pctFromSpotMin}` : pctFromSpotMin}%)
+            {hasAnyActiveSlider && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                Filters Active
               </span>
-            </span>
-            <span className="text-slate-600">|</span>
-            <span className="text-slate-400">
-              Max:{" "}
-              <strong className="text-slate-200 font-mono">${maxSlider.toFixed(1)}</strong>{" "}
-              <span className="text-[11px] text-slate-400">
-                ({Number(pctFromSpotMax) > 0 ? `+${pctFromSpotMax}` : pctFromSpotMax}%)
-              </span>
-            </span>
-            {(minSlider > dataMinStrike || maxSlider < dataMaxStrike) && (
-              <button
-                onClick={() => applyPreset("full")}
-                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold ml-2 cursor-pointer transition"
-                title="Reset to full strike range"
-              >
-                <RotateCcw className="w-3 h-3" />
-                Reset
-              </button>
             )}
           </div>
+
+          {hasAnyActiveSlider && (
+            <button
+              type="button"
+              onClick={handleResetAllSliders}
+              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition self-start sm:self-auto"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset All Filter Sliders</span>
+            </button>
+          )}
         </div>
 
-        {/* Dual Range Sliders */}
-        <div className="space-y-1 pt-1">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-            {/* Min Strike Slider */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400 w-16 shrink-0">Min Strike:</span>
-              <input
-                type="range"
-                min={dataMinStrike}
-                max={dataMaxStrike - 1}
-                step={dataMaxStrike - dataMinStrike > 200 ? 5 : 1}
-                value={minSlider}
-                onChange={handleMinSliderChange}
-                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-              <span className="text-xs font-mono font-bold text-white w-14 text-right">
-                ${minSlider.toFixed(0)}
-              </span>
-            </div>
-
-            {/* Max Strike Slider */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400 w-16 shrink-0">Max Strike:</span>
-              <input
-                type="range"
-                min={dataMinStrike + 1}
-                max={dataMaxStrike}
-                step={dataMaxStrike - dataMinStrike > 200 ? 5 : 1}
-                value={maxSlider}
-                onChange={handleMaxSliderChange}
-                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
-              />
-              <span className="text-xs font-mono font-bold text-white w-14 text-right">
-                ${maxSlider.toFixed(0)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Range Presets */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-          <span className="text-[11px] text-slate-500 font-medium mr-1">Quick Presets:</span>
-          <button
-            onClick={() => applyPreset("10pct")}
-            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-[11px] transition cursor-pointer"
-          >
-            ±10%
-          </button>
-          <button
-            onClick={() => applyPreset("20pct")}
-            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-[11px] transition cursor-pointer"
-          >
-            ±20%
-          </button>
-          <button
-            onClick={() => applyPreset("30pct")}
-            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-[11px] transition cursor-pointer"
-          >
-            ±30%
-          </button>
-          <button
-            onClick={() => applyPreset("50pct")}
-            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-[11px] transition cursor-pointer"
-          >
-            ±50%
-          </button>
-          <button
-            onClick={() => applyPreset("otm")}
-            className="px-2.5 py-1 rounded-md bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 font-medium text-[11px] hover:bg-emerald-900/40 transition cursor-pointer"
-          >
-            OTM Only
-          </button>
-          <button
-            onClick={() => applyPreset("itm")}
-            className="px-2.5 py-1 rounded-md bg-rose-950/40 border border-rose-800/40 text-rose-300 font-medium text-[11px] hover:bg-rose-900/40 transition cursor-pointer"
-          >
-            ITM Only
-          </button>
-          <button
-            onClick={() => applyPreset("full")}
-            className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-[11px] transition cursor-pointer ml-auto"
-          >
-            Full Range ({dataMinStrike} - {dataMaxStrike})
-          </button>
-        </div>
-
-        {/* Delta Greek Range Slider */}
-        <div className="pt-3 mt-3 border-t border-slate-800/80">
-          <DeltaRangeSlider
-            minDelta={activeDeltaRange[0]}
-            maxDelta={activeDeltaRange[1]}
-            onChange={handleDeltaChange}
-            compact={true}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          {/* 1. Strike Price Range Slider */}
+          <StrikeRangeSlider
+            range={strikeRange}
+            onChange={onStrikeRangeChange}
+            dataMinStrike={dataMinStrike}
+            dataMaxStrike={dataMaxStrike}
+            currentPrice={currentPrice}
+            tab={tab}
           />
-        </div>
 
-        {/* Expiration Days (DTE) Range Slider */}
-        <div className="pt-3 mt-3 border-t border-slate-800/80">
+          {/* 2. Expiration Days (DTE) Range Slider */}
           <ExpirationDaysRangeSlider
             minDays={activeDteRange[0]}
             maxDays={activeDteRange[1]}
             onChange={handleDteChange}
             dataMinDays={dataMinDte}
             dataMaxDays={dataMaxDte}
-            compact={true}
             badgeCount={{
               filtered: matchingExpirations.length,
               total: allExpirations.length || 1,
             }}
+          />
+
+          {/* 3. RSI (14) Momentum Range Slider */}
+          <RsiRangeSlider
+            range={activeRsiRange}
+            onChange={handleRsiChange}
+            sublabel={
+              rsi_14 !== null && rsi_14 !== undefined
+                ? `14-Day Wilder's RSI. Current ${ticker} RSI: ${rsi_14}`
+                : "14-Day Relative Strength Index Momentum Filter"
+            }
+          />
+        </div>
+
+        {/* 4. Delta Greek (|Δ|) Range Slider - Moved to next line and made bigger so wide windows never squash it */}
+        <div className="mt-3.5 w-full">
+          <DeltaRangeSlider
+            minDelta={activeDeltaRange[0]}
+            maxDelta={activeDeltaRange[1]}
+            onChange={handleDeltaChange}
+            showPresets={true}
           />
         </div>
       </div>

@@ -49,7 +49,7 @@ const VERTICAL_SPREAD_COLUMNS: ColumnDefinition<VerticalSpreadSortKey>[] = [
   { key: "sellStrike", label: "Sell Strike", defaultDirection: "asc", numeric: true },
   { key: "buyStrike", label: "Buy Strike", defaultDirection: "asc", numeric: true },
   { key: "returnOnRisk", label: "Return on Risk (RoR %)", defaultDirection: "desc", numeric: true },
-  { key: "downsideCushionPct", label: "Downside Cushion %", defaultDirection: "desc", numeric: true },
+  { key: "downsideCushionPct", label: "Moneyness %", defaultDirection: "desc", numeric: true },
   { key: "maxRisk100", label: "Max Risk ($)", defaultDirection: "asc", numeric: true },
 ];
 
@@ -63,7 +63,7 @@ const VERTICAL_SPREAD_PRESETS: SortPreset<VerticalSpreadSortKey>[] = [
     ],
   },
   {
-    label: "Maximum Yield: RoR ➔ Net Credit ➔ Cushion",
+    label: "Maximum Yield: RoR ➔ Net Credit ➔ Moneyness",
     description: "Highest return-on-risk ratio first with healthy downside buffer",
     criteria: [
       { field: "returnOnRisk", direction: "desc" },
@@ -72,7 +72,7 @@ const VERTICAL_SPREAD_PRESETS: SortPreset<VerticalSpreadSortKey>[] = [
     ],
   },
   {
-    label: "Defensive Cushion: Cushion ➔ Net Credit ➔ Max Risk",
+    label: "Defensive Moneyness: Moneyness ➔ Net Credit ➔ Max Risk",
     description: "Widest safety buffer from spot price with lowest maximum risk",
     criteria: [
       { field: "downsideCushionPct", direction: "desc" },
@@ -280,7 +280,7 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
                     : "bg-slate-800/60 text-slate-400 hover:text-white"
                 }`}
               >
-                ≥5% Cushion
+                ≥5% Moneyness
               </button>
             </div>
           </div>
@@ -364,7 +364,7 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
 
                 <div className="bg-slate-950 p-2 rounded-lg border border-slate-800 col-span-2 sm:col-span-1">
                   <span className="text-[10px] text-slate-400 block font-sans font-semibold">
-                    Downside Cushion
+                    Moneyness
                   </span>
                   <span
                     className={`text-base font-bold ${
@@ -406,7 +406,7 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
             </div>
           ) : (
             <div className="p-4 text-center text-slate-400 bg-slate-900 rounded-xl border border-slate-800">
-              No vertical put spreads match the selected width and cushion criteria. Try selecting "Max Net (Any)" or "All Strikes".
+              No vertical put spreads match the selected width and moneyness criteria. Try selecting "Max Net (Any)" or "All Strikes".
             </div>
           )}
 
@@ -486,7 +486,7 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
                       />
                       <TableSortHeader
                         field="downsideCushionPct"
-                        label="Cushion"
+                        label="Moneyness"
                         criteria={tableSortCriteria}
                         onSortClick={handleTableSort}
                         align="right"

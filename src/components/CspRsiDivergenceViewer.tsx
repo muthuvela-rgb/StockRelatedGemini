@@ -21,10 +21,17 @@ import {
   Filter,
   Cpu,
   Sparkles,
+  SlidersHorizontal,
+  RotateCcw,
 } from "lucide-react";
 import type { CspRsiDivergenceCandidate, CspRsiDivergenceResponse, UserWatchlist } from "../types";
 import { SP500_COMPONENTS, SMH_COMPONENTS, QQQ_COMPONENTS } from "../data/universePresets";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { MoneynessRangeSlider } from "./sliders/MoneynessRangeSlider";
+import { CashReturnRangeSlider } from "./sliders/CashReturnRangeSlider";
+import { OptionPremiumRangeSlider } from "./sliders/OptionPremiumRangeSlider";
+import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
+import { DeltaRangeSlider } from "./DeltaRangeSlider";
 
 interface CspRsiDivergenceViewerProps {
   watchlist: string[];
@@ -44,8 +51,11 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
   const [universe, setUniverse] = useState<"sp500" | "smh" | "qqq" | "expanded_500" | "watchlist" | "custom">("sp500");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AMD, INTC, TSLA, AAPL, AMZN, META, GOOGL, MSFT, PLTR");
   const [activeTier, setActiveTier] = useState<"all" | "tier_1" | "tier_2" | "tier_3">("all");
-  const [minCashReturn, setMinCashReturn] = useState<number>(5);
-  const [minBufferFilter, setMinBufferFilter] = useState<number>(0);
+  const [moneynessRange, setMoneynessRange] = useState<[number, number]>([0, 100]);
+  const [cashReturnRange, setCashReturnRange] = useState<[number, number]>([5, 100]);
+  const [premiumRange, setPremiumRange] = useState<[number, number]>([0, 50]);
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
+  const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [copiedContract, setCopiedContract] = useState<string | null>(null);
 
@@ -127,16 +137,46 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
       );
     }
 
-    if (minCashReturn > 0) {
-      list = list.filter((c) => (c.recommended_put?.annualized_return_cash || 0) >= minCashReturn);
+    if (cashReturnRange[0] > 0 || cashReturnRange[1] < 100) {
+      list = list.filter((c) => {
+        const ret = c.recommended_put?.annualized_return_cash || 0;
+        return ret >= cashReturnRange[0] && (cashReturnRange[1] >= 100 || ret <= cashReturnRange[1]);
+      });
     }
 
-    if (minBufferFilter > 0) {
-      list = list.filter((c) => (c.recommended_put?.cushion_to_strike_pct || 0) >= minBufferFilter);
+    if (moneynessRange[0] > 0 || moneynessRange[1] < 100) {
+      list = list.filter((c) => {
+        const m = c.recommended_put?.cushion_to_strike_pct || 0;
+        return m >= moneynessRange[0] && (moneynessRange[1] >= 100 || m <= moneynessRange[1]);
+      });
+    }
+
+    if (premiumRange[0] > 0 || premiumRange[1] < 50) {
+      list = list.filter((c) => {
+        const p = c.recommended_put?.bid || 0;
+        return p >= premiumRange[0] && (premiumRange[1] >= 50 || p <= premiumRange[1]);
+      });
+    }
+
+    if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+      list = list.filter((c) => {
+        const rsi = c.rsi_daily;
+        if (rsi !== null && rsi !== undefined) {
+          return rsi >= rsiRange[0] && rsi <= rsiRange[1];
+        }
+        return true;
+      });
+    }
+
+    if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
+      list = list.filter((c) => {
+        const delta = Math.abs(c.recommended_put?.delta || 0);
+        return delta >= deltaRange[0] && delta <= deltaRange[1];
+      });
     }
 
     return list;
-  }, [data, activeTier, searchQuery, minCashReturn, minBufferFilter]);
+  }, [data, activeTier, searchQuery, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange]);
 
   return (
     <div className="space-y-6">
@@ -489,74 +529,77 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
             )}
           </div>
 
-          {/* Filtering & Threshold Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-            {/* Min Annual Return Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5 text-xs">
-                <label className="text-slate-400 font-medium">Min Annual Cash Return</label>
-                <span className="text-emerald-400 font-bold font-mono">{minCashReturn}%</span>
-              </div>
+          {/* Search Input & Reset Filter Row */}
+          <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
-                type="range"
-                min={0}
-                max={40}
-                step={1}
-                value={minCashReturn}
-                onChange={(e) => setMinCashReturn(Number(e.target.value))}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                type="text"
+                placeholder="Filter candidates by ticker or symbol, e.g. DG, ALB, LULU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
               />
-              <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-                <span>0% (All)</span>
-                <span>15%</span>
-                <span>25%</span>
-                <span>40%</span>
-              </div>
             </div>
 
-            {/* Min Buffer Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5 text-xs">
-                <label className="text-slate-400 font-medium flex items-center gap-1">
-                  <span>Min Buffer to Strike</span>
-                  {minBufferFilter > 0 && (
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                      Active
-                    </span>
-                  )}
-                </label>
-                <span className="text-emerald-400 font-bold font-mono">&ge; {minBufferFilter}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={30}
-                step={1}
-                value={minBufferFilter}
-                onChange={(e) => setMinBufferFilter(Number(e.target.value))}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-                <span>0%</span>
-                <span>10%</span>
-                <span>20%</span>
-                <span>30%</span>
-              </div>
+            {(moneynessRange[0] > 0 || moneynessRange[1] < 100 || cashReturnRange[0] > 5 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMoneynessRange([0, 100]);
+                  setCashReturnRange([5, 100]);
+                  setPremiumRange([0, 50]);
+                  setRsiRange([0, 100]);
+                  setDeltaRange([0.0, 1.0]);
+                }}
+                className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition shrink-0 self-start sm:self-auto"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset All Filter Sliders</span>
+              </button>
+            )}
+          </div>
+
+          {/* 5-Slider Deck: Moneyness Band, Cash Return, Option Premium, RSI (14), and Delta Greek */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                Dynamic Divergence Candidate Filters
+              </span>
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                <strong className={candidatesToDisplay.length === 0 ? "text-rose-400" : "text-amber-400"}>
+                  {candidatesToDisplay.length}
+                </strong>
+                {" "}/ {data?.all_candidates.length || 0} candidates
+              </span>
             </div>
 
-            {/* Search Input */}
-            <div>
-              <label className="text-slate-400 font-medium text-xs block mb-1.5">Filter by Ticker / Symbol</label>
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="e.g. DG, ALB, LULU..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
-                />
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <MoneynessRangeSlider
+                range={moneynessRange}
+                onChange={setMoneynessRange}
+              />
+              <CashReturnRangeSlider
+                range={cashReturnRange}
+                onChange={setCashReturnRange}
+              />
+              <OptionPremiumRangeSlider
+                range={premiumRange}
+                onChange={setPremiumRange}
+              />
+              <RsiRangeSlider
+                range={rsiRange}
+                onChange={setRsiRange}
+              />
+            </div>
+
+            {/* Delta Greek Range Slider - Moved to next line and made bigger so wide windows never squash it */}
+            <div className="mt-3.5 w-full">
+              <DeltaRangeSlider
+                range={deltaRange}
+                onChange={setDeltaRange}
+              />
             </div>
           </div>
         </div>
@@ -981,8 +1024,8 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
                         <span className="font-bold text-white">${put.bid.toFixed(2)}</span>
                       </div>
                       <div>
-                        <span className="text-[9px] text-slate-500 block">Buffer to Strike</span>
-                        <span className="font-bold text-emerald-400">+{put.cushion_to_strike_pct}%</span>
+                        <span className="text-[9px] text-slate-500 block">Moneyness</span>
+                        <span className="font-bold text-cyan-300">+{put.cushion_to_strike_pct}%</span>
                       </div>
                       <div>
                         <span className="text-[9px] text-slate-500 block">Win Rate (POP)</span>

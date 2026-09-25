@@ -32,11 +32,18 @@ import {
   Play,
   Search,
   ArrowRight,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { ActiveTab } from "./Header";
-import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import {
+  MoneynessRangeSlider,
+  CashReturnRangeSlider,
+  OptionPremiumRangeSlider,
+  RsiRangeSlider,
+  DeltaRangeSlider,
+} from "./sliders";
 import {
   LineChart,
   Line,
@@ -97,9 +104,10 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
   const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended" | "custom_range">("custom_range");
-  const [minAnnualReturn, setMinAnnualReturn] = useState<number>(8);
-  const [minBuffer, setMinBuffer] = useState<number>(0);
-  const [minBid, setMinBid] = useState<number>(0.35);
+  const [moneynessRange, setMoneynessRange] = useState<[number, number]>([20, 100]);
+  const [cashReturnRange, setCashReturnRange] = useState<[number, number]>([8, 100]);
+  const [premiumRange, setPremiumRange] = useState<[number, number]>([0.35, 50]);
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
   const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("score");
@@ -281,28 +289,26 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         }
       }
 
-      // If custom ticker has options, check if existing minAnnualReturn / minBuffer / minBid sliders are filtering everything out
+      // If custom ticker has options, check if existing slider filters are filtering everything out
       if (resData.all_recommendations.length > 0) {
         const passesFilters = resData.all_recommendations.some(
           (r) =>
-            (r.annualized_return_cash_secured || 0) >= minAnnualReturn &&
-            (r.cushion_to_strike_pct || 0) >= minBuffer &&
-            (r.bid || 0) >= minBid
+            (r.annualized_return_cash_secured || 0) >= cashReturnRange[0] &&
+            r.moneyness_pct >= moneynessRange[0] &&
+            r.moneyness_pct <= moneynessRange[1] &&
+            (r.bid || 0) >= premiumRange[0]
         );
         if (!passesFilters) {
           // Relax filters so the user immediately sees the custom ticker's recommendations
           const maxCash = Math.max(...resData.all_recommendations.map((r) => r.annualized_return_cash_secured || 0));
-          const maxCushion = Math.max(...resData.all_recommendations.map((r) => r.cushion_to_strike_pct || 0));
           const maxB = Math.max(...resData.all_recommendations.map((r) => r.bid || 0));
-          if (minAnnualReturn > maxCash && maxCash > 0) {
-            setMinAnnualReturn(Math.max(1, Math.floor(maxCash)));
+          if (cashReturnRange[0] > maxCash && maxCash > 0) {
+            setCashReturnRange([Math.max(1, Math.floor(maxCash)), 100]);
           }
-          if (minBuffer > maxCushion && maxCushion >= 0) {
-            setMinBuffer(Math.max(0, Math.floor(maxCushion)));
+          if (premiumRange[0] > maxB && maxB > 0) {
+            setPremiumRange([Math.max(0.20, Number(maxB.toFixed(2))), 50]);
           }
-          if (minBid > maxB && maxB > 0) {
-            setMinBid(Math.max(0.20, Number(maxB.toFixed(2))));
-          }
+          setMoneynessRange([20, 120]);
         }
       }
     } catch (err: any) {
@@ -393,10 +399,10 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const PUT_REC_COLUMNS: ColumnDefinition<TableSortKey>[] = [
     {
       key: "cushion",
-      label: "Moneyness / Buffer %",
-      defaultDirection: "desc",
+      label: "Moneyness %",
+      defaultDirection: "asc",
       numeric: true,
-      extractor: (r: RecommendedPut) => Number(r.cushion_to_strike_pct.toFixed(1)),
+      extractor: (r: RecommendedPut) => Number(r.moneyness_pct.toFixed(1)),
     },
     {
       key: "strike",
@@ -550,17 +556,22 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         const d = r.greeks?.delta !== null && r.greeks?.delta !== undefined ? Math.abs(r.greeks.delta) : 0;
         if (d < deltaRange[0] || d > deltaRange[1]) return false;
       }
-      if (minAnnualReturn > 0) {
-        const cashReturn = r.annualized_return_cash_secured ?? 0;
-        if (cashReturn < minAnnualReturn) return false;
+      if (r.moneyness_pct < moneynessRange[0] || r.moneyness_pct > moneynessRange[1]) {
+        return false;
       }
-      if (minBuffer > 0) {
-        const cushion = r.cushion_to_strike_pct ?? 0;
-        if (cushion < minBuffer) return false;
-      }
-      if (minBid > 0) {
-        const bid = r.bid ?? 0;
-        if (bid < minBid) return false;
+      const cashReturn = r.annualized_return_cash_secured ?? 0;
+      if (cashReturn < cashReturnRange[0]) return false;
+      if (cashReturnRange[1] < 100 && cashReturn > cashReturnRange[1]) return false;
+
+      const bid = r.bid ?? 0;
+      if (bid < premiumRange[0]) return false;
+      if (premiumRange[1] < 50 && bid > premiumRange[1]) return false;
+
+      if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+        const rsi = r.technicals?.rsi_14;
+        if (rsi !== null && rsi !== undefined) {
+          if (rsi < rsiRange[0] || rsi > rsiRange[1]) return false;
+        }
       }
       return true;
     };
@@ -572,18 +583,21 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           count: 0,
           avg_pop: 0,
           avg_cash_return: 0,
+          avg_moneyness: 0,
           avg_cushion: 0,
           top_pick: null as RecommendedPut | null,
         };
       }
       const avgPop = Number((filtered.reduce((acc, r) => acc + (r.probability_of_profit || 0), 0) / filtered.length).toFixed(1));
       const avgCash = Number((filtered.reduce((acc, r) => acc + (r.annualized_return_cash_secured || 0), 0) / filtered.length).toFixed(1));
+      const avgMoneyness = Number((filtered.reduce((acc, r) => acc + (r.moneyness_pct || 0), 0) / filtered.length).toFixed(1));
       const avgCushion = Number((filtered.reduce((acc, r) => acc + (r.cushion_to_strike_pct || 0), 0) / filtered.length).toFixed(1));
       const topPick = filtered[0] || null;
       return {
         count: filtered.length,
         avg_pop: avgPop,
         avg_cash_return: avgCash,
+        avg_moneyness: avgMoneyness,
         avg_cushion: avgCushion,
         top_pick: topPick,
       };
@@ -595,9 +609,9 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       high_risk: buildTier(data.high_risk, data.tier_summaries.high_risk),
       all: { count: data.all_recommendations.filter(filterItem).length },
     };
-  }, [data, searchQuery, deltaRange, minAnnualReturn, minBuffer, minBid]);
+  }, [data, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange]);
 
-  // Raw list filtered by risk tier, search term, delta range, min annual cash return, min buffer, and min bid
+  // Raw list filtered by risk tier, search term, delta range, moneyness, cash return, premium, and RSI
   const filteredList = useMemo(() => {
     if (!data) return [];
     let list: RecommendedPut[] = [];
@@ -620,23 +634,38 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       });
     }
 
-    // Filter by Min Annual Cash Return %
-    if (minAnnualReturn > 0) {
-      list = list.filter((r) => (r.annualized_return_cash_secured ?? 0) >= minAnnualReturn);
+    // Filter by Moneyness Band
+    if (moneynessRange[0] > 20 || moneynessRange[1] < 120) {
+      list = list.filter((r) => r.moneyness_pct >= moneynessRange[0] && r.moneyness_pct <= moneynessRange[1]);
     }
 
-    // Filter by Min Downside Buffer (Cushion) %
-    if (minBuffer > 0) {
-      list = list.filter((r) => (r.cushion_to_strike_pct ?? 0) >= minBuffer);
+    // Filter by Annual Cash Return %
+    if (cashReturnRange[0] > 0 || cashReturnRange[1] < 100) {
+      list = list.filter((r) => {
+        const y = r.annualized_return_cash_secured ?? 0;
+        return y >= cashReturnRange[0] && (cashReturnRange[1] >= 100 || y <= cashReturnRange[1]);
+      });
     }
 
-    // Filter by Min Bid Premium
-    if (minBid > 0) {
-      list = list.filter((r) => (r.bid ?? 0) >= minBid);
+    // Filter by Option Premium
+    if (premiumRange[0] > 0 || premiumRange[1] < 50) {
+      list = list.filter((r) => {
+        const b = r.bid ?? 0;
+        return b >= premiumRange[0] && (premiumRange[1] >= 50 || b <= premiumRange[1]);
+      });
+    }
+
+    // Filter by RSI (14) Momentum
+    if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+      list = list.filter((r) => {
+        const rsi = r.technicals?.rsi_14;
+        if (rsi === null || rsi === undefined) return true;
+        return rsi >= rsiRange[0] && rsi <= rsiRange[1];
+      });
     }
 
     return list;
-  }, [data, activeTierTab, searchQuery, deltaRange, minAnnualReturn, minBuffer, minBid]);
+  }, [data, activeTierTab, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange]);
 
   // Unified sorted recommendations using hierarchical sorting across BOTH Cards and Table views
   const currentList = useMemo(() => {
@@ -815,7 +844,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
         )}
 
         {/* Filter Controls Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 pt-5 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-5 text-xs">
           {/* Universe Selector */}
           <div>
             <label className="block text-slate-400 font-medium mb-1.5 flex items-center justify-between">
@@ -877,7 +906,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <option value="sweetspot">Sweet Spot (20 to 45 DTE - Optimal Theta)</option>
               <option value="weeklies">Weeklies (5 to 16 DTE - High Decay)</option>
               <option value="monthly">Monthly Standard (14 to 35 DTE)</option>
-              <option value="extended">Extended (30 to 60 DTE - Safe Cushion)</option>
+              <option value="extended">Extended (30 to 60 DTE - Safe Moneyness Buffer)</option>
             </select>
 
             {horizon === "custom_range" && (
@@ -911,81 +940,6 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             )}
           </div>
 
-          {/* Min Annual Return Slider */}
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="text-slate-400 font-medium">Min Annual Cash Return</label>
-              <span className="text-emerald-400 font-bold font-mono">{minAnnualReturn}%</span>
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={60}
-              step={1}
-              value={minAnnualReturn}
-              onChange={(e) => setMinAnnualReturn(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-              <span>1%</span>
-              <span>20%</span>
-              <span>40%</span>
-              <span>60%</span>
-            </div>
-          </div>
-
-          {/* Min Buffer (Downside Cushion) Slider */}
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="text-slate-400 font-medium flex items-center gap-1">
-                <span>Min Buffer (Cushion)</span>
-                {minBuffer > 0 && (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                    Active
-                  </span>
-                )}
-              </label>
-              <span className="text-emerald-400 font-bold font-mono">≥ {minBuffer}%</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={50}
-              step={1}
-              value={minBuffer}
-              onChange={(e) => setMinBuffer(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-              <span>0% (All)</span>
-              <span>15%</span>
-              <span>30%</span>
-              <span>50%</span>
-            </div>
-          </div>
-
-          {/* Min Bid Premium */}
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="text-slate-400 font-medium">Min Bid Premium</label>
-              <span className="text-cyan-400 font-bold font-mono">${minBid.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min={0.20}
-              max={3.00}
-              step={0.10}
-              value={minBid}
-              onChange={(e) => setMinBid(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
-              <span>$0.20</span>
-              <span>$1.50</span>
-              <span>$3.00</span>
-            </div>
-          </div>
-
           {/* Sort By Selection */}
           <div>
             <label className="block text-slate-400 font-medium mb-1.5">Sort Output By</label>
@@ -994,28 +948,71 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               onChange={(e: any) => {
                 const val = e.target.value;
                 setSortBy(val);
-                setTableSortCriteria([{ id: "1", field: val, direction: "desc" }]);
+                setTableSortCriteria([{ id: "1", field: val, direction: val === "cushion" ? "asc" : "desc" }]);
               }}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
-              <option value="score">Composite Score (Tie-Break: Downside Buffer - Default)</option>
+              <option value="score">Composite Score (Tie-Break: Moneyness Buffer - Default)</option>
               <option value="annual_cash">Annualized Cash Yield % (Cash Secured)</option>
               <option value="annual_margin">Annualized Margin Yield % (Portfolio Margin)</option>
-              <option value="cushion">Downside Cushion % (Safest Strike)</option>
+              <option value="cushion">Moneyness % (Safest OTM Strike)</option>
               <option value="pop">Probability of Profit (POP %)</option>
               <option value="theta">Daily Theta Decay ($/day/contract)</option>
             </select>
           </div>
         </div>
 
-        {/* Delta Greek Range Slider */}
-        <div className="mt-4 pt-4 border-t border-slate-800/80">
-          <DeltaRangeSlider
-            minDelta={deltaRange[0]}
-            maxDelta={deltaRange[1]}
-            onChange={setDeltaRange}
-            compact={true}
-          />
+        {/* 5-Slider Deck: Moneyness Band, Cash Return, Option Premium, RSI (14), and Delta Greek */}
+        <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
+              Dynamic Recommendation Filters
+            </span>
+            {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMoneynessRange([20, 100]);
+                  setCashReturnRange([8, 100]);
+                  setPremiumRange([0.35, 50]);
+                  setRsiRange([0, 100]);
+                  setDeltaRange([0.0, 1.0]);
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset All Filter Sliders</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <MoneynessRangeSlider
+              range={moneynessRange}
+              onChange={setMoneynessRange}
+            />
+            <CashReturnRangeSlider
+              range={cashReturnRange}
+              onChange={setCashReturnRange}
+            />
+            <OptionPremiumRangeSlider
+              range={premiumRange}
+              onChange={setPremiumRange}
+            />
+            <RsiRangeSlider
+              range={rsiRange}
+              onChange={setRsiRange}
+            />
+          </div>
+
+          {/* Delta Greek Range Slider - Moved to next line and made bigger so wide windows never squash it */}
+          <div className="mt-3.5 w-full">
+            <DeltaRangeSlider
+              range={deltaRange}
+              onChange={setDeltaRange}
+            />
+          </div>
         </div>
 
         {universe === "custom" && (
@@ -1134,7 +1131,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </div>
 
             <p className="text-[11px] text-slate-400 mt-2.5 leading-relaxed">
-              Deep OTM protection (Δ ≤ 0.15). Maximum cushion with low assignment probability.
+              Deep OTM protection (Δ ≤ 0.15). Maximum moneyness safety buffer with low assignment probability.
             </p>
 
             <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800/80 font-mono text-[11px]">
@@ -1147,8 +1144,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 <span className="text-emerald-400 font-bold">{(tierStats?.least_risk ?? data.tier_summaries.least_risk).avg_cash_return}%</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px]">Avg Buffer</span>
-                <span className="text-slate-200 font-bold">{(tierStats?.least_risk ?? data.tier_summaries.least_risk).avg_cushion}%</span>
+                <span className="text-slate-500 block text-[10px]">Avg Moneyness</span>
+                <span className="text-cyan-300 font-bold">{((tierStats?.least_risk as any)?.avg_moneyness || (100 - (tierStats?.least_risk ?? data.tier_summaries.least_risk).avg_cushion)).toFixed(1)}%</span>
               </div>
             </div>
 
@@ -1200,8 +1197,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 <span className="text-amber-400 font-bold">{(tierStats?.medium_risk ?? data.tier_summaries.medium_risk).avg_cash_return}%</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px]">Avg Buffer</span>
-                <span className="text-slate-200 font-bold">{(tierStats?.medium_risk ?? data.tier_summaries.medium_risk).avg_cushion}%</span>
+                <span className="text-slate-500 block text-[10px]">Avg Moneyness</span>
+                <span className="text-cyan-300 font-bold">{((tierStats?.medium_risk as any)?.avg_moneyness || (100 - (tierStats?.medium_risk ?? data.tier_summaries.medium_risk).avg_cushion)).toFixed(1)}%</span>
               </div>
             </div>
 
@@ -1253,8 +1250,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                 <span className="text-rose-400 font-bold">{(tierStats?.high_risk ?? data.tier_summaries.high_risk).avg_cash_return}%</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px]">Avg Buffer</span>
-                <span className="text-slate-200 font-bold">{(tierStats?.high_risk ?? data.tier_summaries.high_risk).avg_cushion}%</span>
+                <span className="text-slate-500 block text-[10px]">Avg Moneyness</span>
+                <span className="text-cyan-300 font-bold">{((tierStats?.high_risk as any)?.avg_moneyness || (100 - (tierStats?.high_risk ?? data.tier_summaries.high_risk).avg_cushion)).toFixed(1)}%</span>
               </div>
             </div>
 
@@ -1440,7 +1437,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               {data && data.all_recommendations.length > 0
-                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Min Return ${minAnnualReturn}%, Min Buffer ${minBuffer}%, Min Bid $${minBid.toFixed(2)}, or Tier selection) filtered them out.`
+                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Moneyness ${moneynessRange[0]}%–${moneynessRange[1]}%, Min Return ${cashReturnRange[0]}%, Min Premium $${premiumRange[0].toFixed(2)}, RSI ${rsiRange[0]}–${rsiRange[1]}, Delta |Δ| ${deltaRange[0].toFixed(2)}–${deltaRange[1].toFixed(2)}, or Tier selection) filtered them out.`
                 : `No contracts found matching DTE ${dteRange.minDte}–${dteRange.maxDte} days. Try expanding your expiration horizon or relaxing filter thresholds.`}
             </p>
           </div>
@@ -1479,15 +1476,17 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
             <button
               onClick={() => {
-                setMinAnnualReturn(1);
-                setMinBuffer(0);
-                setMinBid(0.20);
+                setMoneynessRange([20, 100]);
+                setCashReturnRange([8, 100]);
+                setPremiumRange([0.35, 50]);
+                setRsiRange([0, 100]);
                 setDeltaRange([0.0, 1.0]);
                 setSearchQuery("");
               }}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl cursor-pointer transition border border-slate-700"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl cursor-pointer transition border border-slate-700 flex items-center gap-1.5"
             >
-              Reset All Filters
+              <RotateCcw className="w-3.5 h-3.5 text-blue-400" />
+              <span>Reset All Filters</span>
             </button>
 
             {horizon !== "all" && (
@@ -1616,14 +1615,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                       </span>
                     </div>
 
-                    {/* Downside Safety Cushion */}
+                    {/* Moneyness Band */}
                     <div className="bg-slate-950/80 rounded-xl p-2.5 border border-slate-800/80">
-                      <span className="text-[10px] text-slate-400 block font-sans">Downside Buffer</span>
-                      <span className="text-base font-black text-slate-100 font-mono">
-                        {item.cushion_to_strike_pct.toFixed(1)}%
+                      <span className="text-[10px] text-slate-400 block font-sans">Moneyness</span>
+                      <span className="text-base font-black text-cyan-300 font-mono">
+                        {item.moneyness_pct.toFixed(1)}%
                       </span>
                       <span className="text-[10px] text-slate-500 block font-mono">
-                        Breakeven: ${item.breakeven_price.toFixed(2)}
+                        Breakeven: ${item.breakeven_price.toFixed(2)} ({item.cushion_to_strike_pct.toFixed(1)}% OTM)
                       </span>
                     </div>
 
@@ -1821,7 +1820,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                   />
                   <TableSortHeader
                     field="cushion"
-                    label="Buffer %"
+                    label="Moneyness %"
                     criteria={tableSortCriteria}
                     onSortClick={handleTableSort}
                     onAddLevel={handleAddTableSortLevel}
@@ -1943,8 +1942,8 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                         <span className="font-bold text-white">${item.bid.toFixed(2)}</span>
                         <span className="text-[10px] text-slate-500 ml-1">(${item.ask.toFixed(2)})</span>
                       </td>
-                      <td className="py-3 px-3 text-slate-200 font-semibold">
-                        {item.cushion_to_strike_pct.toFixed(1)}%
+                      <td className="py-3 px-3 text-cyan-300 font-mono font-semibold">
+                        {item.moneyness_pct.toFixed(1)}%
                       </td>
                       <td className="py-3 px-3 font-black text-emerald-400 text-sm">
                         {item.annualized_return_cash_secured.toFixed(1)}%

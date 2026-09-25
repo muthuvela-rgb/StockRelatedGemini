@@ -28,6 +28,7 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { RsiRangeSlider } from "./sliders";
 import { TableTopScrollbar } from "./TableTopScrollbar";
 
 type TechnicalsSortKey = keyof TechnicalsData | "bollinger_pct_b";
@@ -83,6 +84,7 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<TechnicalsData[]>([]);
   const [selectedStock, setSelectedStock] = useState<TechnicalsData | null>(null);
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [sortCriteria, setSortCriteria] = useState<SortCriterion<TechnicalsSortKey>[]>([
     { id: "1", field: "rsi_14", direction: "asc" },
   ]);
@@ -120,9 +122,18 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
     setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
+  const filteredResults = useMemo(() => {
+    if (rsiRange[0] <= 0 && rsiRange[1] >= 100) return results;
+    return results.filter((item) => {
+      const rsi = item.rsi_14;
+      if (rsi === null || rsi === undefined) return false;
+      return rsi >= rsiRange[0] && rsi <= rsiRange[1];
+    });
+  }, [results, rsiRange]);
+
   const sortedResults = useMemo(() => {
-    return applyHierarchicalSort(results, sortCriteria, TECHNICALS_COLUMNS);
-  }, [results, sortCriteria]);
+    return applyHierarchicalSort(filteredResults, sortCriteria, TECHNICALS_COLUMNS);
+  }, [filteredResults, sortCriteria]);
 
   return (
     <div className="space-y-6">
@@ -194,6 +205,18 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
             />
           )}
         </div>
+
+        {/* RSI (14) Momentum Range Slider */}
+        <div className="pt-4 mt-4 border-t border-slate-800">
+          <RsiRangeSlider
+            range={rsiRange}
+            onChange={setRsiRange}
+            badgeCount={{
+              filtered: filteredResults.length,
+              total: results.length,
+            }}
+          />
+        </div>
       </div>
 
       {/* Main Grid: Table & Inspector */}
@@ -202,7 +225,7 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
         <div className="xl:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
             <h3 className="text-sm font-bold text-white font-display">
-              Technical Matrix ({results.length} Stocks)
+              Technical Matrix ({filteredResults.length} of {results.length} Stocks)
             </h3>
             <span className="text-[11px] text-slate-400">Click a row to inspect full Fibonacci & Volatility</span>
           </div>

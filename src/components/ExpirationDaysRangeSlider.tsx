@@ -100,66 +100,73 @@ export const ExpirationDaysRangeSlider: React.FC<ExpirationDaysRangeSliderProps>
   const leftPct = Math.max(0, Math.min(100, ((minDays - dataMinDays) / totalSpan) * 100));
   const widthPct = Math.max(0, Math.min(100, ((maxDays - minDays) / totalSpan) * 100));
 
+  const resolvedHorizon =
+    maxDays <= 7
+      ? "Weekly Expiries (<1 wk)"
+      : maxDays <= 30
+      ? "Near-Term (1–4 wks)"
+      : minDays >= 30 && maxDays <= 60
+      ? "Theta Sweet Spot (30–60d)"
+      : minDays >= 60 && maxDays <= 120
+      ? "Quarterly Cycles"
+      : minDays >= 120
+      ? "LEAPS / Long-Term"
+      : `${minDays} to ${maxDays} Days to Expiration`;
+
   return (
     <div
-      className={`bg-slate-950/70 border border-slate-800/90 rounded-xl ${
+      className={`bg-slate-950/70 border border-slate-800/90 rounded-xl flex flex-col justify-between ${
         compact ? "p-3 space-y-2" : "p-3.5 space-y-2.5"
       } ${className}`}
     >
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="text-xs font-bold text-white uppercase tracking-wider">{label}</span>
-          <span className="text-xs font-mono font-semibold text-amber-300 bg-amber-950/50 border border-amber-800/60 px-2 py-0.5 rounded-md flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-400" />
-            {minDays} – {maxDays} Days
-          </span>
-          {badgeCount && (
-            <span className="text-[11px] text-slate-400 font-mono">
-              ({badgeCount.filtered} of {badgeCount.total} expirations)
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-slate-400 hidden md:inline text-[11px]">
-            Target Horizon:{" "}
-            <strong className="text-amber-300 font-mono">
-              {maxDays <= 7
-                ? "Weekly Expiries (<1 wk)"
-                : maxDays <= 30
-                ? "Near-Term Expiries (1–4 wks)"
-                : minDays >= 30 && maxDays <= 60
-                ? "Theta Sweet Spot (30–60d)"
-                : minDays >= 60 && maxDays <= 120
-                ? "Quarterly Cycles"
-                : minDays >= 120
-                ? "LEAPS / Long-Term"
-                : `${minDays} to ${maxDays} Days to Expiration`}
-            </strong>
-          </span>
-
-          {isFiltered && (
-            <button
-              onClick={handleReset}
-              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition ml-1"
-              title={`Reset to all expiration days (${dataMinDays} – ${dataMaxDays} DTE)`}
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-xs font-bold text-white uppercase tracking-wider truncate">{label}</span>
+            {badgeCount && (
+              <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                ({badgeCount.filtered}/{badgeCount.total})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span
+              className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md border whitespace-nowrap ${
+                isFiltered
+                  ? "text-amber-300 bg-amber-950/60 border-amber-700/60"
+                  : "text-slate-300 bg-slate-800/60 border-slate-700/60"
+              }`}
             >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
-            </button>
-          )}
+              {minDays} – {maxDays}d
+            </span>
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="text-[11px] text-slate-400 hover:text-amber-300 cursor-pointer transition p-0.5"
+                title="Reset DTE to all days"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
+        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+          {sublabel || (
+            <>
+              Target Horizon:{" "}
+              <strong className="text-amber-300 font-mono">{resolvedHorizon}</strong>
+            </>
+          )}
+        </p>
       </div>
 
-      {sublabel && <p className="text-[11px] text-slate-400">{sublabel}</p>}
-
-      {/* Visual active band track representation */}
+      {/* Visual Range Track */}
       <div className="relative pt-1 pb-1">
         <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden relative">
           <div
-            className="absolute top-0 bottom-0 bg-gradient-to-r from-amber-500 via-orange-400 to-rose-500 rounded-full transition-all duration-150"
+            className="absolute top-0 bottom-0 bg-gradient-to-r from-amber-500 via-orange-400 to-rose-500 rounded-full transition-all duration-100"
             style={{
               left: `${leftPct}%`,
               width: `${widthPct}%`,
@@ -168,13 +175,10 @@ export const ExpirationDaysRangeSlider: React.FC<ExpirationDaysRangeSliderProps>
         </div>
       </div>
 
-      {/* Dual Sliders and Inputs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-        {/* Min DTE Slider */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">
-            Min Days:
-          </span>
+      {/* Dual Sliders */}
+      <div className="grid grid-cols-2 gap-3 items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-400 shrink-0">Min:</span>
           <input
             type="range"
             min={dataMinDays}
@@ -182,29 +186,16 @@ export const ExpirationDaysRangeSlider: React.FC<ExpirationDaysRangeSliderProps>
             step={1}
             value={minDays}
             onChange={handleMinChange}
+            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
             aria-label="Minimum Expiration Days"
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400 focus:outline-none"
           />
-          <div className="flex items-center gap-1 shrink-0">
-            <input
-              type="number"
-              min={dataMinDays}
-              max={maxDays}
-              step={1}
-              value={minDays}
-              onChange={handleMinChange}
-              aria-label="Minimum Expiration Days Input"
-              className="w-16 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-xs text-amber-300 focus:border-amber-500 outline-none"
-            />
-            <span className="text-[10px] text-slate-500 font-mono">d</span>
-          </div>
+          <span className="text-xs font-mono font-bold text-amber-300 w-10 text-right shrink-0">
+            {minDays}d
+          </span>
         </div>
 
-        {/* Max DTE Slider */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-[11px] font-semibold text-slate-400 w-20 shrink-0">
-            Max Days:
-          </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-slate-400 shrink-0">Max:</span>
           <input
             type="range"
             min={dataMinDays}
@@ -212,31 +203,21 @@ export const ExpirationDaysRangeSlider: React.FC<ExpirationDaysRangeSliderProps>
             step={1}
             value={maxDays}
             onChange={handleMaxChange}
+            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
             aria-label="Maximum Expiration Days"
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400 focus:outline-none"
           />
-          <div className="flex items-center gap-1 shrink-0">
-            <input
-              type="number"
-              min={minDays}
-              max={dataMaxDays}
-              step={1}
-              value={maxDays}
-              onChange={handleMaxChange}
-              aria-label="Maximum Expiration Days Input"
-              className="w-16 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-xs text-amber-300 focus:border-amber-500 outline-none"
-            />
-            <span className="text-[10px] text-slate-500 font-mono">d</span>
-          </div>
+          <span className="text-xs font-mono font-bold text-amber-300 w-10 text-right shrink-0">
+            {maxDays}d
+          </span>
         </div>
       </div>
 
       {/* Quick Presets */}
       {showPresets && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1 mr-1">
-            <Sparkles className="w-3 h-3 text-amber-400" />
-            Quick DTE:
+        <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-slate-800/60">
+          <span className="text-[10px] text-slate-500 mr-1 flex items-center gap-0.5 shrink-0">
+            <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+            Presets:
           </span>
           {presets.map((preset) => {
             const isActive =
@@ -251,13 +232,13 @@ export const ExpirationDaysRangeSlider: React.FC<ExpirationDaysRangeSliderProps>
                 type="button"
                 onClick={() => onChange(preset.range)}
                 title={preset.tip}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${
                   isActive
-                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold shadow-sm"
-                    : "bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-800"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold"
+                    : "bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800"
                 }`}
               >
-                {preset.label}
+                {preset.shortLabel || preset.label}
               </button>
             );
           })}

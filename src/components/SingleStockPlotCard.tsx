@@ -419,8 +419,8 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                     </div>
                     {pt.moneyness !== undefined && (
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-400">Downside Cushion:</span>
-                        <span className="font-mono text-slate-300">{pt.moneyness?.toFixed(1)}% OTM</span>
+                        <span className="text-slate-400">Moneyness:</span>
+                        <span className="font-mono text-cyan-300 font-semibold">{pt.moneyness?.toFixed(1)}%</span>
                       </div>
                     )}
                     <div className="text-[10px] text-slate-500 pt-0.5 text-center">
