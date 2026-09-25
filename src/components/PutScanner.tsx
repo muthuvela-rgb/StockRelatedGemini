@@ -136,6 +136,13 @@ const PUT_SCANNER_COLUMNS: ColumnDefinition<keyof PutOptionRecord>[] = [
     numeric: true,
     extractor: (r: PutOptionRecord) => (r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : null),
   },
+  {
+    key: "rsi_14",
+    label: "RSI (14)",
+    defaultDirection: "asc",
+    numeric: true,
+    extractor: (r: PutOptionRecord) => (r.rsi_14 !== null && r.rsi_14 !== undefined ? Number(r.rsi_14.toFixed(1)) : null),
+  },
 ];
 
 const PUT_SCANNER_PRESETS: SortPreset<keyof PutOptionRecord>[] = [
@@ -184,6 +191,7 @@ import { SingleStockPlotCard } from "./SingleStockPlotCard";
 import { VerticalPutOptimizerPanel } from "./VerticalPutOptimizerPanel";
 import { VerticalPutSpread } from "../utils/verticalPutOptimizer";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import { ScannerRangeFilterDeck } from "./ScannerRangeFilterDeck";
 
 interface PutScannerProps {
   watchlist: string[];
@@ -214,10 +222,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [sortCriteria, setSortCriteria] = useState<SortCriterion<keyof PutOptionRecord>[]>([
     { id: "1", field: "annualized_return_pct", direction: "desc" },
   ]);
-  const [filterMoneynessMax, setFilterMoneynessMax] = useState<number>(100);
-  const [filterMinBid, setFilterMinBid] = useState<number>(0);
-  const [filterSearch, setFilterSearch] = useState("");
+  const [moneynessRange, setMoneynessRange] = useState<[number, number]>([20, 120]);
+  const [cashReturnRange, setCashReturnRange] = useState<[number, number]>([0, 100]);
+  const [premiumRange, setPremiumRange] = useState<[number, number]>([0, 50]);
+  const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+  const [filterSearch, setFilterSearch] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -282,20 +292,62 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   }, [universe]);
 
   // Filter & Hierarchical Sort
-  const rawFilteredRecords = records.filter((r) => {
-    if (filterSearch && !r.ticker.toLowerCase().includes(filterSearch.toLowerCase())) return false;
-    if (r.moneyness_pct > filterMoneynessMax) return false;
-    if (r.bid < filterMinBid) return false;
-    if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
-      const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
-      if (d < deltaRange[0] || d > deltaRange[1]) return false;
-    }
-    return true;
-  });
+  const rawFilteredRecords = useMemo(() => {
+    return records.filter((r) => {
+      // 1. Ticker symbol search
+      if (filterSearch && !r.ticker.toLowerCase().includes(filterSearch.toLowerCase())) {
+        return false;
+      }
+      // 2. Moneyness Band Slider (r.moneyness_pct between min and max)
+      if (r.moneyness_pct < moneynessRange[0] || r.moneyness_pct > moneynessRange[1]) {
+        return false;
+      }
+      // 3. Annualized Cash Return Slider
+      const cashYield = r.annualized_return_pct_cash_secured ?? 0;
+      if (cashYield < cashReturnRange[0]) {
+        return false;
+      }
+      if (cashReturnRange[1] < 100 && cashYield > cashReturnRange[1]) {
+        return false;
+      }
+      // 4. Option Premium Slider
+      const prem = r.bid > 0 ? r.bid : (r.last_price > 0 ? r.last_price : 0);
+      if (prem < premiumRange[0]) {
+        return false;
+      }
+      if (premiumRange[1] < 50 && prem > premiumRange[1]) {
+        return false;
+      }
+      // 5. RSI (14) Momentum Slider
+      if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+        if (r.rsi_14 === null || r.rsi_14 === undefined) {
+          return false;
+        }
+        if (r.rsi_14 < rsiRange[0] || r.rsi_14 > rsiRange[1]) {
+          return false;
+        }
+      }
+      // 6. Delta Greek Range
+      if (deltaRange[0] > 0.001 || deltaRange[1] < 0.999) {
+        const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
+        if (d < deltaRange[0] || d > deltaRange[1]) return false;
+      }
+      return true;
+    });
+  }, [records, filterSearch, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange]);
 
   const filteredRecords = useMemo(() => {
     return applyHierarchicalSort(rawFilteredRecords, sortCriteria, PUT_SCANNER_COLUMNS);
   }, [rawFilteredRecords, sortCriteria]);
+
+  const handleResetAllFilters = () => {
+    setMoneynessRange([20, 120]);
+    setCashReturnRange([0, 100]);
+    setPremiumRange([0, 50]);
+    setRsiRange([0, 100]);
+    setDeltaRange([0.0, 1.0]);
+    setFilterSearch("");
+  };
 
   const exportCsv = () => {
     if (filteredRecords.length === 0) return;
@@ -313,6 +365,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       "OpenInterest",
       "IV%",
       "Delta",
+      "RSI_14",
       "CapitalBasis",
       "AnnualizedReturn%",
       "AnnualizedReturnCashSecured%",
@@ -331,6 +384,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       r.open_interest,
       r.implied_volatility,
       r.delta !== null && r.delta !== undefined ? Math.abs(r.delta).toFixed(3) : "",
+      r.rsi_14 !== null && r.rsi_14 !== undefined ? r.rsi_14.toFixed(1) : "",
       r.capital_basis,
       r.annualized_return_pct,
       r.annualized_return_pct_cash_secured,
@@ -351,6 +405,14 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const avgReturn =
     filteredRecords.length > 0
       ? filteredRecords.reduce((a, b) => a + b.annualized_return_pct, 0) / filteredRecords.length
+      : 0;
+  const maxCashYield =
+    filteredRecords.length > 0
+      ? Math.max(...filteredRecords.map((r) => r.annualized_return_pct_cash_secured || 0))
+      : 0;
+  const avgCashYield =
+    filteredRecords.length > 0
+      ? filteredRecords.reduce((a, b) => a + (b.annualized_return_pct_cash_secured || 0), 0) / filteredRecords.length
       : 0;
 
   // Single Stock vs Multi-Stock Analysis & Multi-Plot State
@@ -950,9 +1012,55 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
         </div>
       )}
 
+      {/* Interactive Scanned Data Filter Deck: Moneyness Band, Cash Return, Premium, and RSI Sliders */}
+      {records.length > 0 && (
+        <ScannerRangeFilterDeck
+          moneynessRange={moneynessRange}
+          onMoneynessRangeChange={setMoneynessRange}
+          cashReturnRange={cashReturnRange}
+          onCashReturnRangeChange={setCashReturnRange}
+          premiumRange={premiumRange}
+          onPremiumRangeChange={setPremiumRange}
+          rsiRange={rsiRange}
+          onRsiRangeChange={setRsiRange}
+          deltaRange={deltaRange}
+          onDeltaRangeChange={setDeltaRange}
+          searchTicker={filterSearch}
+          onSearchTickerChange={setFilterSearch}
+          onResetAll={handleResetAllFilters}
+          totalScannedCount={records.length}
+          filteredCount={filteredRecords.length}
+          avgCashYield={avgCashYield}
+          maxCashYield={maxCashYield}
+        />
+      )}
+
       {/* Visual Charts */}
-      {filteredRecords.length > 0 && (
+      {records.length > 0 && (
         <div className="space-y-6">
+          {filteredRecords.length === 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-3 shadow-lg">
+              <div className="inline-flex p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Filter className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-white font-display">
+                No Option Contracts Match Active Slider Filters
+              </h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                No contracts match the active criteria: Moneyness Band ({moneynessRange[0]}%–{moneynessRange[1]}%),
+                Annualized Cash Return (≥ {cashReturnRange[0]}%), Option Premium (≥ ${premiumRange[0].toFixed(2)})
+                {(rsiRange[0] > 0 || rsiRange[1] < 100) && `, RSI (${rsiRange[0]}–${rsiRange[1]})`}.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={handleResetAllFilters}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition cursor-pointer"
+                >
+                  Reset All Filter Sliders
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
             {/* Chart Toolbar Header */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-800/80">
@@ -1716,61 +1824,55 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
-      {/* Filter Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Filter by ticker symbol..."
-            value={filterSearch}
-            onChange={(e) => setFilterSearch(e.target.value)}
-            className="bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-1.5 text-xs w-full max-w-xs outline-none"
-          />
+      {/* Active Filter Chips & Results Count Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-slate-400 font-semibold flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-blue-400" />
+            Active Filters:
+          </span>
+          <span className="px-2 py-0.5 rounded-md bg-cyan-950/60 border border-cyan-700/50 text-cyan-300 font-mono text-[11px]">
+            Moneyness: {moneynessRange[0]}%–{moneynessRange[1]}%
+          </span>
+          <span className="px-2 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-700/50 text-emerald-300 font-mono text-[11px]">
+            Cash Yield: ≥{cashReturnRange[0]}%{cashReturnRange[1] < 100 ? ` to ${cashReturnRange[1]}%` : ""}
+          </span>
+          <span className="px-2 py-0.5 rounded-md bg-amber-950/60 border border-amber-700/50 text-amber-300 font-mono text-[11px]">
+            Premium: ≥${premiumRange[0].toFixed(2)}{premiumRange[1] < 50 ? ` to $${premiumRange[1].toFixed(2)}` : ""}
+          </span>
+          {(deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+            <span className="px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-700/50 text-purple-300 font-mono text-[11px]">
+              |Δ|: {deltaRange[0].toFixed(2)}–{deltaRange[1].toFixed(2)}
+            </span>
+          )}
+          {(rsiRange[0] > 0 || rsiRange[1] < 100) && (
+            <span className="px-2 py-0.5 rounded-md bg-violet-950/60 border border-violet-700/50 text-violet-300 font-mono text-[11px]">
+              RSI: {rsiRange[0]}–{rsiRange[1]}
+            </span>
+          )}
+          {filterSearch && (
+            <span className="px-2 py-0.5 rounded-md bg-blue-950/60 border border-blue-700/50 text-blue-300 font-mono text-[11px]">
+              Ticker: &quot;{filterSearch.toUpperCase()}&quot;
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-slate-300">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">Max Moneyness:</span>
-            <select
-              value={filterMoneynessMax}
-              onChange={(e) => setFilterMoneynessMax(parseFloat(e.target.value))}
-              className="bg-slate-800 border border-slate-700 text-white rounded px-2 py-1 outline-none text-xs"
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-slate-400 font-mono">
+            {filteredRecords.length} of {records.length} puts matching
+          </span>
+          {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || filterSearch) && (
+            <button
+              onClick={handleResetAllFilters}
+              className="text-blue-400 hover:text-blue-300 font-medium cursor-pointer underline text-[11px]"
             >
-              <option value="105">All (≤ 105%)</option>
-              <option value="100">At/OTM (≤ 100%)</option>
-              <option value="95">Conservative (≤ 95%)</option>
-              <option value="90">Deep OTM (≤ 90%)</option>
-              <option value="80">Ultra Deep (≤ 80%)</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">Min Bid:</span>
-            <select
-              value={filterMinBid}
-              onChange={(e) => setFilterMinBid(parseFloat(e.target.value))}
-              className="bg-slate-800 border border-slate-700 text-white rounded px-2 py-1 outline-none text-xs"
-            >
-              <option value="0">$0.00+</option>
-              <option value="0.5">$0.50+</option>
-              <option value="1.0">$1.00+</option>
-              <option value="2.0">$2.00+</option>
-              <option value="5.0">$5.00+</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Delta Greek Range Slider */}
-        <div className="w-full pt-2.5 border-t border-slate-800/80">
-          <DeltaRangeSlider
-            minDelta={deltaRange[0]}
-            maxDelta={deltaRange[1]}
-            onChange={setDeltaRange}
-            compact={true}
-          />
+              Reset All Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -1863,6 +1965,15 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                   className="px-3 py-3"
                 />
                 <TableSortHeader
+                  field="rsi_14"
+                  label="RSI"
+                  criteria={sortCriteria}
+                  onSortClick={handleSort}
+                  onAddLevel={handleAddLevel}
+                  onRemoveLevel={handleRemoveLevel}
+                  className="px-3 py-3"
+                />
+                <TableSortHeader
                   field="capital_basis"
                   label="Capital Basis"
                   criteria={sortCriteria}
@@ -1886,7 +1997,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             <tbody className="divide-y divide-slate-800">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={11} className="px-6 py-12 text-center text-slate-500">
                     {loading ? (
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
@@ -1954,6 +2065,26 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       </td>
                       <td className="px-3 py-3 text-purple-300 font-medium">
                         {r.delta !== null && r.delta !== undefined ? Math.abs(r.delta).toFixed(3) : "—"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {r.rsi_14 !== null && r.rsi_14 !== undefined ? (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold ${
+                              r.rsi_14 <= 30
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                : r.rsi_14 <= 45
+                                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                                : r.rsi_14 >= 70
+                                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                : "text-slate-300 bg-slate-800/40 border border-slate-700/50"
+                            }`}
+                            title={`RSI(14): ${r.rsi_14.toFixed(1)}`}
+                          >
+                            {r.rsi_14.toFixed(0)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-slate-300">
                         ${r.capital_basis.toFixed(2)}

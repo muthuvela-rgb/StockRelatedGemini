@@ -16,6 +16,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Clock,
 } from "lucide-react";
 import { OptionChainResponse, OptionGreeks } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
@@ -172,6 +173,67 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     }
   }, [chainData?.ticker, dataMinStrike, dataMaxStrike]);
 
+  // Helper to extract or calculate DTE for any contract
+  const getContractDte = (contract: OptionGreeks, fallbackExp?: string): number => {
+    if (contract.days_to_expiration !== undefined && contract.days_to_expiration !== null) {
+      return contract.days_to_expiration;
+    }
+    const expStr = contract.expiration || (fallbackExp && fallbackExp !== "ALL" ? fallbackExp : undefined);
+    if (expStr) {
+      if (chainData?.all_chains?.[expStr]?.days_to_expiration !== undefined) {
+        return chainData.all_chains[expStr].days_to_expiration;
+      }
+      const msDiff = new Date(expStr).getTime() - new Date().setHours(0, 0, 0, 0);
+      return Math.max(0, Math.ceil(msDiff / (1000 * 60 * 60 * 24)));
+    }
+    return chainData?.days_to_expiration ?? 0;
+  };
+
+  // Compute all available expiration days (DTE) across all chains & contracts
+  const { minDteAvailable, maxDteAvailable } = useMemo(() => {
+    if (!chainData) return { minDteAvailable: 0, maxDteAvailable: 365 };
+    const dtes: number[] = [];
+
+    if (chainData.expirations && chainData.expirations.length > 0) {
+      chainData.expirations.forEach((exp) => {
+        const d = chainData.all_chains?.[exp]?.days_to_expiration;
+        if (d !== undefined && d !== null) {
+          dtes.push(d);
+        } else {
+          const msDiff = new Date(exp).getTime() - new Date().setHours(0, 0, 0, 0);
+          dtes.push(Math.max(0, Math.ceil(msDiff / (1000 * 60 * 60 * 24))));
+        }
+      });
+    }
+    if (chainData.days_to_expiration !== undefined && chainData.days_to_expiration !== null) {
+      dtes.push(chainData.days_to_expiration);
+    }
+    (chainData.puts || []).forEach((p) => {
+      if (p.days_to_expiration !== undefined && p.days_to_expiration !== null) {
+        dtes.push(p.days_to_expiration);
+      }
+    });
+    (chainData.calls || []).forEach((c) => {
+      if (c.days_to_expiration !== undefined && c.days_to_expiration !== null) {
+        dtes.push(c.days_to_expiration);
+      }
+    });
+
+    if (dtes.length === 0) return { minDteAvailable: 0, maxDteAvailable: 365 };
+    const min = Math.max(0, Math.min(...dtes));
+    const max = Math.max(min + 1, Math.max(...dtes));
+    return { minDteAvailable: min, maxDteAvailable: max };
+  }, [chainData]);
+
+  const [dteRange, setDteRange] = useState<[number, number]>([0, 365]);
+
+  // Sync DTE range when ticker or chain data changes
+  useEffect(() => {
+    if (chainData && maxDteAvailable > minDteAvailable) {
+      setDteRange([minDteAvailable, maxDteAvailable]);
+    }
+  }, [chainData?.ticker, minDteAvailable, maxDteAvailable]);
+
   // Helper to calculate annualized return on cash-secured basis
   const getAnnualizedCashReturn = (
     contract: OptionGreeks,
@@ -211,7 +273,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
     setSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
-  // Filter rows by strike range, delta range, and table expiration filter
+  // Filter rows by strike range, delta range, expiration days range, and table expiration filter
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       const matchStrike = r.strike >= strikeRange[0] && r.strike <= strikeRange[1];
@@ -219,9 +281,11 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
         selectedExp !== "ALL" || tableExpFilter === "ALL" || !r.expiration || r.expiration === tableExpFilter;
       const absDelta = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
       const matchDelta = absDelta >= deltaRange[0] && absDelta <= deltaRange[1];
-      return matchStrike && matchExp && matchDelta;
+      const contractDte = getContractDte(r, selectedExp);
+      const matchDte = contractDte >= dteRange[0] && contractDte <= dteRange[1];
+      return matchStrike && matchExp && matchDelta && matchDte;
     });
-  }, [rows, strikeRange, deltaRange, selectedExp, tableExpFilter]);
+  }, [rows, strikeRange, deltaRange, dteRange, selectedExp, tableExpFilter, chainData]);
 
   const optionChainColumns: ColumnDefinition<OptionChainSortKey>[] = useMemo(() => {
     const spot = chainData?.current_price || 0;
@@ -332,7 +396,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [tab, selectedExp, tableExpFilter, strikeRange, ticker, sortCriteria]);
+  }, [tab, selectedExp, tableExpFilter, strikeRange, deltaRange, dteRange, ticker, sortCriteria]);
 
   const paginatedRows = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -435,31 +499,31 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
             )}
           </div>
 
-          {/* Call / Put Toggle */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setTab("puts")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                tab === "puts"
-                  ? "bg-rose-600 text-white shadow-md"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Puts ({chainData?.puts.length || 0})
-            </button>
-            <button
-              onClick={() => setTab("calls")}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                tab === "calls"
-                  ? "bg-emerald-600 text-white shadow-md"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Calls ({chainData?.calls.length || 0})
-            </button>
+            {/* Call / Put Toggle */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button
+                onClick={() => setTab("puts")}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  tab === "puts"
+                    ? "bg-rose-600 text-white shadow-md"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Puts ({chainData?.puts.length || 0})
+              </button>
+              <button
+                onClick={() => setTab("calls")}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  tab === "calls"
+                    ? "bg-emerald-600 text-white shadow-md"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Calls ({chainData?.calls.length || 0})
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
       {error && (
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-center gap-3">
@@ -539,6 +603,10 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           dataMaxStrike={dataMaxStrike}
           deltaRange={deltaRange}
           onDeltaRangeChange={setDeltaRange}
+          dteRange={dteRange}
+          onDteRangeChange={setDteRange}
+          dataMinDte={minDteAvailable}
+          dataMaxDte={maxDteAvailable}
           selectedContract={selectedContract}
           selectedContractSymbol={selectedContract?.contractSymbol}
           onSelectContract={(c) => setSelectedContract(c)}
@@ -560,6 +628,19 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
             <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               Showing {filteredRows.length} of {rows.length} contracts
             </span>
+            {(dteRange[0] > minDteAvailable || dteRange[1] < maxDteAvailable) && (
+              <span className="text-[11px] text-amber-400 font-mono bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-amber-400" />
+                DTE: {dteRange[0]} – {dteRange[1]}d
+                <button
+                  onClick={() => setDteRange([minDteAvailable, maxDteAvailable])}
+                  className="text-amber-300 hover:text-white ml-0.5 font-bold cursor-pointer"
+                  title="Reset Expiration Days filter"
+                >
+                  ×
+                </button>
+              </span>
+            )}
             {(strikeRange[0] > dataMinStrike || strikeRange[1] < dataMaxStrike) && (
               <span className="text-[11px] text-cyan-400 font-mono">
                 (Strikes: ${strikeRange[0].toFixed(1)} – ${strikeRange[1].toFixed(1)})
@@ -727,7 +808,27 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
                     colSpan={selectedExp === "ALL" ? 13 : 12}
                     className="px-6 py-12 text-center text-slate-500 font-sans"
                   >
-                    {loading ? "Fetching option contracts..." : "No option contracts found matching the strike range."}
+                    {loading ? (
+                      "Fetching option contracts..."
+                    ) : (
+                      <div className="py-8 flex flex-col items-center justify-center gap-2.5">
+                        <p className="text-slate-400 font-sans text-xs max-w-md">
+                          No option contracts found matching active criteria (DTE: {dteRange[0]}–{dteRange[1]}d, Strikes: ${strikeRange[0].toFixed(1)}–${strikeRange[1].toFixed(1)}, Delta: {deltaRange[0].toFixed(2)}–{deltaRange[1].toFixed(2)}).
+                        </p>
+                        <button
+                          onClick={() => {
+                            setDteRange([minDteAvailable, maxDteAvailable]);
+                            setStrikeRange([dataMinStrike, dataMaxStrike]);
+                            setDeltaRange([0.0, 1.0]);
+                            setTableExpFilter("ALL");
+                          }}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5 font-sans"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Reset All Filters
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (

@@ -20,8 +20,6 @@ import { MarketSentiment } from "./components/MarketSentiment";
 import { NasdaqSimulator } from "./components/NasdaqSimulator";
 import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { StockChartsViewer } from "./components/StockChartsViewer";
-import { RebalancingAlertBanner } from "./components/RebalancingAlertBanner";
-import { FomcAlertBanner } from "./components/FomcAlertBanner";
 import { TickerHudProvider } from "./context/TickerHudContext";
 import { LineChart, BookOpen } from "lucide-react";
 
@@ -138,14 +136,6 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Prominent FOMC Policy Radar & Global Index Rebalance Schedule on Home Page */}
-        {(activeTab === "options-scanner" || activeTab === "put-recommendations") && (
-          <div className="mb-6 space-y-3">
-            <FomcAlertBanner onNavigateTab={setActiveTab} />
-            <RebalancingAlertBanner variant="banner" onNavigateTab={setActiveTab} />
-          </div>
-        )}
-
         {activeTab === "put-recommendations" && (
           <PutRecommendationsViewer
             watchlist={currentWatchlist}

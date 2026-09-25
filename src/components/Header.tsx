@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
+import { MarketCatalystsBox } from "./MarketCatalystsBox";
 import { useAuth } from "../context/AuthContext";
 import { SUPERADMIN_EMAIL } from "../lib/firebase";
 
@@ -183,7 +184,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 text-xs text-slate-400">
+          <div className="flex items-center gap-2 sm:gap-2.5 text-xs text-slate-400">
+            {/* FOMC & Next Rebalance Key Dates Box */}
+            <MarketCatalystsBox onNavigateTab={setActiveTab} />
+
             <button
               onClick={() => setShowProviderModal(true)}
               className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md font-mono text-[11px] sm:text-xs transition border cursor-pointer ${

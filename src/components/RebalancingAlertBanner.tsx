@@ -48,21 +48,21 @@ export const RebalancingAlertBanner: React.FC<RebalancingAlertBannerProps> = ({
 
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono flex items-center gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono flex items-center gap-1.5 whitespace-nowrap">
                 <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                Index & ETF Rebalance Radar
+                Next QQQ & SPY Rebalance Radar
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 whitespace-nowrap">
                 {nextRebalance.quarter}
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap">
                 {nextRebalance.daysUntilExecution} Days Countdown
               </span>
             </div>
 
             <div className="text-sm sm:text-base font-bold text-white mt-1 leading-snug">
-              Next Rebalance Date:{" "}
-              <span className="text-indigo-300 font-mono">{nextRebalance.executionFormatted}</span>{" "}
+              Next QQQ & SPY Rebalance Date:{" "}
+              <span className="text-indigo-300 font-mono whitespace-nowrap">{nextRebalance.executionFormatted}</span>{" "}
               <span className="text-slate-400 text-xs font-normal">
                 (Effective Monday, <strong className="text-slate-200">{nextRebalance.effectiveFormatted}</strong> at open)
               </span>

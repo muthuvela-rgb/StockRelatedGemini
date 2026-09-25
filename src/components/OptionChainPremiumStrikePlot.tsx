@@ -16,6 +16,7 @@ import { OptionGreeks, ExpirationChainData, FibonacciLevels } from "../types";
 import { formatCurrency, formatPct } from "../lib/utils";
 import { OptionPointDetailInspector } from "./OptionPointDetailInspector";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
 import {
   Sliders,
   Maximize2,
@@ -65,6 +66,10 @@ interface OptionChainPremiumStrikePlotProps {
   dataMaxStrike: number;
   deltaRange?: [number, number];
   onDeltaRangeChange?: (newRange: [number, number]) => void;
+  dteRange?: [number, number];
+  onDteRangeChange?: (newRange: [number, number]) => void;
+  dataMinDte?: number;
+  dataMaxDte?: number;
   onSelectContract?: (contract: OptionGreeks | null) => void;
   selectedContract?: OptionGreeks | null;
   selectedContractSymbol?: string | null;
@@ -123,6 +128,10 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   dataMaxStrike,
   deltaRange,
   onDeltaRangeChange,
+  dteRange,
+  onDteRangeChange,
+  dataMinDte = 0,
+  dataMaxDte = 365,
   onSelectContract,
   selectedContract,
   selectedContractSymbol,
@@ -135,6 +144,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const [visibleExps, setVisibleExps] = useState<Set<string>>(() => new Set(allExpirations.slice(0, 12)));
   const [showAllExpsInPlot, setShowAllExpsInPlot] = useState(true);
   const [internalDeltaRange, setInternalDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+  const [internalDteRange, setInternalDteRange] = useState<[number, number]>([dataMinDte, dataMaxDte]);
 
   const activeDeltaRange = deltaRange || internalDeltaRange;
   const handleDeltaChange = (newRange: [number, number]) => {
@@ -143,6 +153,30 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     }
     setInternalDeltaRange(newRange);
   };
+
+  const activeDteRange = dteRange || internalDteRange;
+  const handleDteChange = (newRange: [number, number]) => {
+    if (onDteRangeChange) {
+      onDteRangeChange(newRange);
+    }
+    setInternalDteRange(newRange);
+  };
+
+  const getExpDte = (exp: string): number => {
+    const chain = allChainsMap[exp];
+    if (chain && chain.days_to_expiration !== undefined && chain.days_to_expiration !== null) {
+      return chain.days_to_expiration;
+    }
+    const msDiff = new Date(exp).getTime() - new Date().setHours(0, 0, 0, 0);
+    return Math.max(0, Math.ceil(msDiff / (1000 * 60 * 60 * 24)));
+  };
+
+  const matchingExpirations = useMemo(() => {
+    return allExpirations.filter((exp) => {
+      const d = getExpDte(exp);
+      return d >= activeDteRange[0] && d <= activeDteRange[1];
+    });
+  }, [allExpirations, allChainsMap, activeDteRange]);
 
   // Sync visible expirations when allExpirations changes
   React.useEffect(() => {
@@ -276,12 +310,15 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     if (isAllExp) return [];
 
     const [dMin, dMax] = activeDeltaRange;
-    // Map unique strikes in strike and delta range
+    const [minDte, maxDte] = activeDteRange;
+    // Map unique strikes in strike, delta, and DTE range
     const filteredContracts = contracts.filter((c) => {
       const matchStrike = c.strike >= minSlider && c.strike <= maxSlider;
       const absDelta = c.delta !== null && c.delta !== undefined ? Math.abs(c.delta) : 0;
       const matchDelta = absDelta >= dMin && absDelta <= dMax;
-      return matchStrike && matchDelta;
+      const cDte = c.days_to_expiration ?? (c.expiration ? getExpDte(c.expiration) : (selectedExp !== "ALL" ? getExpDte(selectedExp) : 0));
+      const matchDte = cDte >= minDte && cDte <= maxDte;
+      return matchStrike && matchDelta && matchDte;
     });
 
     const strikeMap = new Map<number, any>();
@@ -315,17 +352,21 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     });
 
     return Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
-  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, currentPrice, tab, selectedExp]);
+  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, currentPrice, tab, selectedExp]);
 
   // 2. DATA PREPARATION FOR ALL EXPIRATIONS MODE
   const allExpChartData = useMemo(() => {
     if (!isAllExp) return [];
 
     const [dMin, dMax] = activeDeltaRange;
-    // Collect all strikes across all chains within [minSlider, maxSlider] and [dMin, dMax]
+    const [minDte, maxDte] = activeDteRange;
+    // Collect all strikes across all chains within [minSlider, maxSlider], [dMin, dMax], and [minDte, maxDte]
     const strikeSet = new Set<number>();
 
     allExpirations.forEach((exp) => {
+      const expDte = getExpDte(exp);
+      if (expDte < minDte || expDte > maxDte) return;
+
       const chain = allChainsMap[exp];
       if (!chain) return;
       const list = tab === "puts" ? chain.puts : chain.calls;
@@ -339,6 +380,9 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
 
     // Also include contracts from direct list if allChainsMap isn't populated yet
     contracts.forEach((c) => {
+      const cDte = c.days_to_expiration ?? (c.expiration ? getExpDte(c.expiration) : 0);
+      if (cDte < minDte || cDte > maxDte) return;
+
       const absDelta = c.delta !== null && c.delta !== undefined ? Math.abs(c.delta) : 0;
       if (c.strike >= minSlider && c.strike <= maxSlider && absDelta >= dMin && absDelta <= dMax) {
         strikeSet.add(c.strike);
@@ -351,6 +395,9 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     return sortedStrikes.map((strike) => {
       const pt: any = { strike };
       allExpirations.forEach((exp) => {
+        const expDte = getExpDte(exp);
+        if (expDte < minDte || expDte > maxDte) return;
+
         const chain = allChainsMap[exp];
         let c: OptionGreeks | undefined;
         if (chain) {
@@ -370,7 +417,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       });
       return pt;
     });
-  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, metric, currentPrice, selectedExp]);
+  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, metric, currentPrice, selectedExp]);
 
   // Handle strike slider adjustments
   const handleMinSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -625,6 +672,22 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             compact={true}
           />
         </div>
+
+        {/* Expiration Days (DTE) Range Slider */}
+        <div className="pt-3 mt-3 border-t border-slate-800/80">
+          <ExpirationDaysRangeSlider
+            minDays={activeDteRange[0]}
+            maxDays={activeDteRange[1]}
+            onChange={handleDteChange}
+            dataMinDays={dataMinDte}
+            dataMaxDays={dataMaxDte}
+            compact={true}
+            badgeCount={{
+              filtered: matchingExpirations.length,
+              total: allExpirations.length || 1,
+            }}
+          />
+        </div>
       </div>
 
       {/* Multi-Expiration Legend / Pills (Only in ALL Expirations Mode) */}
@@ -633,18 +696,26 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-blue-400" />
-              All Expiration Date Option Chains ({allExpirations.length} Active Curves):
+              All Expiration Date Option Chains (
+              <strong className="text-amber-300 font-mono">{matchingExpirations.length}</strong> of {allExpirations.length} Active Curves within DTE):
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setVisibleExps(new Set(allExpirations))}
+                onClick={() => setVisibleExps(new Set(matchingExpirations.length > 0 ? matchingExpirations : allExpirations))}
                 className="text-[11px] text-blue-400 hover:text-blue-300 transition cursor-pointer font-medium"
+              >
+                Show Matching
+              </button>
+              <span className="text-slate-600 text-xs">|</span>
+              <button
+                onClick={() => setVisibleExps(new Set(allExpirations))}
+                className="text-[11px] text-slate-400 hover:text-slate-300 transition cursor-pointer font-medium"
               >
                 Show All
               </button>
               <span className="text-slate-600 text-xs">|</span>
               <button
-                onClick={() => setVisibleExps(new Set(allExpirations.slice(0, 5)))}
+                onClick={() => setVisibleExps(new Set((matchingExpirations.length > 0 ? matchingExpirations : allExpirations).slice(0, 5)))}
                 className="text-[11px] text-slate-400 hover:text-slate-300 transition cursor-pointer font-medium"
               >
                 Top 5
@@ -657,7 +728,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
               const color = EXP_PALETTE[idx % EXP_PALETTE.length];
               const isVisible = visibleExps.has(exp);
               const isHovered = highlightedExp === exp;
-              const dte = allChainsMap[exp]?.days_to_expiration;
+              const dte = allChainsMap[exp]?.days_to_expiration ?? getExpDte(exp);
+              const isWithinDte = dte >= activeDteRange[0] && dte <= activeDteRange[1];
 
               return (
                 <button
@@ -673,20 +745,23 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                   }}
                   onMouseEnter={() => setHighlightedExp(exp)}
                   onMouseLeave={() => setHighlightedExp(null)}
+                  title={!isWithinDte ? `Filtered by Expiration Days (${dte}d outside ${activeDteRange[0]}–${activeDteRange[1]}d window)` : `${exp} (${dte}d)`}
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex items-center gap-1.5 transition border cursor-pointer ${
-                    isVisible
+                    !isWithinDte
+                      ? "bg-slate-950/40 text-slate-600 border-slate-900 line-through opacity-40 hover:opacity-75"
+                      : isVisible
                       ? isHovered
                         ? "bg-slate-800 text-white border-white scale-105"
                         : "bg-slate-900/80 text-slate-200 border-slate-700"
-                      : "bg-slate-950/60 text-slate-600 border-slate-900 line-through opacity-50"
+                      : "bg-slate-950/60 text-slate-500 border-slate-900 line-through opacity-50"
                   }`}
                   style={{
-                    borderColor: isVisible ? color : undefined,
+                    borderColor: isVisible && isWithinDte ? color : undefined,
                   }}
                 >
                   <span
                     className="w-2 h-2 rounded-full inline-block"
-                    style={{ backgroundColor: color }}
+                    style={{ backgroundColor: isWithinDte ? color : "#64748b" }}
                   />
                   <span>{exp}</span>
                   {dte !== undefined && (
@@ -845,6 +920,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
               {/* Expiration Curves for all chains */}
               {allExpirations.map((exp, idx) => {
                 if (!visibleExps.has(exp)) return null;
+                const expDte = getExpDte(exp);
+                if (expDte < activeDteRange[0] || expDte > activeDteRange[1]) return null;
                 const color = EXP_PALETTE[idx % EXP_PALETTE.length];
                 const isHighlighted = highlightedExp === exp;
 

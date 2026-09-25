@@ -67,7 +67,7 @@ export const FomcAlertBanner: React.FC<FomcAlertBannerProps> = ({
 
             <div className="text-sm sm:text-base font-bold text-white mt-1 leading-snug">
               Next FOMC Meeting:{" "}
-              <span className="text-rose-300 font-mono underline decoration-rose-500/40 underline-offset-4">
+              <span className="text-rose-300 font-mono underline decoration-rose-500/40 underline-offset-4 whitespace-nowrap">
                 {nextMeeting.dateFormatted}
               </span>{" "}
               <span className="text-slate-400 text-xs font-normal">
