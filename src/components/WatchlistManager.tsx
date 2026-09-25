@@ -23,6 +23,8 @@ import {
   Info,
   X,
   Zap,
+  Activity,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { UserWatchlist } from "../types";
@@ -126,6 +128,18 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [cloudSyncing, setCloudSyncing] = useState(false);
 
+  // Dynamic QQQ Bollinger Band watchlist scan state
+  const [bollingerMode, setBollingerMode] = useState<"extremes" | "oversold" | "overbought" | "squeeze">("extremes");
+  const [bollingerLoading, setBollingerLoading] = useState(false);
+  const [bollingerError, setBollingerError] = useState<string | null>(null);
+  const [bollingerResult, setBollingerResult] = useState<{
+    symbols: string[];
+    matches: Array<{ symbol: string; price: number; bollinger: { percentB: number; bandwidthPct: number } }>;
+    qqqRegime: { symbol: string; price: number; bollinger: { percentB: number; upperBand: number; lowerBand: number } } | null;
+    constituentSource: string;
+    generatedAt: string;
+  } | null>(null);
+
   // Rename state
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(activeWatchlist.name);
@@ -187,6 +201,24 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
       setTimeout(() => setSaveStatus(null), 3000);
     } else {
       await handleCreateNewWatchlist("QQQ Components (Nasdaq-100)", QQQ_COMPONENTS);
+    }
+  };
+
+  const handleGenerateBollingerScan = async () => {
+    setBollingerLoading(true);
+    setBollingerError(null);
+    try {
+      const res = await fetch(`/api/watchlist/qqq-bollinger?mode=${bollingerMode}&limit=25`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || `Scan failed: ${res.status}`);
+      }
+      const data = await res.json();
+      setBollingerResult(data);
+    } catch (err: any) {
+      setBollingerError(err?.message || "Failed to run QQQ Bollinger scan");
+    } finally {
+      setBollingerLoading(false);
     }
   };
 
@@ -488,6 +520,116 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
               </span>
             </button>
           </div>
+        </div>
+
+        {/* Dynamic QQQ Bollinger Band Watchlist */}
+        <div className="bg-gradient-to-r from-slate-950 via-purple-950/30 to-slate-950 border border-purple-500/30 rounded-xl p-4 space-y-3.5 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 shrink-0">
+                <Activity className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold text-white font-display">
+                    QQQ Bollinger Band Dynamic Watchlist
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-bold border border-purple-500/30">
+                    Live Scan
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed max-w-xl">
+                  Fetches QQQ's current constituents live and scans each for 20-day Bollinger %B position. Re-run any time — the universe and results are computed fresh each call.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 bg-slate-950/60 border border-slate-800 rounded-lg p-1">
+              {(["extremes", "oversold", "overbought", "squeeze"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setBollingerMode(m)}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold capitalize transition cursor-pointer ${
+                    bollingerMode === m
+                      ? "bg-purple-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateBollingerScan}
+              disabled={bollingerLoading}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer transition active:scale-95 disabled:opacity-60"
+            >
+              {bollingerLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              <span>{bollingerLoading ? "Scanning..." : "Generate Scan"}</span>
+            </button>
+          </div>
+
+          {bollingerError && (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>{bollingerError}</span>
+            </div>
+          )}
+
+          {bollingerResult && (
+            <div className="space-y-2.5 pt-1">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                <span>
+                  <span className="text-white font-bold">{bollingerResult.symbols.length}</span> symbols matched
+                </span>
+                {bollingerResult.qqqRegime && (
+                  <span className="px-2 py-0.5 rounded bg-slate-900/80 border border-slate-800 font-mono">
+                    QQQ %B: <span className="text-purple-300 font-bold">{bollingerResult.qqqRegime.bollinger.percentB}</span>
+                  </span>
+                )}
+                <span className="px-2 py-0.5 rounded bg-slate-900/80 border border-slate-800 font-mono text-slate-500">
+                  source: {bollingerResult.constituentSource}
+                </span>
+              </div>
+
+              <div className="text-[11px] text-purple-300 font-mono bg-slate-950/60 px-2.5 py-1.5 rounded border border-slate-800/80 overflow-hidden text-ellipsis whitespace-nowrap">
+                {bollingerResult.symbols.join(", ")}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => handleApplyPreset(bollingerResult.symbols)}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs border border-slate-700 transition cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Append to Active</span>
+                </button>
+                <button
+                  onClick={() => handleReplaceWithPreset(bollingerResult.symbols)}
+                  className="px-2.5 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-lg text-xs border border-purple-500/30 transition cursor-pointer"
+                >
+                  Replace Active
+                </button>
+                <button
+                  onClick={() =>
+                    handleCreateNewWatchlist(
+                      `QQQ Bollinger ${bollingerMode[0].toUpperCase()}${bollingerMode.slice(1)}`,
+                      bollingerResult.symbols
+                    )
+                  }
+                  className="px-2.5 py-1.5 bg-fuchsia-600/20 hover:bg-fuchsia-600/30 text-fuchsia-300 rounded-lg text-xs border border-fuchsia-500/30 transition cursor-pointer flex items-center gap-1 ml-auto"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>New Watchlist ({bollingerResult.symbols.length})</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Watchlist Tabs Switcher */}

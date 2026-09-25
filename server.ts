@@ -22,6 +22,14 @@ import {
   generateStandalonePythonScript,
 } from "./server/nasdaqSimulator";
 import { getHistoricalStockChart } from "./server/stockChart";
+import {
+  fetchLiveQqqConstituents,
+  computeBollingerFromCloses,
+  matchesBollingerMode,
+  bollingerRankKey,
+  BollingerScanMode,
+  ScannedSymbol,
+} from "./server/qqqConstituents";
 import { getCompanyProfile } from "./server/companyProfile";
 import { EXPANDED_500_UNIVERSE, getExpanded500Universe } from "./src/data/universe500";
 
@@ -1526,6 +1534,82 @@ app.post("/api/watchlist", (req: Request, res: Response) => {
     res.json({ success: true, tickers: clean });
   } else {
     res.status(400).json({ error: "tickers array required" });
+  }
+});
+
+// Dynamic QQQ Bollinger Band watchlist scan
+// Fetches QQQ's CURRENT constituents live (not the static QQQ_CONSTITUENTS
+// snapshot above), scans each via the app's Tradier-first market data router,
+// and returns symbols matching the requested Bollinger %B trigger mode.
+const qqqBollingerScanCache = new Map<string, { data: any; expiresAt: number }>();
+
+app.get("/api/watchlist/qqq-bollinger", async (req: Request, res: Response) => {
+  try {
+    const mode = (String(req.query.mode || "extremes") as BollingerScanMode);
+    const period = Math.max(5, Number(req.query.period) || 20);
+    const stddev = Number(req.query.stddev) || 2;
+    const limit = Math.max(1, Number(req.query.limit) || 25);
+    const squeezeThresholdPct = Number(req.query.squeezeThreshold) || 6;
+
+    const cacheKey = `${mode}:${period}:${stddev}:${limit}:${squeezeThresholdPct}`;
+    const cached = qqqBollingerScanCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json({ ...cached.data, cached: true });
+    }
+
+    const { symbols: constituents, source } = await fetchLiveQqqConstituents();
+    const universe = ["QQQ", ...constituents];
+
+    const scanned: ScannedSymbol[] = [];
+    const batchSize = 8;
+    for (let i = 0; i < universe.length; i += batchSize) {
+      const batch = universe.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (symbol): Promise<ScannedSymbol | null> => {
+          try {
+            const chart = await fetchMarketChart(symbol, "6mo", "1d");
+            const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+              (c: any) => c !== null && c !== undefined && !isNaN(c)
+            );
+            const bollinger = computeBollingerFromCloses(closes, period, stddev);
+            if (!bollinger || closes.length === 0) return null;
+            return { symbol, price: closes[closes.length - 1], bollinger };
+          } catch {
+            return null;
+          }
+        })
+      );
+      for (const r of results) if (r) scanned.push(r);
+    }
+
+    const qqqRegime = scanned.find((s) => s.symbol === "QQQ") || null;
+    const constituentResults = scanned.filter((s) => s.symbol !== "QQQ");
+
+    const matched = constituentResults
+      .filter((s) => matchesBollingerMode(s, mode, squeezeThresholdPct))
+      .sort((a, b) => bollingerRankKey(a, mode) - bollingerRankKey(b, mode))
+      .slice(0, limit);
+
+    const symbols = Array.from(new Set(["QQQ", ...matched.map((m) => m.symbol)]));
+
+    const responseData = {
+      generatedAt: new Date().toISOString(),
+      mode,
+      period,
+      stddev,
+      constituentSource: source,
+      universeSize: constituents.length,
+      scannedCount: scanned.length,
+      qqqRegime,
+      symbols,
+      matches: matched,
+    };
+
+    qqqBollingerScanCache.set(cacheKey, { data: responseData, expiresAt: Date.now() + 10 * 60_000 });
+    res.json({ ...responseData, cached: false });
+  } catch (err: any) {
+    console.error("Error scanning QQQ Bollinger watchlist:", err);
+    res.status(500).json({ error: err?.message || "Failed to scan QQQ Bollinger watchlist" });
   }
 });
 
