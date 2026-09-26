@@ -35,6 +35,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { ActiveTab } from "./Header";
@@ -44,6 +45,7 @@ import {
   OptionPremiumRangeSlider,
   RsiRangeSlider,
   DeltaRangeSlider,
+  BollingerBandSlider,
 } from "./sliders";
 import {
   LineChart,
@@ -105,6 +107,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [premiumRange, setPremiumRange] = useState<[number, number]>([0.35, 50]);
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+  const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
   const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("score");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -570,6 +573,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           if (rsi < rsiRange[0] || rsi > rsiRange[1]) return false;
         }
       }
+
+      if (bollingerRange[0] > -20 || bollingerRange[1] < 120) {
+        const pctB = r.bollinger?.percent_b;
+        if (pctB !== null && pctB !== undefined) {
+          const pctBVal = pctB * 100;
+          if (pctBVal < bollingerRange[0] || pctBVal > bollingerRange[1]) return false;
+        }
+      }
       return true;
     };
 
@@ -606,7 +617,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       high_risk: buildTier(data.high_risk, data.tier_summaries.high_risk),
       all: { count: data.all_recommendations.filter(filterItem).length },
     };
-  }, [data, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange]);
+  }, [data, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange]);
 
   // Raw list filtered by risk tier, search term, delta range, moneyness, cash return, premium, and RSI
   const filteredList = useMemo(() => {
@@ -661,8 +672,11 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       });
     }
 
+    // Filter by Bollinger Bands (%B)
+    list = list.filter(matchesBollingerEntity);
+
     return list;
-  }, [data, activeTierTab, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange]);
+  }, [data, activeTierTab, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, matchesBollingerEntity]);
 
   // Unified sorted recommendations using hierarchical sorting across BOTH Cards and Table views
   const currentList = useMemo(() => {
@@ -946,7 +960,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
               Dynamic Recommendation Filters
             </span>
-            {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+            {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
               <button
                 type="button"
                 onClick={() => {
@@ -955,6 +969,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                   setPremiumRange([0.35, 50]);
                   setRsiRange([0, 100]);
                   setDeltaRange([0.0, 1.0]);
+                  resetBollingerRange();
                 }}
                 className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition"
               >
@@ -988,6 +1003,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <DeltaRangeSlider
               range={deltaRange}
               onChange={setDeltaRange}
+            />
+          </div>
+
+          {/* Bollinger Bands (%B) Range Slider - Placed on a separate line below Delta slider */}
+          <div className="mt-3.5 w-full">
+            <BollingerBandSlider
+              range={bollingerRange}
+              onChange={setBollingerRange}
             />
           </div>
         </div>
@@ -1414,7 +1437,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               {data && data.all_recommendations.length > 0
-                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Moneyness ${moneynessRange[0]}%–${moneynessRange[1]}%, Min Return ${cashReturnRange[0]}%, Min Premium $${premiumRange[0].toFixed(2)}, RSI ${rsiRange[0]}–${rsiRange[1]}, Delta |Δ| ${deltaRange[0].toFixed(2)}–${deltaRange[1].toFixed(2)}, or Tier selection) filtered them out.`
+                ? `We scanned ${data.all_recommendations.length} total put contracts. Your active filters (Moneyness ${moneynessRange[0]}%–${moneynessRange[1]}%, Min Return ${cashReturnRange[0]}%, Min Premium $${premiumRange[0].toFixed(2)}, RSI ${rsiRange[0]}–${rsiRange[1]}, Delta |Δ| ${deltaRange[0].toFixed(2)}–${deltaRange[1].toFixed(2)}, Bollinger %B ${bollingerRange[0]}%–${bollingerRange[1]}%, or Tier selection) filtered them out.`
                 : `No contracts found matching DTE ${dteRange.minDte}–${dteRange.maxDte} days. Try expanding your expiration horizon or relaxing filter thresholds.`}
             </p>
           </div>

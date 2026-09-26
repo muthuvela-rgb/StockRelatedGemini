@@ -33,6 +33,8 @@ import { CashReturnRangeSlider } from "./sliders/CashReturnRangeSlider";
 import { OptionPremiumRangeSlider } from "./sliders/OptionPremiumRangeSlider";
 import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import { BollingerBandSlider } from "./BollingerBandSlider";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 
 interface CspRsiDivergenceViewerProps {
   watchlist: string[];
@@ -55,6 +57,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
   const [premiumRange, setPremiumRange] = useState<[number, number]>([0, 50]);
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+  const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [copiedContract, setCopiedContract] = useState<string | null>(null);
 
@@ -174,8 +177,11 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
       });
     }
 
+    // Filter by Bollinger Bands (%B) (via centralized predicate)
+    list = list.filter(matchesBollingerEntity);
+
     return list;
-  }, [data, activeTier, searchQuery, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange]);
+  }, [data, activeTier, searchQuery, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
 
   return (
     <div className="space-y-6">
@@ -541,7 +547,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
               />
             </div>
 
-            {(moneynessRange[0] > 0 || moneynessRange[1] < 100 || cashReturnRange[0] > 5 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999) && (
+            {(moneynessRange[0] > 0 || moneynessRange[1] < 100 || cashReturnRange[0] > 5 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
               <button
                 type="button"
                 onClick={() => {
@@ -550,6 +556,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
                   setPremiumRange([0, 50]);
                   setRsiRange([0, 100]);
                   setDeltaRange([0.0, 1.0]);
+                  resetBollingerRange();
                 }}
                 className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition shrink-0 self-start sm:self-auto"
               >
@@ -598,6 +605,14 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
               <DeltaRangeSlider
                 range={deltaRange}
                 onChange={setDeltaRange}
+              />
+            </div>
+
+            {/* Bollinger Bands (%B) Range Slider - Placed on a separate line below Delta slider */}
+            <div className="mt-3.5 w-full">
+              <BollingerBandSlider
+                range={bollingerRange}
+                onChange={setBollingerRange}
               />
             </div>
           </div>

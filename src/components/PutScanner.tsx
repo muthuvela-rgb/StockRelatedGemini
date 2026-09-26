@@ -193,6 +193,7 @@ import { VerticalPutSpread } from "../utils/verticalPutOptimizer";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import { ScannerRangeFilterDeck } from "./ScannerRangeFilterDeck";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 
 interface PutScannerProps {
   watchlist: string[];
@@ -229,6 +230,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [premiumRange, setPremiumRange] = useState<[number, number]>([0, 50]);
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
+  const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [filterSearch, setFilterSearch] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -335,9 +337,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
         const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
         if (d < deltaRange[0] || d > deltaRange[1]) return false;
       }
+      // 7. Bollinger Bands (%B) Range (via centralized predicate)
+      if (!matchesBollingerEntity(r)) return false;
+
       return true;
     });
-  }, [records, filterSearch, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange]);
+  }, [records, filterSearch, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
 
   const filteredRecords = useMemo(() => {
     return applyHierarchicalSort(rawFilteredRecords, sortCriteria, PUT_SCANNER_COLUMNS);
@@ -349,6 +354,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     setPremiumRange([0, 50]);
     setRsiRange([0, 100]);
     setDeltaRange([0.0, 1.0]);
+    resetBollingerRange();
     setFilterSearch("");
   };
 
@@ -1032,6 +1038,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           onRsiRangeChange={setRsiRange}
           deltaRange={deltaRange}
           onDeltaRangeChange={setDeltaRange}
+          bollingerRange={bollingerRange}
+          onBollingerRangeChange={setBollingerRange}
           searchTicker={filterSearch}
           onSearchTickerChange={setFilterSearch}
           onResetAll={handleResetAllFilters}
@@ -1861,6 +1869,11 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               RSI: {rsiRange[0]}–{rsiRange[1]}
             </span>
           )}
+          {(bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
+            <span className="px-2 py-0.5 rounded-md bg-teal-950/60 border border-teal-700/50 text-teal-300 font-mono text-[11px]">
+              Bollinger %B: {bollingerRange[0]}%–{bollingerRange[1]}%
+            </span>
+          )}
           {filterSearch && (
             <span className="px-2 py-0.5 rounded-md bg-blue-950/60 border border-blue-700/50 text-blue-300 font-mono text-[11px]">
               Ticker: &quot;{filterSearch.toUpperCase()}&quot;
@@ -1872,7 +1885,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           <span className="text-slate-400 font-mono">
             {filteredRecords.length} of {records.length} puts matching
           </span>
-          {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || filterSearch) && (
+          {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120 || filterSearch) && (
             <button
               onClick={handleResetAllFilters}
               className="text-blue-400 hover:text-blue-300 font-medium cursor-pointer underline text-[11px]"

@@ -35,6 +35,7 @@ import {
   TableSortHeader,
 } from "./HierarchicalSortControl";
 import { TableTopScrollbar } from "./TableTopScrollbar";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 
 type OptionChainSortKey =
   | "expiration"
@@ -104,6 +105,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
   const [tableExpFilter, setTableExpFilter] = useState<string>("ALL");
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
+  const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
 
@@ -291,9 +293,10 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           matchRsi = rsi >= rsiRange[0] && rsi <= rsiRange[1];
         }
       }
-      return matchStrike && matchExp && matchDelta && matchDte && matchRsi;
+      const matchBollinger = matchesBollingerEntity(chainData);
+      return matchStrike && matchExp && matchDelta && matchDte && matchRsi && matchBollinger;
     });
-  }, [rows, strikeRange, deltaRange, dteRange, rsiRange, selectedExp, tableExpFilter, chainData]);
+  }, [rows, strikeRange, deltaRange, dteRange, rsiRange, bollingerRange, selectedExp, tableExpFilter, chainData, matchesBollingerEntity]);
 
   const optionChainColumns: ColumnDefinition<OptionChainSortKey>[] = useMemo(() => {
     const spot = chainData?.current_price || 0;
@@ -617,6 +620,8 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           dataMaxDte={maxDteAvailable}
           rsiRange={rsiRange}
           onRsiRangeChange={setRsiRange}
+          bollingerRange={bollingerRange}
+          onBollingerRangeChange={setBollingerRange}
           selectedContract={selectedContract}
           selectedContractSymbol={selectedContract?.contractSymbol}
           onSelectContract={(c) => setSelectedContract(c)}

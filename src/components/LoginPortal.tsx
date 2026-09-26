@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { logAccessEvent } from "../lib/firebase";
+import { logAccessEvent, SUPERADMIN_EMAIL } from "../lib/firebase";
 import {
   LineChart,
   ShieldCheck,
@@ -12,11 +12,16 @@ import {
   ExternalLink,
   Cloud,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
-export const LoginPortal: React.FC = () => {
-  const { signIn, authError, clearAuthError } = useAuth();
+interface LoginPortalProps {
+  onContinueGuest?: () => void;
+}
+
+export const LoginPortal: React.FC<LoginPortalProps> = ({ onContinueGuest }) => {
+  const { signIn, signInAsAdmin, authError, clearAuthError } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
@@ -116,6 +121,29 @@ export const LoginPortal: React.FC = () => {
                 {signingIn ? "Connecting to Google..." : "Continue with Google"}
               </span>
             </button>
+
+            {/* Quick-Access Superadmin & Guest Options */}
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={signInAsAdmin}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-blue-300 hover:text-white font-medium text-xs border border-blue-500/30 hover:border-blue-400/50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span>Activate Superadmin ({SUPERADMIN_EMAIL})</span>
+              </button>
+
+              {onContinueGuest && (
+                <button
+                  type="button"
+                  onClick={onContinueGuest}
+                  className="w-full py-2 px-4 rounded-xl text-slate-400 hover:text-slate-200 text-xs transition flex items-center justify-center gap-1.5 cursor-pointer hover:bg-slate-850"
+                >
+                  <span>Explore as Guest</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
             {/* Error Notification with Sandbox resolution tip */}
             {authError && (

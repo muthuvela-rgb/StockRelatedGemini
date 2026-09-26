@@ -9,12 +9,14 @@ import { CashReturnRangeSlider } from "./sliders/CashReturnRangeSlider";
 import { OptionPremiumRangeSlider } from "./sliders/OptionPremiumRangeSlider";
 import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import { BollingerBandSlider } from "./BollingerBandSlider";
 
 export { MONEYNESS_PRESETS } from "./sliders/MoneynessRangeSlider";
 export { CASH_RETURN_PRESETS } from "./sliders/CashReturnRangeSlider";
 export { PREMIUM_PRESETS } from "./sliders/OptionPremiumRangeSlider";
 export { RSI_PRESETS } from "./sliders/RsiRangeSlider";
 export { DELTA_PRESETS } from "./DeltaRangeSlider";
+export { BOLLINGER_PRESETS } from "./BollingerBandSlider";
 
 export interface ScannerFilterDeckProps {
   // Moneyness Band Slider
@@ -36,6 +38,10 @@ export interface ScannerFilterDeckProps {
   // Delta Greek Range
   deltaRange: [number, number]; // [0.0, 1.0]
   onDeltaRangeChange: (range: [number, number]) => void;
+
+  // Bollinger Bands (%B) Range
+  bollingerRange?: [number, number]; // [-20, 120]
+  onBollingerRangeChange?: (range: [number, number]) => void;
 
   // Ticker search
   searchTicker: string;
@@ -62,6 +68,8 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
   onRsiRangeChange,
   deltaRange,
   onDeltaRangeChange,
+  bollingerRange = [-20, 120],
+  onBollingerRangeChange,
   searchTicker,
   onSearchTickerChange,
   onResetAll,
@@ -73,6 +81,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
   const isPremiumFiltered = premiumRange[0] > 0 || premiumRange[1] < 50;
   const isRsiFiltered = rsiRange[0] > 0 || rsiRange[1] < 100;
   const isDeltaFiltered = deltaRange[0] > 0.001 || deltaRange[1] < 0.999;
+  const isBollingerFiltered = bollingerRange[0] > -20 || bollingerRange[1] < 120;
   const isSearchFiltered = searchTicker.trim().length > 0;
 
   const hasAnyActiveFilter =
@@ -81,6 +90,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
     isPremiumFiltered ||
     isRsiFiltered ||
     isDeltaFiltered ||
+    isBollingerFiltered ||
     isSearchFiltered;
 
   return (
@@ -202,6 +212,14 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         <DeltaRangeSlider
           range={deltaRange}
           onChange={onDeltaRangeChange}
+        />
+      </div>
+
+      {/* 6. Bollinger Bands (%B) Range Slider - On a separate line below delta slider */}
+      <div className="mt-3.5 w-full">
+        <BollingerBandSlider
+          range={bollingerRange}
+          onChange={onBollingerRangeChange}
         />
       </div>
     </div>

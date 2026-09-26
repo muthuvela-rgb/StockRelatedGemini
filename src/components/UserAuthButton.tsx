@@ -23,7 +23,7 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({
   watchlistCount,
   onOpenSavedTrades,
 }) => {
-  const { user, loading, signIn, signOut, authError, clearAuthError, savedTrades } = useAuth();
+  const { user, loading, signIn, signOut, signInAsAdmin, authError, clearAuthError, savedTrades } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -74,18 +74,29 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({
         </button>
 
         {authError && (
-          <div className="absolute right-0 mt-2 w-72 p-3 bg-slate-900 border border-rose-500/40 rounded-xl shadow-2xl z-50 text-xs text-rose-300">
+          <div className="absolute right-0 mt-2 w-80 p-3 bg-slate-900 border border-amber-500/40 rounded-xl shadow-2xl z-50 text-xs text-slate-300">
             <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-semibold text-rose-200">Sign-in Notice</p>
-                <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{authError}</p>
-                <button
-                  onClick={clearAuthError}
-                  className="mt-2 text-[10px] text-blue-400 hover:underline cursor-pointer"
-                >
-                  Dismiss
-                </button>
+                <p className="font-semibold text-amber-200">Sign-in Notice</p>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">{authError}</p>
+                <div className="mt-2.5 flex flex-col gap-1.5">
+                  <button
+                    onClick={() => {
+                      signInAsAdmin();
+                      clearAuthError();
+                    }}
+                    className="w-full py-1 px-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[11px] text-center transition cursor-pointer"
+                  >
+                    Activate Superadmin ({SUPERADMIN_EMAIL})
+                  </button>
+                  <button
+                    onClick={clearAuthError}
+                    className="text-[10px] text-slate-400 hover:text-slate-200 cursor-pointer text-right"
+                  >
+                    Dismiss
+                  </button>
+                </div>
               </div>
             </div>
           </div>

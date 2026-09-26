@@ -29,7 +29,8 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
-import { RsiRangeSlider } from "./sliders";
+import { RsiRangeSlider, BollingerBandSlider } from "./sliders";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 import { TableTopScrollbar } from "./TableTopScrollbar";
 
 type TechnicalsSortKey = keyof TechnicalsData | "bollinger_pct_b";
@@ -87,6 +88,7 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
   const [results, setResults] = useState<TechnicalsData[]>([]);
   const [selectedStock, setSelectedStock] = useState<TechnicalsData | null>(null);
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
+  const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [sortCriteria, setSortCriteria] = useState<SortCriterion<TechnicalsSortKey>[]>([
     { id: "1", field: "rsi_14", direction: "asc" },
   ]);
@@ -126,13 +128,18 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
   };
 
   const filteredResults = useMemo(() => {
-    if (rsiRange[0] <= 0 && rsiRange[1] >= 100) return results;
-    return results.filter((item) => {
-      const rsi = item.rsi_14;
-      if (rsi === null || rsi === undefined) return false;
-      return rsi >= rsiRange[0] && rsi <= rsiRange[1];
-    });
-  }, [results, rsiRange]);
+    let list = results;
+    if (rsiRange[0] > 0 || rsiRange[1] < 100) {
+      list = list.filter((item) => {
+        const rsi = item.rsi_14;
+        if (rsi === null || rsi === undefined) return false;
+        return rsi >= rsiRange[0] && rsi <= rsiRange[1];
+      });
+    }
+    // Filter with centralized Bollinger Band screening logic
+    list = list.filter(matchesBollingerEntity);
+    return list;
+  }, [results, rsiRange, bollingerRange, matchesBollingerEntity]);
 
   const sortedResults = useMemo(() => {
     return applyHierarchicalSort(filteredResults, sortCriteria, TECHNICALS_COLUMNS);
@@ -213,10 +220,18 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
         </div>
 
         {/* RSI (14) Momentum Range Slider */}
-        <div className="pt-4 mt-4 border-t border-slate-800">
+        <div className="pt-4 mt-4 border-t border-slate-800 space-y-4">
           <RsiRangeSlider
             range={rsiRange}
             onChange={setRsiRange}
+            badgeCount={{
+              filtered: filteredResults.length,
+              total: results.length,
+            }}
+          />
+          <BollingerBandSlider
+            range={bollingerRange}
+            onChange={setBollingerRange}
             badgeCount={{
               filtered: filteredResults.length,
               total: results.length,

@@ -20,6 +20,8 @@ import { TickerSymbolButton } from "../context/TickerHudContext";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
 import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
+import { BollingerBandSlider } from "./BollingerBandSlider";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 
 interface FallDetectorProps {
   watchlist: string[];
@@ -31,6 +33,7 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
   const [fallThresholdPct, setFallThresholdPct] = useState(8.0);
   const [minMarketCapB, setMinMarketCapB] = useState(5.0); // $5B
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
+  const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [universe, setUniverse] = useState<string>("qqq");
   const [customTickers, setCustomTickers] = useState("NVDA, AMD, INTC, MU, TSLA, AAPL, AMZN, MSFT, META, GOOGL, NFLX, PLTR, ARM");
   const [loading, setLoading] = useState(false);
@@ -80,9 +83,10 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
           if (rsi < rsiRange[0] || rsi > rsiRange[1]) return false;
         }
       }
+      if (!matchesBollingerEntity(stock)) return false;
       return true;
     });
-  }, [results, rsiRange]);
+  }, [results, rsiRange, bollingerRange, matchesBollingerEntity]);
 
   return (
     <div className="space-y-6">
@@ -190,11 +194,19 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
           </div>
         )}
 
-        {/* RSI (14) Momentum Range Slider */}
-        <div className="pt-4 mt-4 border-t border-slate-800">
+        {/* Momentum & Technical Filter Deck */}
+        <div className="pt-4 mt-4 border-t border-slate-800 space-y-4">
           <RsiRangeSlider
             range={rsiRange}
             onChange={setRsiRange}
+            badgeCount={{
+              filtered: filteredResults.length,
+              total: results.length,
+            }}
+          />
+          <BollingerBandSlider
+            range={bollingerRange}
+            onChange={setBollingerRange}
             badgeCount={{
               filtered: filteredResults.length,
               total: results.length,

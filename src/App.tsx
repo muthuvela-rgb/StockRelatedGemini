@@ -21,6 +21,7 @@ import { NasdaqSimulator } from "./components/NasdaqSimulator";
 import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { StockChartsViewer } from "./components/StockChartsViewer";
 import { TickerHudProvider } from "./context/TickerHudContext";
+import { BollingerFilterProvider } from "./context/BollingerFilterContext";
 import { LineChart, BookOpen } from "lucide-react";
 
 // Fallback default tickers, used only until AuthContext's watchlists have hydrated.
@@ -83,7 +84,7 @@ const AppContent: React.FC = () => {
     setActiveTab(tab);
   };
 
-  // Auth Gate: Checking session state
+  // Session state indicator while initializing
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6">
@@ -93,16 +94,11 @@ const AppContent: React.FC = () => {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-            <span>Verifying Google session...</span>
+            <span>Loading StockRelated Analytics...</span>
           </div>
         </div>
       </div>
     );
-  }
-
-  // Auth Gate: Require Google Authentication
-  if (!user) {
-    return <LoginPortal />;
   }
 
   return (
@@ -225,7 +221,9 @@ const AppContent: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <BollingerFilterProvider>
+        <AppContent />
+      </BollingerFilterProvider>
     </AuthProvider>
   );
 };

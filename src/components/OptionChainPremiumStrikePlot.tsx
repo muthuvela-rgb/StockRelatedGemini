@@ -19,6 +19,8 @@ import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
 import { StrikeRangeSlider } from "./sliders/StrikeRangeSlider";
 import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
+import { BollingerBandSlider } from "./BollingerBandSlider";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 import {
   Sliders,
   SlidersHorizontal,
@@ -75,6 +77,8 @@ interface OptionChainPremiumStrikePlotProps {
   dataMaxDte?: number;
   rsiRange?: [number, number];
   onRsiRangeChange?: (newRange: [number, number]) => void;
+  bollingerRange?: [number, number];
+  onBollingerRangeChange?: (newRange: [number, number]) => void;
   onSelectContract?: (contract: OptionGreeks | null) => void;
   selectedContract?: OptionGreeks | null;
   selectedContractSymbol?: string | null;
@@ -139,6 +143,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   dataMaxDte = 365,
   rsiRange,
   onRsiRangeChange,
+  bollingerRange,
+  onBollingerRangeChange,
   onSelectContract,
   selectedContract,
   selectedContractSymbol,
@@ -153,6 +159,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const [internalDeltaRange, setInternalDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [internalDteRange, setInternalDteRange] = useState<[number, number]>([dataMinDte, dataMaxDte]);
   const [internalRsiRange, setInternalRsiRange] = useState<[number, number]>([0, 100]);
+  const bollingerContext = useBollingerFilter();
+  const [internalBollingerRange, setInternalBollingerRange] = useState<[number, number]>([-20, 120]);
 
   const activeDeltaRange = deltaRange || internalDeltaRange;
   const handleDeltaChange = (newRange: [number, number]) => {
@@ -178,11 +186,24 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     setInternalRsiRange(newRange);
   };
 
+  const activeBollingerRange = bollingerRange || (bollingerContext ? bollingerContext.bollingerRange : internalBollingerRange);
+  const handleBollingerChange = (newRange: [number, number]) => {
+    if (onBollingerRangeChange) {
+      onBollingerRangeChange(newRange);
+    }
+    if (bollingerContext?.setBollingerRange) {
+      bollingerContext.setBollingerRange(newRange);
+    }
+    setInternalBollingerRange(newRange);
+  };
+
   const handleResetAllSliders = () => {
     onStrikeRangeChange([dataMinStrike, dataMaxStrike]);
     handleDeltaChange([0.0, 1.0]);
     handleDteChange([dataMinDte, dataMaxDte]);
     handleRsiChange([0, 100]);
+    handleBollingerChange([-20, 120]);
+    bollingerContext?.resetBollingerRange();
   };
 
   const hasAnyActiveSlider =
@@ -193,7 +214,9 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     activeDteRange[0] > dataMinDte ||
     activeDteRange[1] < dataMaxDte ||
     activeRsiRange[0] > 0 ||
-    activeRsiRange[1] < 100;
+    activeRsiRange[1] < 100 ||
+    activeBollingerRange[0] > -20 ||
+    activeBollingerRange[1] < 120;
 
   const getExpDte = (exp: string): number => {
     const chain = allChainsMap[exp];
@@ -349,6 +372,12 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       (rsi_14 >= activeRsiRange[0] && rsi_14 <= activeRsiRange[1]);
     if (!matchRsi) return [];
 
+    // Filter by Bollinger %B if ticker Bollinger data is known
+    const matchBollinger = bollingerContext
+      ? bollingerContext.matchesBollinger(bollinger?.percent_b)
+      : (bollinger?.percent_b == null || (bollinger.percent_b * 100 >= activeBollingerRange[0] && bollinger.percent_b * 100 <= activeBollingerRange[1]));
+    if (!matchBollinger) return [];
+
     const [dMin, dMax] = activeDeltaRange;
     const [minDte, maxDte] = activeDteRange;
     // Map unique strikes in strike, delta, and DTE range
@@ -392,7 +421,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     });
 
     return Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
-  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, currentPrice, tab, selectedExp]);
+  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, activeBollingerRange, bollinger, currentPrice, tab, selectedExp]);
 
   // 2. DATA PREPARATION FOR ALL EXPIRATIONS MODE
   const allExpChartData = useMemo(() => {
@@ -404,6 +433,12 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       rsi_14 === undefined ||
       (rsi_14 >= activeRsiRange[0] && rsi_14 <= activeRsiRange[1]);
     if (!matchRsi) return [];
+
+    // Filter by Bollinger %B if ticker Bollinger data is known
+    const matchBollinger = bollingerContext
+      ? bollingerContext.matchesBollinger(bollinger?.percent_b)
+      : (bollinger?.percent_b == null || (bollinger.percent_b * 100 >= activeBollingerRange[0] && bollinger.percent_b * 100 <= activeBollingerRange[1]));
+    if (!matchBollinger) return [];
 
     const [dMin, dMax] = activeDeltaRange;
     const [minDte, maxDte] = activeDteRange;
@@ -464,7 +499,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       });
       return pt;
     });
-  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, metric, currentPrice, selectedExp]);
+  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, activeBollingerRange, bollinger, metric, currentPrice, selectedExp]);
 
   // Handle strike slider adjustments
   const handleMinSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -652,6 +687,19 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             maxDelta={activeDeltaRange[1]}
             onChange={handleDeltaChange}
             showPresets={true}
+          />
+        </div>
+
+        {/* 5. Bollinger Bands (%B) Range Slider - Placed on a separate line below Delta slider */}
+        <div className="mt-3.5 w-full">
+          <BollingerBandSlider
+            range={activeBollingerRange}
+            onChange={handleBollingerChange}
+            sublabel={
+              bollinger?.percent_b !== undefined && bollinger?.percent_b !== null
+                ? `20d 2σ Bollinger envelope. Current ${ticker} %B: ${(bollinger.percent_b * 100).toFixed(0)}% (${bollinger.zone || "in envelope"}) • Lower: $${bollinger.lower_band?.toFixed(2)} • SMA: $${bollinger.sma?.toFixed(2)} • Upper: $${bollinger.upper_band?.toFixed(2)}`
+                : "Position relative to 20-period 2σ Bollinger Bands envelope (0% = Lower Band, 50% = 20 SMA, 100% = Upper Band)."
+            }
           />
         </div>
       </div>

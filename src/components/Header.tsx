@@ -30,6 +30,7 @@ import { UserAuthButton } from "./UserAuthButton";
 import { MarketCatalystsBox } from "./MarketCatalystsBox";
 import { useAuth } from "../context/AuthContext";
 import { SUPERADMIN_EMAIL } from "../lib/firebase";
+import { useBollingerFilter } from "../context/BollingerFilterContext";
 
 export type ActiveTab =
   | "options-scanner"
@@ -67,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUserGuide,
 }) => {
   const { user } = useAuth();
+  const { isBollingerFiltered, bollingerRange, resetBollingerRange } = useBollingerFilter();
   const navRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -167,24 +169,39 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/20">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/20 shrink-0">
               <LineChart className="w-5 h-5 text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-lg text-white font-display tracking-tight">StockRelated</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+                <span className="font-bold text-lg text-white font-display tracking-tight truncate">StockRelated</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium shrink-0">
                   Analytics & Tooling
                 </span>
               </div>
-              <p className="text-xs text-slate-400 hidden sm:block">
+              <p className="text-xs text-slate-400 hidden sm:block truncate">
                 Options yield, fall detection, technicals & Black-Scholes Greeks
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-2.5 text-xs text-slate-400">
+          <div className="flex items-center gap-2 sm:gap-2.5 text-xs text-slate-400 shrink-0">
+            {/* Global Active Bollinger Filter Pill */}
+            {isBollingerFiltered && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-950/80 border border-teal-500/50 text-teal-300 text-[11px] font-mono shadow-sm shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                <span className="font-semibold">BB: {bollingerRange[0]}%–{bollingerRange[1]}%</span>
+                <button
+                  onClick={resetBollingerRange}
+                  title="Reset global Bollinger filter (show all stocks across tabs)"
+                  className="p-0.5 hover:text-white rounded hover:bg-teal-900/60 cursor-pointer transition"
+                >
+                  <X className="w-3 h-3 text-teal-300 hover:text-white" />
+                </button>
+              </div>
+            )}
+
             {/* FOMC & Next Rebalance Key Dates Box */}
             <MarketCatalystsBox onNavigateTab={setActiveTab} />
 
@@ -238,7 +255,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => scrollBy(-200)}
               title="Scroll left"
-              className="absolute left-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all"
+              className="absolute left-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -290,7 +307,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => scrollBy(200)}
               title="Scroll right"
-              className="absolute right-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all"
+              className="absolute right-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

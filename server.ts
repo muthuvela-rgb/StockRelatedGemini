@@ -4443,8 +4443,10 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
               rsi,
               iv: atmIv,
               hv: histVolPct,
+              bollinger: technicals?.bollinger ?? null,
               bollinger_lower: bollingerLower,
               bollinger_upper: bollingerUpper,
+              bollinger_zone: bollingerZone,
               dist_to_52w_high_pct: distTo52wHigh,
               sec_filing_impact: secFilingImpact || null,
             };
@@ -4693,7 +4695,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                     rsi_14: rsi,
                     bollinger_zone: bollingerZone,
                     bollinger_lower: bollingerLower,
-                    is_below_bollinger_lower: isBelowBollingerLower,
+                    bollinger_upper: bollingerUpper,
+                    bollinger: technicals?.bollinger ?? null,
                     hist_vol_pct: histVolPct,
                     iv_to_hv_ratio: ivToHvRatio,
                     fifty_two_week_high: fiftyTwoWeekHigh,
@@ -4703,6 +4706,30 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                     next_earnings_date: nextEarningsDate,
                     fibonacci: technicals?.fibonacci ?? null,
                   },
+                  bollinger: technicals?.bollinger ?? null,
+                  strike_bollinger_position: (() => {
+                    const bb = technicals?.bollinger;
+                    if (!bb) return null;
+                    const isBelow = strike < bb.lower_band;
+                    const diff = Number((strike - bb.lower_band).toFixed(2));
+                    const pctFromLower = Number(((strike - bb.lower_band) / bb.lower_band * 100).toFixed(1));
+                    let zoneTitle = "Below Lower Band";
+                    if (strike >= bb.upper_band) zoneTitle = "Above Upper Band";
+                    else if (strike >= bb.sma) zoneTitle = "Between SMA and Upper Band";
+                    else if (strike >= bb.lower_band) zoneTitle = "Between Lower Band and SMA";
+                    return {
+                      strike,
+                      lower_band: bb.lower_band,
+                      sma: bb.sma,
+                      upper_band: bb.upper_band,
+                      diff_from_lower: diff,
+                      pct_from_lower: pctFromLower,
+                      is_below_lower: isBelow,
+                      zone: bb.zone,
+                      zone_label: zoneTitle,
+                      position_title: zoneTitle,
+                    };
+                  })(),
                   fibonacci: technicals?.fibonacci ?? null,
                   fifty_two_week_high: fiftyTwoWeekHigh,
                   fifty_two_week_low: technicals?.fifty_two_week_low ?? null,

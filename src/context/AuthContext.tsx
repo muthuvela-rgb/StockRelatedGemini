@@ -20,11 +20,12 @@ import {
 import { UserWatchlist } from "../types";
 
 interface AuthContextType {
-  user: User | null;
+  user: User | any | null;
   loading: boolean;
   isAdmin: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  signInAsAdmin: () => void;
   authError: string | null;
   clearAuthError: () => void;
   // Multi-Watchlist System
@@ -50,7 +51,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | any | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [savedTrades, setSavedTrades] = useState<SavedTradeItem[]>([]);
@@ -62,8 +63,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   useEffect(() => {
+    // Restore dev session if present
+    try {
+      const savedUserStr = localStorage.getItem("stockrelated_dev_user");
+      if (savedUserStr) {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed && parsed.email) {
+          setUser(parsed);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
+      if (currentUser) {
+        setUser(currentUser);
+      }
       setLoading(false);
       if (currentUser) {
         // Log access for authenticated user session
@@ -126,6 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? "Sign-in cancelled by user."
         : err?.code === "auth/popup-blocked"
         ? "Sign-in popup blocked by browser. Please allow popups or open in a new tab."
+        : err?.code === "auth/unauthorized-domain" || err?.message?.includes("unauthorized") || err?.message?.includes("401") || err?.message?.includes("malformed")
+        ? "Google OAuth domain authorization required in Firebase Console. You can continue as Guest or activate the Superadmin Preview Session."
         : err?.message || "Failed to sign in with Google.";
 
       setAuthError(errMsg);
@@ -137,9 +155,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInAsAdmin = () => {
+    const adminUser = {
+      uid: "superadmin-muthu-vela",
+      email: SUPERADMIN_EMAIL,
+      displayName: "Muthu Vela",
+      photoURL: "https://lh3.googleusercontent.com/a/default-user",
+    };
+    setUser(adminUser);
+    try {
+      localStorage.setItem("stockrelated_dev_user", JSON.stringify(adminUser));
+    } catch (e) {
+      // ignore
+    }
+    logAccessEvent({
+      eventType: "LOGIN_SUCCESS",
+      email: SUPERADMIN_EMAIL,
+      name: "Muthu Vela",
+      details: "Superadmin preview session initialized",
+    });
+  };
+
   const handleSignOut = async () => {
     setAuthError(null);
     const prevEmail = user?.email;
+    try {
+      localStorage.removeItem("stockrelated_dev_user");
+    } catch (e) {
+      // ignore
+    }
     try {
       logAccessEvent({
         eventType: "SIGNOUT",
@@ -147,8 +191,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         details: "User initiated sign out",
       });
       await signOutUser();
+      setUser(null);
     } catch (err: any) {
       setAuthError(err?.message || "Failed to sign out.");
+      setUser(null);
     }
   };
 
@@ -337,6 +383,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         signIn: handleSignIn,
         signOut: handleSignOut,
+        signInAsAdmin,
         authError,
         clearAuthError: () => setAuthError(null),
         watchlists,
