@@ -211,8 +211,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [singleStrikeType, setSingleStrikeType] = useState<"dollar" | "pct">("dollar");
   const [singleStrike, setSingleStrike] = useState<number | string>(150);
   const [singleStrikePct, setSingleStrikePct] = useState<number>(50);
-  const [pctLow, setPctLow] = useState(30);
-  const [pctHigh, setPctHigh] = useState(70);
+  const [pctLow, setPctLow] = useState(20);
+  const [pctHigh, setPctHigh] = useState(100);
   const [bollingerPeriod, setBollingerPeriod] = useState(20);
   const [bollingerStd, setBollingerStd] = useState(2.0);
 
