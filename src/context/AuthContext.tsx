@@ -83,9 +83,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         try {
-          // Load 3 watchlists from cloud
+          // Load the user's saved watchlists from cloud (any number of slots)
           const cloudData = await fetchUserWatchlists(currentUser.uid);
-          if (cloudData && cloudData.watchlists && cloudData.watchlists.length === 3) {
+          if (cloudData && cloudData.watchlists && cloudData.watchlists.length > 0) {
             setWatchlists(cloudData.watchlists);
             setActiveWatchlistIndexState(cloudData.activeIndex);
           }

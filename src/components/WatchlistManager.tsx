@@ -272,7 +272,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     }
     setCloudSyncing(true);
     try {
-      // 1. Sync all 3 watchlists to Firestore user document
+      // 1. Sync all watchlists to Firestore user document
       await syncCloudWatchlists(watchlists, activeWatchlistIndex);
 
       // 2. Also persist active watchlist to central backend server
@@ -282,7 +282,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
         body: JSON.stringify({ tickers: activeWatchlist.tickers }),
       });
 
-      setSaveStatus(`Pushed all 3 watchlists to Cloud Firestore & Server`);
+      setSaveStatus(`Pushed all ${watchlists.length} watchlists to Cloud Firestore & Server`);
       setTimeout(() => setSaveStatus(null), 3500);
     } catch (e: any) {
       console.error("Failed to push watchlist to cloud:", e);
@@ -299,7 +299,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     try {
       const cloudData = await loadCloudWatchlists();
       if (cloudData && cloudData.watchlists && cloudData.watchlists.length > 0) {
-        setSaveStatus(`Restored 3 watchlists from Cloud Firestore`);
+        setSaveStatus(`Restored ${cloudData.watchlists.length} watchlists from Cloud Firestore`);
       } else {
         setSaveStatus("No saved cloud watchlists found in Firestore");
       }
@@ -840,8 +840,8 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-xl leading-relaxed">
                 {user
-                  ? "All 3 of your watchlists and bookmarked options trades are continuously backed up to your Google account via Cloud Firestore."
-                  : "Sign in with Google to enable real-time cloud sync, saving your 3 custom watchlists and bookmarked trades securely to Firestore across all devices."}
+                  ? `All ${watchlists.length} of your watchlists and bookmarked options trades are continuously backed up to your Google account via Cloud Firestore.`
+                  : "Sign in with Google to enable real-time cloud sync, saving your custom watchlists and bookmarked trades securely to Firestore across all devices."}
               </p>
             </div>
           </div>
@@ -853,16 +853,16 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                   onClick={handleManualCloudPush}
                   disabled={cloudSyncing}
                   className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-                  title="Push current 3 watchlists state to Cloud Firestore"
+                  title="Push current watchlists state to Cloud Firestore"
                 >
                   <CloudUpload className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Push 3 Lists to Cloud</span>
+                  <span>Push {watchlists.length} List{watchlists.length !== 1 ? "s" : ""} to Cloud</span>
                 </button>
                 <button
                   onClick={handleManualCloudPull}
                   disabled={cloudSyncing}
                   className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-                  title="Restore 3 watchlists stored in Cloud Firestore"
+                  title="Restore watchlists stored in Cloud Firestore"
                 >
                   <CloudDownload className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Restore from Cloud</span>
