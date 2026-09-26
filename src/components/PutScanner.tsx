@@ -356,6 +356,52 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     return applyHierarchicalSort(rawFilteredRecords, sortCriteria, PUT_SCANNER_COLUMNS);
   }, [rawFilteredRecords, sortCriteria]);
 
+  const isolatedBadgeCounts = useMemo(() => {
+    if (!records || records.length === 0) {
+      return {
+        moneyness: { filtered: 0, total: 0 },
+        cashReturn: { filtered: 0, total: 0 },
+        premium: { filtered: 0, total: 0 },
+        rsi: { filtered: 0, total: 0 },
+        delta: { filtered: 0, total: 0 },
+        bollinger: { filtered: 0, total: 0 },
+      };
+    }
+
+    const total = records.length;
+
+    const moneynessFiltered = records.filter(
+      (r) => r.moneyness_pct >= moneynessRange[0] && r.moneyness_pct <= moneynessRange[1]
+    ).length;
+
+    const cashReturnFiltered = records.filter(
+      (r) => r.annualized_return_pct_cash_secured >= cashReturnRange[0] && r.annualized_return_pct_cash_secured <= cashReturnRange[1]
+    ).length;
+
+    const premiumFiltered = records.filter(
+      (r) => r.bid >= premiumRange[0] && r.bid <= premiumRange[1]
+    ).length;
+
+    const rsiFiltered = records.filter(
+      (r) => (r.rsi_14 ?? 50) >= rsiRange[0] && (r.rsi_14 ?? 50) <= rsiRange[1]
+    ).length;
+
+    const deltaFiltered = records.filter(
+      (r) => Math.abs(r.delta || 0) >= deltaRange[0] && Math.abs(r.delta || 0) <= deltaRange[1]
+    ).length;
+
+    const bollingerFiltered = records.filter((r) => matchesBollingerEntity(r)).length;
+
+    return {
+      moneyness: { filtered: moneynessFiltered, total },
+      cashReturn: { filtered: cashReturnFiltered, total },
+      premium: { filtered: premiumFiltered, total },
+      rsi: { filtered: rsiFiltered, total },
+      delta: { filtered: deltaFiltered, total },
+      bollinger: { filtered: bollingerFiltered, total },
+    };
+  }, [records, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
+
   const handleResetAllFilters = () => {
     setMoneynessRange([20, 120]);
     setCashReturnRange([0, 100]);
@@ -1058,6 +1104,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           filteredCount={filteredRecords.length}
           avgCashYield={avgCashYield}
           maxCashYield={maxCashYield}
+          moneynessBadgeCount={isolatedBadgeCounts.moneyness}
+          cashReturnBadgeCount={isolatedBadgeCounts.cashReturn}
+          premiumBadgeCount={isolatedBadgeCounts.premium}
+          rsiBadgeCount={isolatedBadgeCounts.rsi}
+          deltaBadgeCount={isolatedBadgeCounts.delta}
+          bollingerBadgeCount={isolatedBadgeCounts.bollinger}
         />
       )}
 

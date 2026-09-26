@@ -626,6 +626,64 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
     };
   }, [data, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, excludeSpansEarnings]);
 
+  const isolatedBadgeCounts = useMemo(() => {
+    if (!data || !data.all_recommendations) {
+      return {
+        moneyness: { filtered: 0, total: 0 },
+        cashReturn: { filtered: 0, total: 0 },
+        premium: { filtered: 0, total: 0 },
+        rsi: { filtered: 0, total: 0 },
+        delta: { filtered: 0, total: 0 },
+        bollinger: { filtered: 0, total: 0 },
+      };
+    }
+
+    const recs = data.all_recommendations;
+    const total = recs.length;
+
+    const moneynessFiltered = recs.filter(
+      (r) => r.moneyness_pct >= moneynessRange[0] && r.moneyness_pct <= moneynessRange[1]
+    ).length;
+
+    const cashReturnFiltered = recs.filter((r) => {
+      const cashYield = r.annualized_return_cash_secured ?? 0;
+      if (cashYield < cashReturnRange[0]) return false;
+      if (cashReturnRange[1] < 100 && cashYield > cashReturnRange[1]) return false;
+      return true;
+    }).length;
+
+    const premiumFiltered = recs.filter((r) => {
+      const bid = r.bid || 0;
+      if (bid < premiumRange[0]) return false;
+      if (premiumRange[1] < 50 && bid > premiumRange[1]) return false;
+      return true;
+    }).length;
+
+    const rsiFiltered = recs.filter((r) => {
+      const rsiVal = r.technicals?.rsi_14;
+      if (rsiVal !== null && rsiVal !== undefined) {
+        return rsiVal >= rsiRange[0] && rsiVal <= rsiRange[1];
+      }
+      return true;
+    }).length;
+
+    const deltaFiltered = recs.filter((r) => {
+      const d = r.greeks?.delta !== null && r.greeks?.delta !== undefined ? Math.abs(r.greeks.delta) : 0;
+      return d >= deltaRange[0] && d <= deltaRange[1];
+    }).length;
+
+    const bollingerFiltered = recs.filter((r) => matchesBollingerEntity(r)).length;
+
+    return {
+      moneyness: { filtered: moneynessFiltered, total },
+      cashReturn: { filtered: cashReturnFiltered, total },
+      premium: { filtered: premiumFiltered, total },
+      rsi: { filtered: rsiFiltered, total },
+      delta: { filtered: deltaFiltered, total },
+      bollinger: { filtered: bollingerFiltered, total },
+    };
+  }, [data, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
+
   // Raw list filtered by risk tier, search term, delta range, moneyness, cash return, premium, and RSI
   const filteredList = useMemo(() => {
     if (!data) return [];
@@ -996,14 +1054,17 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <CashReturnRangeSlider
               range={cashReturnRange}
               onChange={setCashReturnRange}
+              badgeCount={isolatedBadgeCounts.cashReturn}
             />
             <OptionPremiumRangeSlider
               range={premiumRange}
               onChange={setPremiumRange}
+              badgeCount={isolatedBadgeCounts.premium}
             />
             <RsiRangeSlider
               range={rsiRange}
               onChange={setRsiRange}
+              badgeCount={isolatedBadgeCounts.rsi}
             />
           </div>
 
@@ -1012,6 +1073,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <MoneynessRangeSlider
               range={moneynessRange}
               onChange={setMoneynessRange}
+              badgeCount={isolatedBadgeCounts.moneyness}
             />
           </div>
 
@@ -1020,6 +1082,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <DeltaRangeSlider
               range={deltaRange}
               onChange={setDeltaRange}
+              badgeCount={isolatedBadgeCounts.delta}
             />
           </div>
 
@@ -1028,6 +1091,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <BollingerBandSlider
               range={bollingerRange}
               onChange={setBollingerRange}
+              badgeCount={isolatedBadgeCounts.bollinger}
             />
           </div>
 

@@ -59,6 +59,14 @@ export interface ScannerFilterDeckProps {
   filteredCount: number;
   avgCashYield?: number;
   maxCashYield?: number;
+
+  // Badge counts for isolated sliders
+  moneynessBadgeCount?: { filtered: number; total: number };
+  cashReturnBadgeCount?: { filtered: number; total: number };
+  premiumBadgeCount?: { filtered: number; total: number };
+  rsiBadgeCount?: { filtered: number; total: number };
+  deltaBadgeCount?: { filtered: number; total: number };
+  bollingerBadgeCount?: { filtered: number; total: number };
 }
 
 export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
@@ -81,6 +89,12 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
   onResetAll,
   totalScannedCount,
   filteredCount,
+  moneynessBadgeCount,
+  cashReturnBadgeCount,
+  premiumBadgeCount,
+  rsiBadgeCount,
+  deltaBadgeCount,
+  bollingerBadgeCount,
 }) => {
   const isMoneynessFiltered = moneynessRange[0] > 20 || moneynessRange[1] < 120;
   const isCashReturnFiltered = cashReturnRange[0] > 0 || cashReturnRange[1] < 100;
@@ -187,24 +201,27 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         </div>
       </div>
 
-      {/* Grid of 3 Sliders: Cash Return, Option Premium, and RSI (14) */}
+       {/* Grid of 3 Sliders: Cash Return, Option Premium, and RSI (14) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {/* 1. Annualized Cash Return Slider */}
         <CashReturnRangeSlider
           range={cashReturnRange}
           onChange={onCashReturnRangeChange}
+          badgeCount={cashReturnBadgeCount}
         />
 
         {/* 2. Option Premium Slider */}
         <OptionPremiumRangeSlider
           range={premiumRange}
           onChange={onPremiumRangeChange}
+          badgeCount={premiumBadgeCount}
         />
 
         {/* 3. RSI (14) Momentum Slider */}
         <RsiRangeSlider
           range={rsiRange}
           onChange={onRsiRangeChange}
+          badgeCount={rsiBadgeCount}
         />
       </div>
 
@@ -213,6 +230,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         <MoneynessRangeSlider
           range={moneynessRange}
           onChange={onMoneynessRangeChange}
+          badgeCount={moneynessBadgeCount}
         />
       </div>
 
@@ -221,6 +239,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         <DeltaRangeSlider
           range={deltaRange}
           onChange={onDeltaRangeChange}
+          badgeCount={deltaBadgeCount}
         />
       </div>
 
@@ -229,6 +248,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         <BollingerBandSlider
           range={bollingerRange}
           onChange={onBollingerRangeChange}
+          badgeCount={bollingerBadgeCount}
         />
       </div>
 
