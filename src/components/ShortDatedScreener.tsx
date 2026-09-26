@@ -218,60 +218,18 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
   }, [displayRecords, sortCriteria]);
 
   const isolatedBadgeCounts = useMemo(() => {
-    if (!records || records.length === 0) {
-      return {
-        moneyness: { filtered: 0, total: 0 },
-        cashReturn: { filtered: 0, total: 0 },
-        premium: { filtered: 0, total: 0 },
-        rsi: { filtered: 0, total: 0 },
-        delta: { filtered: 0, total: 0 },
-        bollinger: { filtered: 0, total: 0 },
-      };
-    }
-
-    const total = records.length;
-
-    const moneynessFiltered = records.filter(
-      (r) => r.moneyness_pct >= moneynessRange[0] && r.moneyness_pct <= moneynessRange[1]
-    ).length;
-
-    const cashReturnFiltered = records.filter((r) => {
-      const cashYield = r.annualized_return_pct_cash_secured ?? r.annualized_return_pct ?? 0;
-      if (cashYield < cashReturnRange[0]) return false;
-      if (cashReturnRange[1] < 100 && cashYield > cashReturnRange[1]) return false;
-      return true;
-    }).length;
-
-    const premiumFiltered = records.filter((r) => {
-      const prem = r.bid > 0 ? r.bid : (r.last_price > 0 ? r.last_price : 0);
-      if (prem < premiumRange[0]) return false;
-      if (premiumRange[1] < 50 && prem > premiumRange[1]) return false;
-      return true;
-    }).length;
-
-    const rsiFiltered = records.filter((r) => {
-      if (r.rsi_14 !== null && r.rsi_14 !== undefined) {
-        return r.rsi_14 >= rsiRange[0] && r.rsi_14 <= rsiRange[1];
-      }
-      return true;
-    }).length;
-
-    const deltaFiltered = records.filter((r) => {
-      const d = r.delta !== null && r.delta !== undefined ? Math.abs(r.delta) : 0;
-      return d >= deltaRange[0] && d <= deltaRange[1];
-    }).length;
-
-    const bollingerFiltered = records.filter((r) => matchesBollingerEntity(r)).length;
-
+    const total = records ? records.length : 0;
+    const filtered = displayRecords ? displayRecords.length : 0;
+    const badge = { filtered, total };
     return {
-      moneyness: { filtered: moneynessFiltered, total },
-      cashReturn: { filtered: cashReturnFiltered, total },
-      premium: { filtered: premiumFiltered, total },
-      rsi: { filtered: rsiFiltered, total },
-      delta: { filtered: deltaFiltered, total },
-      bollinger: { filtered: bollingerFiltered, total },
+      moneyness: badge,
+      cashReturn: badge,
+      premium: badge,
+      rsi: badge,
+      delta: badge,
+      bollinger: badge,
     };
-  }, [records, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
+  }, [records, displayRecords]);
 
   useEffect(() => {
     runShortScan();

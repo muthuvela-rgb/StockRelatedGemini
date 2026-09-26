@@ -4587,8 +4587,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
 
                 // Moneyness & Cushion
                 const moneyness = (strike / currentPrice) * 100;
-                // Exclude ITM puts (moneyness > 100%) since selling naked/CSP is focused on OTM
-                if (moneyness > 99.5) continue;
+                // Exclude ITM puts where moneyness is greater than 120%
+                if (moneyness > 120.0) continue;
 
                 const cushionToStrikePct = Number((((currentPrice - strike) / currentPrice) * 100).toFixed(2));
                 const breakevenPrice = Number((strike - execBid).toFixed(2));

@@ -357,50 +357,18 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   }, [rawFilteredRecords, sortCriteria]);
 
   const isolatedBadgeCounts = useMemo(() => {
-    if (!records || records.length === 0) {
-      return {
-        moneyness: { filtered: 0, total: 0 },
-        cashReturn: { filtered: 0, total: 0 },
-        premium: { filtered: 0, total: 0 },
-        rsi: { filtered: 0, total: 0 },
-        delta: { filtered: 0, total: 0 },
-        bollinger: { filtered: 0, total: 0 },
-      };
-    }
-
-    const total = records.length;
-
-    const moneynessFiltered = records.filter(
-      (r) => r.moneyness_pct >= moneynessRange[0] && r.moneyness_pct <= moneynessRange[1]
-    ).length;
-
-    const cashReturnFiltered = records.filter(
-      (r) => r.annualized_return_pct_cash_secured >= cashReturnRange[0] && r.annualized_return_pct_cash_secured <= cashReturnRange[1]
-    ).length;
-
-    const premiumFiltered = records.filter(
-      (r) => r.bid >= premiumRange[0] && r.bid <= premiumRange[1]
-    ).length;
-
-    const rsiFiltered = records.filter(
-      (r) => (r.rsi_14 ?? 50) >= rsiRange[0] && (r.rsi_14 ?? 50) <= rsiRange[1]
-    ).length;
-
-    const deltaFiltered = records.filter(
-      (r) => Math.abs(r.delta || 0) >= deltaRange[0] && Math.abs(r.delta || 0) <= deltaRange[1]
-    ).length;
-
-    const bollingerFiltered = records.filter((r) => matchesBollingerEntity(r)).length;
-
+    const total = records ? records.length : 0;
+    const filtered = rawFilteredRecords ? rawFilteredRecords.length : 0;
+    const badge = { filtered, total };
     return {
-      moneyness: { filtered: moneynessFiltered, total },
-      cashReturn: { filtered: cashReturnFiltered, total },
-      premium: { filtered: premiumFiltered, total },
-      rsi: { filtered: rsiFiltered, total },
-      delta: { filtered: deltaFiltered, total },
-      bollinger: { filtered: bollingerFiltered, total },
+      moneyness: badge,
+      cashReturn: badge,
+      premium: badge,
+      rsi: badge,
+      delta: badge,
+      bollinger: badge,
     };
-  }, [records, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
+  }, [records, rawFilteredRecords]);
 
   const handleResetAllFilters = () => {
     setMoneynessRange([20, 120]);

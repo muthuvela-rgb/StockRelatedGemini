@@ -184,59 +184,18 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
   }, [data, activeTier, searchQuery, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
 
   const isolatedBadgeCounts = React.useMemo(() => {
-    if (!data || !data.all_candidates) {
-      return {
-        moneyness: { filtered: 0, total: 0 },
-        cashReturn: { filtered: 0, total: 0 },
-        premium: { filtered: 0, total: 0 },
-        rsi: { filtered: 0, total: 0 },
-        delta: { filtered: 0, total: 0 },
-        bollinger: { filtered: 0, total: 0 },
-      };
-    }
-
-    const cands = data.all_candidates;
-    const total = cands.length;
-
-    const moneynessFiltered = cands.filter((c) => {
-      const m = c.recommended_put?.cushion_to_strike_pct || 0;
-      return m >= moneynessRange[0] && (moneynessRange[1] >= 100 || m <= moneynessRange[1]);
-    }).length;
-
-    const cashReturnFiltered = cands.filter((c) => {
-      const ret = c.recommended_put?.annualized_return_cash || 0;
-      return ret >= cashReturnRange[0] && (cashReturnRange[1] >= 100 || ret <= cashReturnRange[1]);
-    }).length;
-
-    const premiumFiltered = cands.filter((c) => {
-      const p = c.recommended_put?.bid || 0;
-      return p >= premiumRange[0] && (premiumRange[1] >= 50 || p <= premiumRange[1]);
-    }).length;
-
-    const rsiFiltered = cands.filter((c) => {
-      const rsi = c.rsi_daily;
-      if (rsi !== null && rsi !== undefined) {
-        return rsi >= rsiRange[0] && rsi <= rsiRange[1];
-      }
-      return true;
-    }).length;
-
-    const deltaFiltered = cands.filter((c) => {
-      const d = Math.abs(c.recommended_put?.delta || 0);
-      return d >= deltaRange[0] && d <= deltaRange[1];
-    }).length;
-
-    const bollingerFiltered = cands.filter((c) => matchesBollingerEntity(c)).length;
-
+    const total = data?.all_candidates ? data.all_candidates.length : 0;
+    const filtered = candidatesToDisplay ? candidatesToDisplay.length : 0;
+    const badge = { filtered, total };
     return {
-      moneyness: { filtered: moneynessFiltered, total },
-      cashReturn: { filtered: cashReturnFiltered, total },
-      premium: { filtered: premiumFiltered, total },
-      rsi: { filtered: rsiFiltered, total },
-      delta: { filtered: deltaFiltered, total },
-      bollinger: { filtered: bollingerFiltered, total },
+      moneyness: badge,
+      cashReturn: badge,
+      premium: badge,
+      rsi: badge,
+      delta: badge,
+      bollinger: badge,
     };
-  }, [data, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange]);
+  }, [data, candidatesToDisplay]);
 
   return (
     <div className="space-y-6">
