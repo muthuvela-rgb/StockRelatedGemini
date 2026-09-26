@@ -187,30 +187,32 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         </div>
       </div>
 
-      {/* Grid of 4 Sliders: Moneyness Band, Cash Return, Option Premium, and RSI (14) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* 1. Moneyness Band Slider */}
-        <MoneynessRangeSlider
-          range={moneynessRange}
-          onChange={onMoneynessRangeChange}
-        />
-
-        {/* 2. Annualized Cash Return Slider */}
+      {/* Grid of 3 Sliders: Cash Return, Option Premium, and RSI (14) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        {/* 1. Annualized Cash Return Slider */}
         <CashReturnRangeSlider
           range={cashReturnRange}
           onChange={onCashReturnRangeChange}
         />
 
-        {/* 3. Option Premium Slider */}
+        {/* 2. Option Premium Slider */}
         <OptionPremiumRangeSlider
           range={premiumRange}
           onChange={onPremiumRangeChange}
         />
 
-        {/* 4. RSI (14) Momentum Slider */}
+        {/* 3. RSI (14) Momentum Slider */}
         <RsiRangeSlider
           range={rsiRange}
           onChange={onRsiRangeChange}
+        />
+      </div>
+
+      {/* 4. Moneyness Band Slider (placed full-width above Delta slider) */}
+      <div className="mt-3.5 w-full">
+        <MoneynessRangeSlider
+          range={moneynessRange}
+          onChange={onMoneynessRangeChange}
         />
       </div>
 

@@ -992,11 +992,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <MoneynessRangeSlider
-              range={moneynessRange}
-              onChange={setMoneynessRange}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             <CashReturnRangeSlider
               range={cashReturnRange}
               onChange={setCashReturnRange}
@@ -1008,6 +1004,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <RsiRangeSlider
               range={rsiRange}
               onChange={setRsiRange}
+            />
+          </div>
+
+          {/* Moneyness Band Slider - Spanning full width above Delta slider */}
+          <div className="mt-3.5 w-full">
+            <MoneynessRangeSlider
+              range={moneynessRange}
+              onChange={setMoneynessRange}
             />
           </div>
 
