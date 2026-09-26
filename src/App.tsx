@@ -23,11 +23,13 @@ import { StockChartsViewer } from "./components/StockChartsViewer";
 import { TickerHudProvider } from "./context/TickerHudContext";
 import { LineChart, BookOpen } from "lucide-react";
 
+// Fallback default tickers, used only until AuthContext's watchlists have hydrated.
+const DEFAULT_WATCHLIST_TICKERS = [
+  "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"
+];
+
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("options-scanner");
-  const [watchlist, setWatchlist] = useState<string[]>([
-    "NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"
-  ]);
   const [isSavedTradesOpen, setIsSavedTradesOpen] = useState<boolean>(false);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [customTickerForRecs, setCustomTickerForRecs] = useState<string | undefined>(undefined);
@@ -49,12 +51,12 @@ const AppContent: React.FC = () => {
   const activeWatchlist = watchlists[activeWatchlistIndex] || watchlists[0] || {
     id: "wl-1",
     name: "Watchlist 1",
-    tickers: watchlist,
+    tickers: DEFAULT_WATCHLIST_TICKERS,
   };
 
   const currentWatchlist = activeWatchlist.tickers && activeWatchlist.tickers.length > 0
     ? activeWatchlist.tickers
-    : watchlist;
+    : DEFAULT_WATCHLIST_TICKERS;
 
   // Sync active watchlist tickers to backend server whenever active list or selection changes
   useEffect(() => {
@@ -66,26 +68,6 @@ const AppContent: React.FC = () => {
       }).catch((err) => console.error("Error syncing active watchlist to server:", err));
     }
   }, [activeWatchlistIndex, currentWatchlist]);
-
-  const handleUpdateWatchlist = async (newWatchlist: string[]) => {
-    const cleanList = Array.from(
-      new Set(newWatchlist.map((t) => String(t).trim().toUpperCase()))
-    ).filter(Boolean);
-
-    setWatchlist(cleanList);
-
-    // 1. Update in AuthContext (persists to Cloud Firestore if logged in)
-    await updateWatchlistAtIndex(activeWatchlistIndex, cleanList);
-
-    // 2. Central server persistence
-    fetch("/api/watchlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tickers: cleanList }),
-    }).catch((e) => {
-      console.error("Error saving watchlist to server:", e);
-    });
-  };
 
   const handleSelectTickerFromModal = (ticker: string) => {
     setCustomTickerForRecs(ticker);
@@ -182,7 +164,6 @@ const AppContent: React.FC = () => {
         {activeTab === "watchlist" && (
           <WatchlistManager
             watchlist={currentWatchlist}
-            onUpdateWatchlist={handleUpdateWatchlist}
             watchlists={watchlists}
             activeWatchlistIndex={activeWatchlistIndex}
             onSelectWatchlistIndex={setActiveWatchlistIndex}

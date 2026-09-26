@@ -32,7 +32,6 @@ import { QQQ_COMPONENTS, SP500_COMPONENTS, SMH_COMPONENTS } from "../data/univer
 
 interface WatchlistManagerProps {
   watchlist?: string[];
-  onUpdateWatchlist?: (newWatchlist: string[]) => void;
   onOpenSavedTrades?: () => void;
   watchlists?: UserWatchlist[];
   activeWatchlistIndex?: number;
@@ -98,7 +97,6 @@ const PRESETS = [
 
 export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   watchlist: propWatchlist,
-  onUpdateWatchlist: propOnUpdateWatchlist,
   onOpenSavedTrades,
   onCreateWatchlist: propOnCreateWatchlist,
   onDeleteWatchlistAtIndex: propOnDeleteWatchlistAtIndex,
@@ -181,7 +179,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
         body: JSON.stringify({ tickers: cleanList }),
       }).catch((err) => console.error("Error updating server watchlist:", err));
 
-      if (propOnUpdateWatchlist) propOnUpdateWatchlist(cleanList);
       setSaveStatus(`Created new watchlist "${cleanName}" (${cleanList.length} tickers)`);
       setIsCreateModalOpen(false);
       setTimeout(() => setSaveStatus(null), 3500);
@@ -325,7 +322,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     if (!currentTickers.includes(clean)) {
       const updated = [...currentTickers, clean];
       await updateWatchlistAtIndex(activeWatchlistIndex, updated);
-      if (propOnUpdateWatchlist) propOnUpdateWatchlist(updated);
 
       // Also persist to server
       fetch("/api/watchlist", {
@@ -347,7 +343,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     const currentTickers = activeWatchlist.tickers || [];
     const updated = currentTickers.filter((t) => t !== tickerToRemove);
     await updateWatchlistAtIndex(activeWatchlistIndex, updated);
-    if (propOnUpdateWatchlist) propOnUpdateWatchlist(updated);
 
     fetch("/api/watchlist", {
       method: "POST",
@@ -364,7 +359,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
       return;
     }
     await updateWatchlistAtIndex(activeWatchlistIndex, []);
-    if (propOnUpdateWatchlist) propOnUpdateWatchlist([]);
     fetch("/api/watchlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -385,7 +379,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     const currentTickers = activeWatchlist.tickers || [];
     const combined = Array.from(new Set([...currentTickers, ...source.tickers]));
     await updateWatchlistAtIndex(activeWatchlistIndex, combined);
-    if (propOnUpdateWatchlist) propOnUpdateWatchlist(combined);
 
     fetch("/api/watchlist", {
       method: "POST",
@@ -401,7 +394,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     const currentTickers = activeWatchlist.tickers || [];
     const combined = Array.from(new Set([...currentTickers, ...tickers.map((t) => t.trim().toUpperCase())]));
     await updateWatchlistAtIndex(activeWatchlistIndex, combined);
-    if (propOnUpdateWatchlist) propOnUpdateWatchlist(combined);
 
     fetch("/api/watchlist", {
       method: "POST",
@@ -416,7 +408,6 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const handleReplaceWithPreset = async (tickers: string[]) => {
     const clean = Array.from(new Set(tickers.map((t) => t.trim().toUpperCase())));
     await updateWatchlistAtIndex(activeWatchlistIndex, clean);
-    if (propOnUpdateWatchlist) propOnUpdateWatchlist(clean);
 
     fetch("/api/watchlist", {
       method: "POST",
