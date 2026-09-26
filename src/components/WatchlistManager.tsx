@@ -684,7 +684,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                           <button
                             type="button"
                             onClick={(e) => handleDeleteWatchlist(idx, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition cursor-pointer"
+                            className="opacity-60 hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition cursor-pointer"
                             title={`Delete "${wl.name}"`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
