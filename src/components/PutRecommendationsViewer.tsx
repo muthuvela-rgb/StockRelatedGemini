@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { ActiveTab } from "./Header";
 import {
   MoneynessRangeSlider,
@@ -64,7 +65,6 @@ import {
   RiskTier,
   PutRecommendationsResponse,
   AiPortfolioStrategy,
-  UserWatchlist,
 } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
@@ -86,22 +86,18 @@ interface PutRecommendationsViewerProps {
   watchlist: string[];
   initialCustomTicker?: string;
   onNavigateTab?: (tab: ActiveTab) => void;
-  watchlists?: UserWatchlist[];
-  activeWatchlistIndex?: number;
-  onSelectWatchlistIndex?: (index: number) => void;
 }
 
 export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> = ({
   watchlist,
   initialCustomTicker,
   onNavigateTab,
-  watchlists,
-  activeWatchlistIndex,
-  onSelectWatchlistIndex,
 }) => {
+  const watchlistOptions = useWatchlistOptions(watchlist);
+
   // Filters & State
   const [activeMode, setActiveMode] = useState<"standard" | "csp_rsi_divergence">("standard");
-  const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
+  const [universe, setUniverse] = useState<string>("wl-0");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AAPL, MSFT, AMZN, META, TSLA");
   const [horizon, setHorizon] = useState<"all" | "weeklies" | "sweetspot" | "monthly" | "extended" | "custom_range">("custom_range");
   const [moneynessRange, setMoneynessRange] = useState<[number, number]>([20, 100]);
@@ -223,7 +219,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   // Fetch Put Recommendations with robust custom ticker parsing and dynamic tier selection
   const fetchRecommendations = async (
     overrideTickers?: string[],
-    overrideUniverse?: "watchlist" | "qqq" | "spy" | "custom",
+    overrideUniverse?: string,
     overrideDte?: { minDte: number; maxDte: number }
   ) => {
     setLoading(true);
@@ -231,11 +227,12 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
 
     const currentUniverse = overrideUniverse || universe;
     let targetTickers: string[] = [];
+    const selectedWatchlist = watchlistOptions.find((o) => o.value === currentUniverse);
 
     if (overrideTickers && overrideTickers.length > 0) {
       targetTickers = overrideTickers;
-    } else if (currentUniverse === "watchlist") {
-      targetTickers = watchlist.length > 0 ? watchlist : ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"];
+    } else if (selectedWatchlist) {
+      targetTickers = selectedWatchlist.tickers.length > 0 ? selectedWatchlist.tickers : ["NVDA", "QQQ", "ALAB", "MU", "NBIS", "SNDK", "SKHY", "SPCX", "TSLA", "META", "CRWV", "SNOW", "TQQQ", "RKLB", "CRDO"];
     } else if (currentUniverse === "qqq") {
       targetTickers = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "COST", "PLTR", "AMAT", "NFLX", "QQQ"];
     } else if (currentUniverse === "spy") {
@@ -751,9 +748,6 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       {activeMode === "csp_rsi_divergence" ? (
         <CspRsiDivergenceViewer
           watchlist={watchlist}
-          watchlists={watchlists}
-          activeWatchlistIndex={activeWatchlistIndex}
-          onSelectWatchlistIndex={onSelectWatchlistIndex}
           onSelectTradeForPayoff={(trade) => setSelectedTrade(trade)}
         />
       ) : (
@@ -850,38 +844,21 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             <label className="block text-slate-400 font-medium mb-1.5 flex items-center justify-between">
               <span>Universe</span>
               <span className="text-[10px] font-mono text-cyan-400 font-semibold">
-                {universe === "watchlist"
-                  ? `${watchlist.length} Tickers`
-                  : universe.startsWith("wl-")
-                  ? "Watchlist"
+                {universe.startsWith("wl-")
+                  ? `${watchlistOptions.find((o) => o.value === universe)?.tickers.length ?? 0} Tickers`
                   : universe.toUpperCase()}
               </span>
             </label>
             <select
               value={universe}
-              onChange={(e: any) => {
-                const val = e.target.value;
-                if (val.startsWith("wl-")) {
-                  const idx = parseInt(val.replace("wl-", ""), 10);
-                  if (!isNaN(idx) && onSelectWatchlistIndex) {
-                    onSelectWatchlistIndex(idx);
-                  }
-                  setUniverse("watchlist");
-                  return;
-                }
-                setUniverse(val);
-              }}
+              onChange={(e) => setUniverse(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 text-xs cursor-pointer font-medium"
             >
-              {watchlists && watchlists.length > 0 ? (
-                watchlists.map((w, idx) => (
-                  <option key={w.id || idx} value={`wl-${idx}`}>
-                    Watchlist {idx + 1}: {w.name} ({w.tickers.length} tickers) {activeWatchlistIndex === idx ? "★" : ""}
-                  </option>
-                ))
-              ) : (
-                <option value="watchlist">My Watchlist ({watchlist.length} tickers)</option>
-              )}
+              {watchlistOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
               <option value="qqq">QQQ Tech Leaders (15 mega-caps)</option>
               <option value="spy">SPY Blue Chips (13 market leaders)</option>
               <option value="custom">Custom Tickers...</option>

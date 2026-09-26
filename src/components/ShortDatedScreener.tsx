@@ -16,6 +16,7 @@ import {
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
 import {
   SortCriterion,
@@ -103,9 +104,10 @@ interface ShortDatedScreenerProps {
 }
 
 export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlist }) => {
+  const watchlistOptions = useWatchlistOptions(watchlist);
   const [maxDte, setMaxDte] = useState(15);
   const [minMarketCapB, setMinMarketCapB] = useState(5.0);
-  const [universe, setUniverse] = useState<"qqq" | "watchlist">("qqq");
+  const [universe, setUniverse] = useState<string>("qqq");
   const [moneynessRange, setMoneynessRange] = useState<[number, number]>([40, 95]);
   const [cashReturnRange, setCashReturnRange] = useState<[number, number]>([0, 100]);
   const [premiumRange, setPremiumRange] = useState<[number, number]>([2.0, 50]);
@@ -119,9 +121,10 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
     setLoading(true);
     setError(null);
 
+    const selectedWatchlist = watchlistOptions.find((o) => o.value === universe);
     const tickers =
-      universe === "watchlist"
-        ? watchlist
+      selectedWatchlist
+        ? selectedWatchlist.tickers
         : ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "CSCO", "COST", "PLTR", "AMAT", "LRCX", "NFLX"];
 
     try {
@@ -234,11 +237,15 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">Universe</label>
             <select
               value={universe}
-              onChange={(e) => setUniverse(e.target.value as any)}
+              onChange={(e) => setUniverse(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs outline-none"
             >
               <option value="qqq">QQQ / Nasdaq-100 Leaders</option>
-              <option value="watchlist">My Watchlist ({watchlist.length})</option>
+              {watchlistOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
 

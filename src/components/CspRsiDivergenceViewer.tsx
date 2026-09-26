@@ -24,9 +24,10 @@ import {
   SlidersHorizontal,
   RotateCcw,
 } from "lucide-react";
-import type { CspRsiDivergenceCandidate, CspRsiDivergenceResponse, UserWatchlist } from "../types";
+import type { CspRsiDivergenceCandidate, CspRsiDivergenceResponse } from "../types";
 import { SP500_COMPONENTS, SMH_COMPONENTS, QQQ_COMPONENTS } from "../data/universePresets";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { MoneynessRangeSlider } from "./sliders/MoneynessRangeSlider";
 import { CashReturnRangeSlider } from "./sliders/CashReturnRangeSlider";
 import { OptionPremiumRangeSlider } from "./sliders/OptionPremiumRangeSlider";
@@ -35,19 +36,17 @@ import { DeltaRangeSlider } from "./DeltaRangeSlider";
 
 interface CspRsiDivergenceViewerProps {
   watchlist: string[];
-  watchlists?: UserWatchlist[];
-  activeWatchlistIndex?: number;
-  onSelectWatchlistIndex?: (index: number) => void;
   onSelectTradeForPayoff?: (trade: any) => void;
 }
 
 export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
   watchlist,
-  watchlists,
-  activeWatchlistIndex,
-  onSelectWatchlistIndex,
   onSelectTradeForPayoff,
 }) => {
+  const watchlistOptions = useWatchlistOptions(watchlist);
+  const [selectedWatchlistValue, setSelectedWatchlistValue] = useState<string>("wl-0");
+  const selectedWatchlist =
+    watchlistOptions.find((o) => o.value === selectedWatchlistValue) || watchlistOptions[0];
   const [universe, setUniverse] = useState<"sp500" | "smh" | "qqq" | "expanded_500" | "watchlist" | "custom">("sp500");
   const [customTickers, setCustomTickers] = useState<string>("NVDA, AMD, INTC, TSLA, AAPL, AMZN, META, GOOGL, MSFT, PLTR");
   const [activeTier, setActiveTier] = useState<"all" | "tier_1" | "tier_2" | "tier_3">("all");
@@ -80,7 +79,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
       if (universe === "custom") {
         tickersToSend = customTickers.split(/[\s,]+/).map((t) => t.trim().toUpperCase()).filter(Boolean);
       } else if (universe === "watchlist") {
-        tickersToSend = watchlist;
+        tickersToSend = selectedWatchlist.tickers;
       }
 
       const res = await fetch("/api/csp-rsi-divergence", {
@@ -110,7 +109,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
 
   useEffect(() => {
     runScan();
-  }, [universe]);
+  }, [universe, selectedWatchlistValue]);
 
   const handleCopyContract = (symbol: string) => {
     navigator.clipboard.writeText(symbol);
@@ -357,11 +356,11 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
               <div className="flex items-center justify-between gap-1 mb-1.5">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Personal</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-emerald-300 font-semibold">
-                  {watchlist.length} stocks
+                  {selectedWatchlist.tickers.length} stocks
                 </span>
               </div>
               <div className="text-xs font-bold text-white leading-tight">My Watchlist</div>
-              <div className="text-[10px] text-slate-400 mt-1 line-clamp-1">Active user portfolio slots</div>
+              <div className="text-[10px] text-slate-400 mt-1 line-clamp-1">Choose a slot below</div>
             </button>
 
             {/* Preset 5: Custom Tickers */}
@@ -472,29 +471,29 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold">
-                      Watchlist Scan ({watchlist.length} stocks)
+                      Watchlist Scan ({selectedWatchlist.tickers.length} stocks)
                     </span>
                     <span className="text-slate-400">
-                      Scanning your actively selected portfolio watchlist symbols for confirmed oversold divergence setups.
+                      Scanning the selected watchlist below for confirmed oversold divergence setups. This selection is local to this scan.
                     </span>
                   </div>
                 </div>
-                {watchlists && watchlists.length > 0 && (
+                {watchlistOptions.length > 1 && (
                   <div className="flex items-center gap-1.5 pt-1">
-                    <span className="text-[10px] text-slate-500">Active Watchlist Slot:</span>
+                    <span className="text-[10px] text-slate-500">Watchlist:</span>
                     <div className="flex flex-wrap gap-1">
-                      {watchlists.map((w, idx) => (
+                      {watchlistOptions.map((o) => (
                         <button
-                          key={w.id}
+                          key={o.value}
                           type="button"
-                          onClick={() => onSelectWatchlistIndex && onSelectWatchlistIndex(idx)}
+                          onClick={() => setSelectedWatchlistValue(o.value)}
                           className={`text-[10px] px-2 py-0.5 rounded font-mono transition cursor-pointer ${
-                            activeWatchlistIndex === idx
+                            selectedWatchlistValue === o.value
                               ? "bg-emerald-500 text-slate-950 font-bold"
                               : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white"
                           }`}
                         >
-                          {w.name} ({w.tickers.length})
+                          {o.label}
                         </button>
                       ))}
                     </div>

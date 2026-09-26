@@ -16,6 +16,7 @@ import {
 import { TechnicalsData } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
 import {
   SortCriterion,
@@ -78,7 +79,8 @@ interface TechnicalsScreenerProps {
 }
 
 export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlist }) => {
-  const [universe, setUniverse] = useState<"watchlist" | "qqq" | "custom">("watchlist");
+  const watchlistOptions = useWatchlistOptions(watchlist);
+  const [universe, setUniverse] = useState<string>("wl-0");
   const [customInput, setCustomInput] = useState("SPCX, MU, SNDK, ALAB, NVDA, SKHY, META, TSLA, QQQ, AAPL, AMZN");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,8 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
     setError(null);
 
     let tickers = "";
-    if (universe === "watchlist") tickers = watchlist.join(",");
+    const selectedWatchlist = watchlistOptions.find((o) => o.value === universe);
+    if (selectedWatchlist) tickers = selectedWatchlist.tickers.join(",");
     else if (universe === "qqq") tickers = "NVDA,AAPL,MSFT,MU,AMZN,AMD,GOOGL,TSLA,AVGO,META,CSCO,COST,PLTR,AMAT,LRCX,NFLX";
     else tickers = customInput;
 
@@ -163,16 +166,19 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
         <div className="flex flex-wrap items-center gap-4 pt-4">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-300">Preset:</span>
-            <button
-              onClick={() => setUniverse("watchlist")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                universe === "watchlist"
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-800 text-slate-400 hover:text-white"
-              }`}
-            >
-              My Watchlist
-            </button>
+            {watchlistOptions.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => setUniverse(o.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  universe === o.value
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-800 text-slate-400 hover:text-white"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
             <button
               onClick={() => setUniverse("qqq")}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
