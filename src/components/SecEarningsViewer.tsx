@@ -24,12 +24,14 @@ import {
 } from "lucide-react";
 import { SecCompanyReport, SecFilingSummary } from "../types";
 import { formatCurrency, formatLargeNumber } from "../lib/utils";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 
 interface SecEarningsViewerProps {
   watchlist: string[];
 }
 
 export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist }) => {
+  const watchlistOptions = useWatchlistOptions(watchlist);
   // Default tickers matching My Watchlist components
   const defaultWatchlistString =
     watchlist && watchlist.length > 0
@@ -329,6 +331,30 @@ export const SecEarningsViewer: React.FC<SecEarningsViewerProps> = ({ watchlist 
               <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
               Reset to My Watchlist
             </button>
+            {watchlistOptions.length > 1 && (
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  const opt = watchlistOptions.find((o) => o.value === e.target.value);
+                  if (opt) {
+                    setTickersInput(opt.tickers.join(", "));
+                    fetchSecReports(opt.tickers.join(", "));
+                  }
+                  e.target.value = "";
+                }}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                title="Load a specific watchlist"
+              >
+                <option value="" disabled>
+                  Load Watchlist...
+                </option>
+                {watchlistOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => fetchSecReports()}
               disabled={loading}

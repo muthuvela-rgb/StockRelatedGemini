@@ -27,12 +27,18 @@ import {
 } from "lucide-react";
 import { EarningsCallTranscript, TranscriptAiSummary } from "../types";
 import { EarningsSentimentTrendViewer } from "./EarningsSentimentTrendViewer";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 
 interface EarningsTranscriptsViewerProps {
   watchlist: string[];
 }
 
 export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps> = ({ watchlist }) => {
+  const watchlistOptions = useWatchlistOptions(watchlist);
+  const [pillsWatchlistValue, setPillsWatchlistValue] = useState<string>("wl-0");
+  const activePillsWatchlist =
+    watchlistOptions.find((o) => o.value === pillsWatchlistValue)?.tickers || watchlist;
+
   // Active selected ticker and quarter
   const [selectedTicker, setSelectedTicker] = useState<string>(watchlist[0] || "NVDA");
   const [customTickerInput, setCustomTickerInput] = useState<string>("");
@@ -303,7 +309,7 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
           <div className="mt-4 p-3 rounded-xl bg-blue-950/30 border border-blue-800/40 flex items-start gap-2.5 text-xs text-blue-300/90 leading-relaxed">
             <Key className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <div>
-              <strong className="text-blue-200">Alpha Vantage API Key Integration:</strong> Pre-populated with verified institutional transcripts for your watchlist ({watchlist.slice(0, 6).join(", ")}, etc.). To pull live unconstrained transcripts for any symbol on demand, configure your key in <span className="font-semibold text-white">Settings &gt; Secrets</span> as <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded">ALPHA_VANTAGE_API_KEY</code>.
+              <strong className="text-blue-200">Alpha Vantage API Key Integration:</strong> Pre-populated with verified institutional transcripts for your watchlist ({activePillsWatchlist.slice(0, 6).join(", ")}, etc.). To pull live unconstrained transcripts for any symbol on demand, configure your key in <span className="font-semibold text-white">Settings &gt; Secrets</span> as <code className="text-cyan-300 bg-slate-900 px-1 py-0.5 rounded">ALPHA_VANTAGE_API_KEY</code>.
             </div>
           </div>
         )}
@@ -315,7 +321,20 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
             <span className="text-xs text-slate-400 font-medium mr-1 flex items-center gap-1">
               <Users className="w-3.5 h-3.5 text-slate-400" /> Watchlist:
             </span>
-            {watchlist.map((t) => {
+            {watchlistOptions.length > 1 && (
+              <select
+                value={pillsWatchlistValue}
+                onChange={(e) => setPillsWatchlistValue(e.target.value)}
+                className="bg-slate-950 border border-slate-700 text-slate-200 text-[11px] rounded-lg px-2 py-1 mr-1 focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                {watchlistOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {activePillsWatchlist.map((t) => {
               const isSelected = selectedTicker === t;
               return (
                 <button
@@ -386,7 +405,7 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
       {/* 5-Quarter Sentiment Trend Visualization (Alpha Vantage Summaries) */}
       {showSentimentTrend && (
         <EarningsSentimentTrendViewer
-          watchlist={watchlist}
+          watchlist={activePillsWatchlist}
           selectedTicker={selectedTicker}
           onSelectTicker={(ticker) => {
             setSelectedTicker(ticker);

@@ -17,6 +17,7 @@ import {
 import { FallenStock } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
 import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
 
@@ -25,11 +26,12 @@ interface FallDetectorProps {
 }
 
 export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
+  const watchlistOptions = useWatchlistOptions(watchlist);
   const [lookbackDays, setLookbackDays] = useState(7);
   const [fallThresholdPct, setFallThresholdPct] = useState(8.0);
   const [minMarketCapB, setMinMarketCapB] = useState(5.0); // $5B
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
-  const [universe, setUniverse] = useState<"qqq" | "watchlist" | "custom">("qqq");
+  const [universe, setUniverse] = useState<string>("qqq");
   const [customTickers, setCustomTickers] = useState("NVDA, AMD, INTC, MU, TSLA, AAPL, AMZN, MSFT, META, GOOGL, NFLX, PLTR, ARM");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,8 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
     setError(null);
 
     let tickersToPass = "";
-    if (universe === "watchlist") tickersToPass = watchlist.join(",");
+    const selectedWatchlist = watchlistOptions.find((o) => o.value === universe);
+    if (selectedWatchlist) tickersToPass = selectedWatchlist.tickers.join(",");
     else if (universe === "custom") tickersToPass = customTickers;
 
     try {
@@ -113,11 +116,15 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">Universe</label>
             <select
               value={universe}
-              onChange={(e) => setUniverse(e.target.value as any)}
+              onChange={(e) => setUniverse(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-rose-500 outline-none"
             >
               <option value="qqq">QQQ / Nasdaq-100 Universe</option>
-              <option value="watchlist">My Watchlist ({watchlist.length} tickers)</option>
+              {watchlistOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
               <option value="custom">Custom Ticker List</option>
             </select>
           </div>

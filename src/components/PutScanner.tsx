@@ -192,13 +192,15 @@ import { VerticalPutOptimizerPanel } from "./VerticalPutOptimizerPanel";
 import { VerticalPutSpread } from "../utils/verticalPutOptimizer";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import { ScannerRangeFilterDeck } from "./ScannerRangeFilterDeck";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 
 interface PutScannerProps {
   watchlist: string[];
 }
 
 export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
-  const [universe, setUniverse] = useState<"watchlist" | "qqq" | "spy" | "custom">("watchlist");
+  const watchlistOptions = useWatchlistOptions(watchlist);
+  const [universe, setUniverse] = useState<string>("wl-0");
   const [customTickers, setCustomTickers] = useState("NVDA, MSFT, AAPL, AMZN, META");
   const [minDays, setMinDays] = useState(90);
   const [maxDays, setMaxDays] = useState(1000);
@@ -240,7 +242,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     setError(null);
 
     let tickersToScan: string[] = [];
-    if (universe === "watchlist") tickersToScan = watchlist;
+    const selectedWatchlist = watchlistOptions.find((o) => o.value === universe);
+    if (selectedWatchlist) tickersToScan = selectedWatchlist.tickers;
     else if (universe === "qqq") tickersToScan = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "CSCO", "COST", "PLTR", "AMAT", "LRCX", "NFLX"];
     else if (universe === "spy") tickersToScan = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "UNH", "JPM", "XOM", "V", "PG", "MA"];
     else tickersToScan = customTickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
@@ -627,10 +630,14 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">Universe</label>
             <select
               value={universe}
-              onChange={(e) => setUniverse(e.target.value as any)}
+              onChange={(e) => setUniverse(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
             >
-              <option value="watchlist">My Watchlist ({watchlist.length} tickers)</option>
+              {watchlistOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
               <option value="qqq">QQQ / Nasdaq-100 Leaders</option>
               <option value="spy">SPY / S&P 500 Leaders</option>
               <option value="custom">Custom Tickers</option>

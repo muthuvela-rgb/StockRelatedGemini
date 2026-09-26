@@ -139,9 +139,6 @@ const AppContent: React.FC = () => {
         {activeTab === "put-recommendations" && (
           <PutRecommendationsViewer
             watchlist={currentWatchlist}
-            watchlists={watchlists}
-            activeWatchlistIndex={activeWatchlistIndex}
-            onSelectWatchlistIndex={setActiveWatchlistIndex}
             initialCustomTicker={customTickerForRecs}
             onNavigateTab={setActiveTab}
           />
