@@ -232,6 +232,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [filterSearch, setFilterSearch] = useState("");
+  const [excludeSpansEarnings, setExcludeSpansEarnings] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -340,9 +341,16 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
       // 7. Bollinger Bands (%B) Range (via centralized predicate)
       if (!matchesBollingerEntity(r)) return false;
 
+      // 8. Corporate Earnings Filter
+      if (excludeSpansEarnings && r.next_earnings_date) {
+        if (r.expiration >= r.next_earnings_date) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [records, filterSearch, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity]);
+  }, [records, filterSearch, moneynessRange, cashReturnRange, premiumRange, rsiRange, deltaRange, bollingerRange, matchesBollingerEntity, excludeSpansEarnings]);
 
   const filteredRecords = useMemo(() => {
     return applyHierarchicalSort(rawFilteredRecords, sortCriteria, PUT_SCANNER_COLUMNS);
@@ -356,6 +364,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     setDeltaRange([0.0, 1.0]);
     resetBollingerRange();
     setFilterSearch("");
+    setExcludeSpansEarnings(false);
   };
 
   const exportCsv = () => {
@@ -1042,6 +1051,8 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           onBollingerRangeChange={setBollingerRange}
           searchTicker={filterSearch}
           onSearchTickerChange={setFilterSearch}
+          excludeSpansEarnings={excludeSpansEarnings}
+          onExcludeSpansEarningsChange={setExcludeSpansEarnings}
           onResetAll={handleResetAllFilters}
           totalScannedCount={records.length}
           filteredCount={filteredRecords.length}

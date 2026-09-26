@@ -116,6 +116,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
+  const [excludeSpansEarnings, setExcludeSpansEarnings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<PutOptionRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -201,9 +202,16 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
       // 7. Market Cap
       if (r.market_cap && r.market_cap < minMarketCapB * 1e9) return false;
 
+      // 8. Corporate Earnings Filter
+      if (excludeSpansEarnings && r.next_earnings_date) {
+        if (r.expiration >= r.next_earnings_date) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [records, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, minMarketCapB, matchesBollingerEntity]);
+  }, [records, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, minMarketCapB, matchesBollingerEntity, excludeSpansEarnings]);
 
   const sortedRecords = useMemo(() => {
     return applyHierarchicalSort(displayRecords, sortCriteria, SHORT_DATED_COLUMNS);
@@ -301,7 +309,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
               </span>
             </div>
 
-            {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
+            {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120 || excludeSpansEarnings) && (
               <button
                 type="button"
                 onClick={() => {
@@ -311,6 +319,7 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
                   setRsiRange([0, 100]);
                   setDeltaRange([0.0, 1.0]);
                   resetBollingerRange();
+                  setExcludeSpansEarnings(false);
                 }}
                 className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition"
               >
@@ -353,6 +362,23 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
               range={bollingerRange}
               onChange={setBollingerRange}
             />
+          </div>
+
+          {/* Corporate Earnings Date Filter */}
+          <div className="pt-3 border-t border-slate-800/60 mt-3.5 flex items-center justify-between">
+            <div className="flex flex-col pr-4">
+              <span className="text-xs font-bold text-slate-200">Avoid Binary Earnings Surprises</span>
+              <span className="text-[10px] text-slate-400">Exclude option contracts whose expiration date spans or is after the next corporate earnings report</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+              <input
+                type="checkbox"
+                checked={excludeSpansEarnings}
+                onChange={(e) => setExcludeSpansEarnings(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-slate-400 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-white"></div>
+            </label>
           </div>
         </div>
       </div>

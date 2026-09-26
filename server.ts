@@ -2290,15 +2290,45 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
     const today = new Date();
 
     for (const ticker of tickerList) {
-      const optData = await fetchMarketOptions(ticker);
+      const [optData, chart, quoteSummary] = await Promise.all([
+        fetchMarketOptions(ticker).catch(() => null),
+        fetchMarketChart(ticker, "3mo", "1d").catch(() => null),
+        fetchYahooQuoteSummary(ticker).catch(() => null),
+      ]);
       if (!optData) continue;
 
       const meta = optData.quote || {};
       const currentPrice = meta.regularMarketPrice || meta.ask || meta.bid || 0;
       if (!currentPrice || currentPrice <= 0) continue;
 
+      const nextEarningsDate = (() => {
+        const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+        if (Array.isArray(cal) && cal.length > 0) {
+          if (cal[0]?.fmt) return cal[0].fmt;
+          if (cal[0]?.raw) return new Date(cal[0].raw * 1000).toISOString().split("T")[0];
+          if (typeof cal[0] === "string") return cal[0];
+        }
+        const sum = quoteSummary?.summaryDetail?.earningsDate;
+        if (Array.isArray(sum) && sum.length > 0) {
+          if (sum[0]?.fmt) return sum[0].fmt;
+          if (sum[0]?.raw) return new Date(sum[0].raw * 1000).toISOString().split("T")[0];
+        }
+        return null;
+      })();
+
+      const nextEarningsTimestamp = (() => {
+        const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+        if (Array.isArray(cal) && cal.length > 0 && cal[0]?.raw) {
+          return cal[0].raw * 1000;
+        }
+        const sum = quoteSummary?.summaryDetail?.earningsDate;
+        if (Array.isArray(sum) && sum.length > 0 && sum[0]?.raw) {
+          return sum[0].raw * 1000;
+        }
+        return null;
+      })();
+
       // Compute underlying stock RSI(14) and 20-period Bollinger Bands & Fibonacci levels
-      const chart = await fetchMarketChart(ticker, "3mo", "1d");
       const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
         (c: any) => c !== null && c !== undefined
       );
@@ -2477,6 +2507,8 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
             bollinger: bollinger,
             fibonacci: fibonacci,
             strike_bollinger_position: strikeBbPos,
+            next_earnings_date: nextEarningsDate,
+            next_earnings_timestamp: nextEarningsTimestamp,
           });
         }
       }
@@ -2490,6 +2522,8 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
         rsi_14: rsi,
         bollinger: bollinger,
         fibonacci: fibonacci,
+        next_earnings_date: nextEarningsDate,
+        next_earnings_timestamp: nextEarningsTimestamp,
       });
     }
 
@@ -2724,7 +2758,11 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const noStrikeRange = req.query.noStrikeRange === "true";
     const noFallback = req.query.noFallback === "true";
 
-    const optData = await fetchMarketOptions(ticker);
+    const [optData, chart, quoteSummary] = await Promise.all([
+      fetchMarketOptions(ticker),
+      fetchMarketChart(ticker, "3mo", "1d"),
+      fetchYahooQuoteSummary(ticker).catch(() => null),
+    ]);
     if (!optData) {
       return res.status(404).json({ error: `No options data for ${ticker}` });
     }
@@ -2733,13 +2771,38 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
     const rawExpirations: number[] = optData.expirationDates || [];
     const expDateStrs = rawExpirations.map((ts) => new Date(ts * 1000).toISOString().split("T")[0]);
 
-    // Calculate RSI, Bollinger Bands, and Fibonacci for ticker
-    const chart = await fetchMarketChart(ticker, "3mo", "1d");
     const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
     const rsi = computeRsi(closes, 14);
     const bollinger = computeBollinger(closes, 20, 2.0);
+
+    const nextEarningsDate = (() => {
+      const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+      if (Array.isArray(cal) && cal.length > 0) {
+        if (cal[0]?.fmt) return cal[0].fmt;
+        if (cal[0]?.raw) return new Date(cal[0].raw * 1000).toISOString().split("T")[0];
+        if (typeof cal[0] === "string") return cal[0];
+      }
+      const sum = quoteSummary?.summaryDetail?.earningsDate;
+      if (Array.isArray(sum) && sum.length > 0) {
+        if (sum[0]?.fmt) return sum[0].fmt;
+        if (sum[0]?.raw) return new Date(sum[0].raw * 1000).toISOString().split("T")[0];
+      }
+      return null;
+    })();
+
+    const nextEarningsTimestamp = (() => {
+      const cal = quoteSummary?.calendarEvents?.earnings?.earningsDate;
+      if (Array.isArray(cal) && cal.length > 0 && cal[0]?.raw) {
+        return cal[0].raw * 1000;
+      }
+      const sum = quoteSummary?.summaryDetail?.earningsDate;
+      if (Array.isArray(sum) && sum.length > 0 && sum[0]?.raw) {
+        return sum[0].raw * 1000;
+      }
+      return null;
+    })();
 
     const fiftyTwoWeekHigh = optData.quote?.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
     const fiftyTwoWeekLow = optData.quote?.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
@@ -3006,6 +3069,8 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
       rsi_14: rsi,
       bollinger: bollinger,
       fibonacci: fibonacci,
+      next_earnings_date: nextEarningsDate,
+      next_earnings_timestamp: nextEarningsTimestamp,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

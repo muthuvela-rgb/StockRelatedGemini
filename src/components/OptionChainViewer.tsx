@@ -105,6 +105,7 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
   const [tableExpFilter, setTableExpFilter] = useState<string>("ALL");
   const [deltaRange, setDeltaRange] = useState<[number, number]>([0.0, 1.0]);
   const [rsiRange, setRsiRange] = useState<[number, number]>([0, 100]);
+  const [excludeSpansEarnings, setExcludeSpansEarnings] = useState(false);
   const { bollingerRange, setBollingerRange, resetBollingerRange, matchesBollingerEntity } = useBollingerFilter();
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
@@ -294,9 +295,15 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
         }
       }
       const matchBollinger = matchesBollingerEntity(chainData);
-      return matchStrike && matchExp && matchDelta && matchDte && matchRsi && matchBollinger;
+      let matchEarnings = true;
+      if (excludeSpansEarnings && chainData?.next_earnings_date && r.expiration) {
+        if (r.expiration >= chainData.next_earnings_date) {
+          matchEarnings = false;
+        }
+      }
+      return matchStrike && matchExp && matchDelta && matchDte && matchRsi && matchBollinger && matchEarnings;
     });
-  }, [rows, strikeRange, deltaRange, dteRange, rsiRange, bollingerRange, selectedExp, tableExpFilter, chainData, matchesBollingerEntity]);
+  }, [rows, strikeRange, deltaRange, dteRange, rsiRange, bollingerRange, selectedExp, tableExpFilter, chainData, matchesBollingerEntity, excludeSpansEarnings]);
 
   const optionChainColumns: ColumnDefinition<OptionChainSortKey>[] = useMemo(() => {
     const spot = chainData?.current_price || 0;
@@ -608,6 +615,8 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
           fiftyTwoWeekLow={chainData.fifty_two_week_low}
           nextEarningsDate={chainData.next_earnings_date}
           nextEarningsTimestamp={chainData.next_earnings_timestamp}
+          excludeSpansEarnings={excludeSpansEarnings}
+          onExcludeSpansEarningsChange={setExcludeSpansEarnings}
           strikeRange={strikeRange}
           onStrikeRangeChange={setStrikeRange}
           dataMinStrike={dataMinStrike}
@@ -643,6 +652,17 @@ export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist 
             <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               Showing {filteredRows.length} of {rows.length} contracts
             </span>
+            {chainData?.next_earnings_date && (
+              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none border border-slate-800/80 bg-slate-900/50 hover:bg-slate-900 px-2.5 py-1 rounded-lg text-slate-300 hover:text-white transition">
+                <input
+                  type="checkbox"
+                  checked={excludeSpansEarnings}
+                  onChange={(e) => setExcludeSpansEarnings(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-850 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span className="text-[11px] font-semibold">Hide Spanning Earnings ({chainData.next_earnings_date})</span>
+              </label>
+            )}
             {(dteRange[0] > minDteAvailable || dteRange[1] < maxDteAvailable) && (
               <span className="text-[11px] text-amber-400 font-mono bg-amber-950/40 px-2 py-0.5 rounded border border-amber-800/40 flex items-center gap-1">
                 <Clock className="w-3 h-3 text-amber-400" />

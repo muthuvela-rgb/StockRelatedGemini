@@ -65,6 +65,8 @@ interface OptionChainPremiumStrikePlotProps {
   fiftyTwoWeekLow?: number | null;
   nextEarningsDate?: string | null;
   nextEarningsTimestamp?: number | null;
+  excludeSpansEarnings?: boolean;
+  onExcludeSpansEarningsChange?: (val: boolean) => void;
   strikeRange: [number, number];
   onStrikeRangeChange: (newRange: [number, number]) => void;
   dataMinStrike: number;
@@ -131,6 +133,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   fiftyTwoWeekLow,
   nextEarningsDate,
   nextEarningsTimestamp,
+  excludeSpansEarnings = false,
+  onExcludeSpansEarningsChange,
   strikeRange,
   onStrikeRangeChange,
   dataMinStrike,
@@ -204,6 +208,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     handleRsiChange([0, 100]);
     handleBollingerChange([-20, 120]);
     bollingerContext?.resetBollingerRange();
+    onExcludeSpansEarningsChange?.(false);
   };
 
   const hasAnyActiveSlider =
@@ -216,7 +221,8 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     activeRsiRange[0] > 0 ||
     activeRsiRange[1] < 100 ||
     activeBollingerRange[0] > -20 ||
-    activeBollingerRange[1] < 120;
+    activeBollingerRange[1] < 120 ||
+    excludeSpansEarnings;
 
   const getExpDte = (exp: string): number => {
     const chain = allChainsMap[exp];
@@ -229,10 +235,13 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
 
   const matchingExpirations = useMemo(() => {
     return allExpirations.filter((exp) => {
+      if (excludeSpansEarnings && nextEarningsDate && exp >= nextEarningsDate) {
+        return false;
+      }
       const d = getExpDte(exp);
       return d >= activeDteRange[0] && d <= activeDteRange[1];
     });
-  }, [allExpirations, allChainsMap, activeDteRange]);
+  }, [allExpirations, allChainsMap, activeDteRange, excludeSpansEarnings, nextEarningsDate]);
 
   // Sync visible expirations when allExpirations changes
   React.useEffect(() => {
@@ -387,7 +396,14 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       const matchDelta = absDelta >= dMin && absDelta <= dMax;
       const cDte = c.days_to_expiration ?? (c.expiration ? getExpDte(c.expiration) : (selectedExp !== "ALL" ? getExpDte(selectedExp) : 0));
       const matchDte = cDte >= minDte && cDte <= maxDte;
-      return matchStrike && matchDelta && matchDte;
+      let matchEarnings = true;
+      if (excludeSpansEarnings && nextEarningsDate) {
+        const exp = c.expiration || selectedExp;
+        if (exp && exp !== "ALL" && exp >= nextEarningsDate) {
+          matchEarnings = false;
+        }
+      }
+      return matchStrike && matchDelta && matchDte && matchEarnings;
     });
 
     const strikeMap = new Map<number, any>();
@@ -421,7 +437,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     });
 
     return Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
-  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, activeBollingerRange, bollinger, currentPrice, tab, selectedExp]);
+  }, [isAllExp, contracts, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, activeBollingerRange, bollinger, currentPrice, tab, selectedExp, excludeSpansEarnings, nextEarningsDate]);
 
   // 2. DATA PREPARATION FOR ALL EXPIRATIONS MODE
   const allExpChartData = useMemo(() => {
@@ -446,6 +462,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     const strikeSet = new Set<number>();
 
     allExpirations.forEach((exp) => {
+      if (excludeSpansEarnings && nextEarningsDate && exp >= nextEarningsDate) return;
       const expDte = getExpDte(exp);
       if (expDte < minDte || expDte > maxDte) return;
 
@@ -462,6 +479,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
 
     // Also include contracts from direct list if allChainsMap isn't populated yet
     contracts.forEach((c) => {
+      if (excludeSpansEarnings && nextEarningsDate && c.expiration && c.expiration >= nextEarningsDate) return;
       const cDte = c.days_to_expiration ?? (c.expiration ? getExpDte(c.expiration) : 0);
       if (cDte < minDte || cDte > maxDte) return;
 
@@ -477,6 +495,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
     return sortedStrikes.map((strike) => {
       const pt: any = { strike };
       allExpirations.forEach((exp) => {
+        if (excludeSpansEarnings && nextEarningsDate && exp >= nextEarningsDate) return;
         const expDte = getExpDte(exp);
         if (expDte < minDte || expDte > maxDte) return;
 
@@ -499,7 +518,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       });
       return pt;
     });
-  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, activeBollingerRange, bollinger, metric, currentPrice, selectedExp]);
+  }, [isAllExp, allExpirations, allChainsMap, contracts, tab, minSlider, maxSlider, activeDeltaRange, activeDteRange, activeRsiRange, rsi_14, activeBollingerRange, bollinger, metric, currentPrice, selectedExp, excludeSpansEarnings, nextEarningsDate]);
 
   // Handle strike slider adjustments
   const handleMinSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -702,6 +721,25 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             }
           />
         </div>
+
+        {/* Corporate Earnings Date Filter */}
+        {onExcludeSpansEarningsChange && (
+          <div className="pt-3 border-t border-slate-800/60 mt-3.5 flex items-center justify-between">
+            <div className="flex flex-col pr-4">
+              <span className="text-xs font-bold text-slate-200">Avoid Binary Earnings Surprises</span>
+              <span className="text-[10px] text-slate-400">Exclude option curves and expirations whose expiration date spans or is after the next corporate earnings report</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+              <input
+                type="checkbox"
+                checked={excludeSpansEarnings}
+                onChange={(e) => onExcludeSpansEarningsChange(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-slate-400 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-white"></div>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Multi-Expiration Legend / Pills (Only in ALL Expirations Mode) */}

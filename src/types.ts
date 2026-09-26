@@ -33,6 +33,8 @@ export interface PutOptionRecord {
   fifty_two_week_high?: number | null;
   fifty_two_week_low?: number | null;
   rsi_14?: number | null;
+  next_earnings_date?: string | null;
+  next_earnings_timestamp?: number | null;
   bollinger?: {
     sma: number;
     upper_band: number;

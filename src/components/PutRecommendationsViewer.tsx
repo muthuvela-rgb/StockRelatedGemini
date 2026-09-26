@@ -111,6 +111,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [activeTierTab, setActiveTierTab] = useState<RiskTier | "all">("least_risk");
   const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("score");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [excludeSpansEarnings, setExcludeSpansEarnings] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
   // Loading & Data State
@@ -581,6 +582,12 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           if (pctBVal < bollingerRange[0] || pctBVal > bollingerRange[1]) return false;
         }
       }
+
+      // Corporate Earnings Filter
+      if (excludeSpansEarnings && r.earnings_context?.spans_earnings) {
+        return false;
+      }
+
       return true;
     };
 
@@ -617,7 +624,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
       high_risk: buildTier(data.high_risk, data.tier_summaries.high_risk),
       all: { count: data.all_recommendations.filter(filterItem).length },
     };
-  }, [data, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange]);
+  }, [data, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, excludeSpansEarnings]);
 
   // Raw list filtered by risk tier, search term, delta range, moneyness, cash return, premium, and RSI
   const filteredList = useMemo(() => {
@@ -675,8 +682,13 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
     // Filter by Bollinger Bands (%B)
     list = list.filter(matchesBollingerEntity);
 
+    // Filter by Corporate Earnings
+    if (excludeSpansEarnings) {
+      list = list.filter((r) => !r.earnings_context?.spans_earnings);
+    }
+
     return list;
-  }, [data, activeTierTab, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, matchesBollingerEntity]);
+  }, [data, activeTierTab, searchQuery, deltaRange, moneynessRange, cashReturnRange, premiumRange, rsiRange, bollingerRange, matchesBollingerEntity, excludeSpansEarnings]);
 
   // Unified sorted recommendations using hierarchical sorting across BOTH Cards and Table views
   const currentList = useMemo(() => {
@@ -960,7 +972,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
               Dynamic Recommendation Filters
             </span>
-            {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
+            {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120 || excludeSpansEarnings) && (
               <button
                 type="button"
                 onClick={() => {
@@ -970,6 +982,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                   setRsiRange([0, 100]);
                   setDeltaRange([0.0, 1.0]);
                   resetBollingerRange();
+                  setExcludeSpansEarnings(false);
                 }}
                 className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition"
               >
@@ -1012,6 +1025,23 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               range={bollingerRange}
               onChange={setBollingerRange}
             />
+          </div>
+
+          {/* Corporate Earnings Date Filter */}
+          <div className="pt-3 border-t border-slate-800/60 mt-3.5 flex items-center justify-between">
+            <div className="flex flex-col pr-4">
+              <span className="text-xs font-bold text-slate-200">Avoid Binary Earnings Surprises</span>
+              <span className="text-[10px] text-slate-400">Exclude option contracts whose expiration date spans or is after the next corporate earnings report</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+              <input
+                type="checkbox"
+                checked={excludeSpansEarnings}
+                onChange={(e) => setExcludeSpansEarnings(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-slate-400 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 peer-checked:after:bg-white"></div>
+            </label>
           </div>
         </div>
 
