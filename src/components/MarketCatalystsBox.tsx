@@ -34,6 +34,9 @@ export const MarketCatalystsBox: React.FC<MarketCatalystsBoxProps> = ({
   const { nextMeeting, subsequentMeeting } = fomcSchedule;
   const { nextRebalance } = rebalanceSchedule;
 
+  const isFomcCritical = nextMeeting.daysRemaining <= 7;
+  const isRebalanceCritical = nextRebalance.daysUntilExecution <= 7;
+
   // Format short readable dates: e.g. "Oct 27–28" & "Dec 18" with non-breaking spaces
   const fomcShortDate = useMemo(() => {
     try {
@@ -90,12 +93,12 @@ export const MarketCatalystsBox: React.FC<MarketCatalystsBoxProps> = ({
         aria-expanded={isOpen}
       >
         {/* FOMC Section */}
-        <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+        <div className={`flex items-center gap-1.5 shrink-0 whitespace-nowrap ${isFomcCritical ? "animate-heartbeat" : ""}`}>
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-60" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
           </span>
-          <span className="text-slate-300 font-semibold text-[11px] sm:text-xs whitespace-nowrap">FOMC:</span>
+          <span className={`font-semibold text-[11px] sm:text-xs whitespace-nowrap ${isFomcCritical ? "text-rose-400" : "text-slate-300"}`}>FOMC:</span>
           <span className="text-rose-300 font-mono font-medium text-[11px] sm:text-xs whitespace-nowrap">
             {fomcShortDate}
           </span>
@@ -108,9 +111,14 @@ export const MarketCatalystsBox: React.FC<MarketCatalystsBoxProps> = ({
         <div className="h-3.5 w-px bg-slate-700/80 shrink-0" />
 
         {/* Next Rebalance Section */}
-        <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-          <span className="text-slate-300 font-semibold text-[11px] sm:text-xs whitespace-nowrap">
+        <div className={`flex items-center gap-1.5 shrink-0 whitespace-nowrap ${isRebalanceCritical ? "animate-heartbeat" : ""}`}>
+          <span className="relative flex h-2 w-2 shrink-0">
+            {isRebalanceCritical && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60" />
+            )}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${isRebalanceCritical ? "bg-indigo-500" : "bg-indigo-400"}`} />
+          </span>
+          <span className={`font-semibold text-[11px] sm:text-xs whitespace-nowrap ${isRebalanceCritical ? "text-indigo-400" : "text-slate-300"}`}>
             <span className="hidden sm:inline">Next </span>QQQ & SPY Rebalance:
           </span>
           <span className="text-indigo-300 font-mono font-medium text-[11px] sm:text-xs whitespace-nowrap">

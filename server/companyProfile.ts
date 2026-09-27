@@ -134,6 +134,35 @@ function extractShortDescription(fullText: string, maxChars = 320): string {
   return short;
 }
 
+async function generateProfileWithFallback(genAI: GoogleGenAI, prompt: string): Promise<any> {
+  const modelsToTry = [
+    "gemini-3.8-flash",
+    "gemini-flash-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview"
+  ];
+
+  let lastError: any = null;
+  for (const modelName of modelsToTry) {
+    try {
+      const response = await genAI.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        },
+      });
+      if (response && response.text) {
+        return response;
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Profile Gemini Fallback] Model ${modelName} failed. Trying next model...`);
+    }
+  }
+  throw lastError || new Error("All fallback models failed for company profile.");
+}
+
 /**
  * Fallback to Gemini when Yahoo has no summary
  */
@@ -160,13 +189,7 @@ Return ONLY a valid JSON object with the following fields:
   "ipoYear": 1999 // Estimated year the company went public (number or null)
 }`;
 
-    const response = await genAI.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
+    const response = await generateProfileWithFallback(genAI, prompt);
 
     const text = response.text?.trim() || "{}";
     const parsed = JSON.parse(text);

@@ -177,7 +177,7 @@ Extract:
 `;
 
   // Try primary model then fallback models if experiencing temporary 503 high-demand or 429 quota spikes
-  const modelsToTry = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+  const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
