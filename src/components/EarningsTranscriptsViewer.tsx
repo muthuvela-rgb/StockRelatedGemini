@@ -40,7 +40,13 @@ export const EarningsTranscriptsViewer: React.FC<EarningsTranscriptsViewerProps>
     watchlistOptions.find((o) => o.value === pillsWatchlistValue)?.tickers || watchlist;
 
   // Active selected ticker and quarter
-  const [selectedTicker, setSelectedTicker] = useState<string>(watchlist[0] || "NVDA");
+  const [selectedTicker, setSelectedTicker] = useState<string>(() => localStorage.getItem("stockrelated_last_ticker") || watchlist[0] || "NVDA");
+
+  useEffect(() => {
+    if (selectedTicker) {
+      localStorage.setItem("stockrelated_last_ticker", selectedTicker);
+    }
+  }, [selectedTicker]);
   const [customTickerInput, setCustomTickerInput] = useState<string>("");
   const [selectedQuarter, setSelectedQuarter] = useState<string>("2026Q2");
 

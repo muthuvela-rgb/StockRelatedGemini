@@ -95,7 +95,13 @@ interface OptionChainViewerProps {
 }
 
 export const OptionChainViewer: React.FC<OptionChainViewerProps> = ({ watchlist }) => {
-  const [ticker, setTicker] = useState("QQQ");
+  const [ticker, setTicker] = useState(() => localStorage.getItem("stockrelated_last_ticker") || "QQQ");
+
+  useEffect(() => {
+    if (ticker) {
+      localStorage.setItem("stockrelated_last_ticker", ticker);
+    }
+  }, [ticker]);
   const [selectedExp, setSelectedExp] = useState<string>("ALL");
   const [tab, setTab] = useState<"puts" | "calls">("puts");
   const [loading, setLoading] = useState(false);

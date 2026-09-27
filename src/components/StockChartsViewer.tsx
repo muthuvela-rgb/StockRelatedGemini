@@ -96,9 +96,15 @@ const INTERVAL_OPTIONS = [
 
 export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist = [] }) => {
   // Search & Ticker state
-  const [tickerInput, setTickerInput] = useState("NVDA");
-  const [activeTicker, setActiveTicker] = useState("NVDA");
-  const [tickerList, setTickerList] = useState<string[]>(["NVDA"]);
+  const [tickerInput, setTickerInput] = useState(() => localStorage.getItem("stockrelated_last_ticker") || "NVDA");
+  const [activeTicker, setActiveTicker] = useState(() => localStorage.getItem("stockrelated_last_ticker") || "NVDA");
+  const [tickerList, setTickerList] = useState<string[]>(() => [localStorage.getItem("stockrelated_last_ticker") || "NVDA"]);
+
+  useEffect(() => {
+    if (activeTicker) {
+      localStorage.setItem("stockrelated_last_ticker", activeTicker);
+    }
+  }, [activeTicker]);
 
   // Duration & Interval
   const [selectedRange, setSelectedRange] = useState("1y");

@@ -131,7 +131,13 @@ const EXPIRATION_COLORS = [
 
 export const PremiumCurvesViewer: React.FC = () => {
   const [viewMode, setViewMode] = useState<"multi_exp_strike" | "single_strike_exp" | "compare_tickers">("single_strike_exp");
-  const [ticker, setTicker] = useState("QQQ");
+  const [ticker, setTicker] = useState(() => localStorage.getItem("stockrelated_last_ticker") || "QQQ");
+
+  useEffect(() => {
+    if (ticker) {
+      localStorage.setItem("stockrelated_last_ticker", ticker);
+    }
+  }, [ticker]);
   const [optionType, setOptionType] = useState<"put" | "call">("put");
   const [priceType, setPriceType] = useState<"bid" | "ask">("bid");
   const [numExpirations, setNumExpirations] = useState(4);

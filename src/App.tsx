@@ -114,50 +114,50 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-1 w-full mx-auto px-4 sm:px-8 lg:px-12 py-6">
-        {activeTab === "put-recommendations" && (
+        <div className={activeTab === "put-recommendations" ? "" : "hidden"}>
           <PutRecommendationsViewer
             watchlist={currentWatchlist}
             initialCustomTicker={customTickerForRecs}
             onNavigateTab={setActiveTab}
           />
-        )}
-        {activeTab === "nasdaq-simulator" && (
+        </div>
+        <div className={activeTab === "nasdaq-simulator" ? "" : "hidden"}>
           <NasdaqSimulator />
-        )}
-        {activeTab === "macro-markets" && (
+        </div>
+        <div className={activeTab === "macro-markets" ? "" : "hidden"}>
           <MacroDashboard />
-        )}
-        {activeTab === "options-scanner" && (
+        </div>
+        <div className={activeTab === "options-scanner" ? "" : "hidden"}>
           <PutScanner watchlist={currentWatchlist} />
-        )}
-        {activeTab === "market-sentiment" && (
+        </div>
+        <div className={activeTab === "market-sentiment" ? "" : "hidden"}>
           <MarketSentiment onNavigateTab={setActiveTab} />
-        )}
-        {activeTab === "fall-detector" && (
+        </div>
+        <div className={activeTab === "fall-detector" ? "" : "hidden"}>
           <FallDetector watchlist={currentWatchlist} />
-        )}
-        {activeTab === "stock-charts" && (
+        </div>
+        <div className={activeTab === "stock-charts" ? "" : "hidden"}>
           <StockChartsViewer watchlist={currentWatchlist} />
-        )}
-        {activeTab === "technicals" && (
+        </div>
+        <div className={activeTab === "technicals" ? "" : "hidden"}>
           <TechnicalsScreener watchlist={currentWatchlist} />
-        )}
-        {activeTab === "short-puts" && (
+        </div>
+        <div className={activeTab === "short-puts" ? "" : "hidden"}>
           <ShortDatedScreener watchlist={currentWatchlist} />
-        )}
-        {activeTab === "option-chain" && (
+        </div>
+        <div className={activeTab === "option-chain" ? "" : "hidden"}>
           <OptionChainViewer watchlist={currentWatchlist} />
-        )}
-        {activeTab === "premium-curves" && (
+        </div>
+        <div className={activeTab === "premium-curves" ? "" : "hidden"}>
           <PremiumCurvesViewer />
-        )}
-        {activeTab === "sec-earnings" && (
+        </div>
+        <div className={activeTab === "sec-earnings" ? "" : "hidden"}>
           <SecEarningsViewer watchlist={currentWatchlist} />
-        )}
-        {activeTab === "earnings-transcripts" && (
+        </div>
+        <div className={activeTab === "earnings-transcripts" ? "" : "hidden"}>
           <EarningsTranscriptsViewer watchlist={currentWatchlist} />
-        )}
-        {activeTab === "watchlist" && (
+        </div>
+        <div className={activeTab === "watchlist" ? "" : "hidden"}>
           <WatchlistManager
             watchlist={currentWatchlist}
             watchlists={watchlists}
@@ -170,13 +170,13 @@ const AppContent: React.FC = () => {
             onSyncCloudWatchlists={syncCloudWatchlists}
             onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
           />
-        )}
-        {activeTab === "access-audit" && (
+        </div>
+        <div className={activeTab === "access-audit" ? "" : "hidden"}>
           <AccessAuditViewer />
-        )}
-        {activeTab === "junior-academy" && (
+        </div>
+        <div className={activeTab === "junior-academy" ? "" : "hidden"}>
           <JuniorInvestorAcademy />
-        )}
+        </div>
       </main>
 
       {/* Cloud Firestore Saved Trades Modal */}
