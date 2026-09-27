@@ -112,6 +112,30 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
   const [sortBy, setSortBy] = useState<"score" | "annual_cash" | "annual_margin" | "cushion" | "pop" | "theta">("score");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [excludeSpansEarnings, setExcludeSpansEarnings] = useState<boolean>(false);
+
+  const handleResetAllFilters = (dispatchGlobal = false) => {
+    setMoneynessRange([20, 100]);
+    setCashReturnRange([8, 100]);
+    setPremiumRange([0.35, 50]);
+    setRsiRange([0, 100]);
+    setDeltaRange([0.0, 1.0]);
+    resetBollingerRange();
+    setExcludeSpansEarnings(false);
+    if (dispatchGlobal) {
+      window.dispatchEvent(new Event("reset-all-filters"));
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalReset = () => {
+      handleResetAllFilters(false);
+    };
+    window.addEventListener("reset-all-filters", handleGlobalReset);
+    return () => {
+      window.removeEventListener("reset-all-filters", handleGlobalReset);
+    };
+  }, []);
+
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
   // Loading & Data State
@@ -989,15 +1013,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120 || excludeSpansEarnings) && (
               <button
                 type="button"
-                onClick={() => {
-                  setMoneynessRange([20, 100]);
-                  setCashReturnRange([8, 100]);
-                  setPremiumRange([0.35, 50]);
-                  setRsiRange([0, 100]);
-                  setDeltaRange([0.0, 1.0]);
-                  resetBollingerRange();
-                  setExcludeSpansEarnings(false);
-                }}
+                onClick={() => handleResetAllFilters(true)}
                 className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition"
               >
                 <RotateCcw className="w-3 h-3" />

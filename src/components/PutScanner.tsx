@@ -370,7 +370,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     };
   }, [records, rawFilteredRecords]);
 
-  const handleResetAllFilters = () => {
+  const handleResetAllFilters = (dispatchGlobal = false) => {
     setMoneynessRange([20, 120]);
     setCashReturnRange([0, 100]);
     setPremiumRange([0, 50]);
@@ -379,7 +379,20 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     resetBollingerRange();
     setFilterSearch("");
     setExcludeSpansEarnings(false);
+    if (dispatchGlobal) {
+      window.dispatchEvent(new Event("reset-all-filters"));
+    }
   };
+
+  useEffect(() => {
+    const handleGlobalReset = () => {
+      handleResetAllFilters(false);
+    };
+    window.addEventListener("reset-all-filters", handleGlobalReset);
+    return () => {
+      window.removeEventListener("reset-all-filters", handleGlobalReset);
+    };
+  }, []);
 
   const exportCsv = () => {
     if (filteredRecords.length === 0) return;
@@ -1067,7 +1080,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           onSearchTickerChange={setFilterSearch}
           excludeSpansEarnings={excludeSpansEarnings}
           onExcludeSpansEarningsChange={setExcludeSpansEarnings}
-          onResetAll={handleResetAllFilters}
+          onResetAll={() => handleResetAllFilters(true)}
           totalScannedCount={records.length}
           filteredCount={filteredRecords.length}
           avgCashYield={avgCashYield}
@@ -1099,7 +1112,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
               </p>
               <div className="pt-2">
                 <button
-                  onClick={handleResetAllFilters}
+                  onClick={() => handleResetAllFilters(true)}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition cursor-pointer"
                 >
                   Reset All Filter Sliders
@@ -1918,7 +1931,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           </span>
           {(moneynessRange[0] > 20 || moneynessRange[1] < 120 || cashReturnRange[0] > 0 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120 || filterSearch) && (
             <button
-              onClick={handleResetAllFilters}
+              onClick={() => handleResetAllFilters(true)}
               className="text-blue-400 hover:text-blue-300 font-medium cursor-pointer underline text-[11px]"
             >
               Reset All Filters

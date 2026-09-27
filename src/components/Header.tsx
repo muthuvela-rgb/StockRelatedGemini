@@ -24,6 +24,7 @@ import {
   Gauge,
   BarChart3,
   Globe,
+  RotateCcw,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -232,6 +233,14 @@ export const Header: React.FC<HeaderProps> = ({
                     : "Live Tradier Data"
                   : "Live Yahoo"}
               </span>
+            </button>
+            <button
+              onClick={() => window.dispatchEvent(new Event("reset-all-filters"))}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
+              title="Reset all active slider filters across all tabs back to default settings"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset All Filters</span>
             </button>
             <button
               onClick={onOpenUserGuide}

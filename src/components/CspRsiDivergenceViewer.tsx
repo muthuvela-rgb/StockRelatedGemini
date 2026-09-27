@@ -61,6 +61,28 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [copiedContract, setCopiedContract] = useState<string | null>(null);
 
+  const handleResetAllFilters = (dispatchGlobal = false) => {
+    setMoneynessRange([0, 100]);
+    setCashReturnRange([5, 100]);
+    setPremiumRange([0, 50]);
+    setRsiRange([0, 100]);
+    setDeltaRange([0.0, 1.0]);
+    resetBollingerRange();
+    if (dispatchGlobal) {
+      window.dispatchEvent(new Event("reset-all-filters"));
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalReset = () => {
+      handleResetAllFilters(false);
+    };
+    window.addEventListener("reset-all-filters", handleGlobalReset);
+    return () => {
+      window.removeEventListener("reset-all-filters", handleGlobalReset);
+    };
+  }, []);
+
   const [loading, setLoading] = useState<boolean>(false);
   const [data, setData] = useState<CspRsiDivergenceResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -564,14 +586,7 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
             {(moneynessRange[0] > 0 || moneynessRange[1] < 100 || cashReturnRange[0] > 5 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
               <button
                 type="button"
-                onClick={() => {
-                  setMoneynessRange([0, 100]);
-                  setCashReturnRange([5, 100]);
-                  setPremiumRange([0, 50]);
-                  setRsiRange([0, 100]);
-                  setDeltaRange([0.0, 1.0]);
-                  resetBollingerRange();
-                }}
+                onClick={() => handleResetAllFilters(true)}
                 className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition shrink-0 self-start sm:self-auto"
               >
                 <RotateCcw className="w-3 h-3" />
