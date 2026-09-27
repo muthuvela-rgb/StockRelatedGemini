@@ -113,7 +113,7 @@ const AppContent: React.FC = () => {
         onOpenUserGuide={() => setIsUserGuideOpen(true)}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 w-full mx-auto px-4 sm:px-8 lg:px-12 py-6">
         {activeTab === "put-recommendations" && (
           <PutRecommendationsViewer
             watchlist={currentWatchlist}
@@ -197,7 +197,7 @@ const AppContent: React.FC = () => {
       />
 
       <footer className="border-t border-slate-800/80 bg-slate-900/40 py-4 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="w-full mx-auto px-4 sm:px-8 lg:px-12 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <span>StockRelated • Quantitative Options & Technical Analysis Suite</span>
             <button

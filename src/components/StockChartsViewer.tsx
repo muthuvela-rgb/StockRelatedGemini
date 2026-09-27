@@ -503,7 +503,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
   const isPositiveReturn = summary ? summary.periodChange >= 0 : true;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 py-6 font-sans">
+    <div className="space-y-6 w-full mx-auto px-4 py-6 font-sans">
       {/* Top Banner & Control Center */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
         <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
