@@ -1537,6 +1537,86 @@ app.post("/api/watchlist", (req: Request, res: Response) => {
   }
 });
 
+// Watchlist upcoming earnings endpoints
+const watchlistEarningsCache = new Map<string, { data: { ticker: string; date: string | null; timestamp: number | null }; expiresAt: number }>();
+
+app.get("/api/watchlist-earnings", async (req: Request, res: Response) => {
+  try {
+    const rawTickers = (req.query.tickers as string) || "";
+    const tickers = rawTickers
+      .split(",")
+      .map((t) => t.trim().toUpperCase())
+      .filter(Boolean);
+
+    if (tickers.length === 0) {
+      return res.json({ earnings: [] });
+    }
+
+    const now = Date.now();
+    const results: Array<{ ticker: string; date: string | null; timestamp: number | null }> = [];
+    const missingTickers: string[] = [];
+
+    for (const t of tickers) {
+      const cached = watchlistEarningsCache.get(t);
+      if (cached && cached.expiresAt > now) {
+        results.push(cached.data);
+      } else {
+        missingTickers.push(t);
+      }
+    }
+
+    if (missingTickers.length > 0) {
+      const chunkSize = 5;
+      for (let i = 0; i < missingTickers.length; i += chunkSize) {
+        const chunk = missingTickers.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(async (ticker) => {
+            try {
+              const summary = await fetchYahooQuoteSummary(ticker);
+              const cal = summary?.calendarEvents?.earnings?.earningsDate;
+              let nextEarningsDate: string | null = null;
+              let nextEarningsTimestamp: number | null = null;
+
+              if (Array.isArray(cal) && cal.length > 0) {
+                if (cal[0]?.fmt) nextEarningsDate = cal[0].fmt;
+                if (cal[0]?.raw) nextEarningsTimestamp = Number(cal[0].raw);
+              } else {
+                const sum = summary?.summaryDetail?.earningsDate;
+                if (Array.isArray(sum) && sum.length > 0) {
+                  if (sum[0]?.fmt) nextEarningsDate = sum[0].fmt;
+                  if (sum[0]?.raw) nextEarningsTimestamp = Number(sum[0].raw);
+                } else if (sum && typeof sum === "object") {
+                  if (sum.fmt) nextEarningsDate = sum.fmt;
+                  if (sum.raw) nextEarningsTimestamp = Number(sum.raw);
+                }
+              }
+
+              const dataItem = {
+                ticker,
+                date: nextEarningsDate,
+                timestamp: nextEarningsTimestamp,
+              };
+
+              watchlistEarningsCache.set(ticker, {
+                data: dataItem,
+                expiresAt: now + 3600 * 1000, // 1 hour cache
+              });
+              results.push(dataItem);
+            } catch (err) {
+              const fallbackItem = { ticker, date: null, timestamp: null };
+              results.push(fallbackItem);
+            }
+          })
+        );
+      }
+    }
+
+    res.json({ earnings: results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Dynamic QQQ Bollinger Band watchlist scan
 // Fetches QQQ's CURRENT constituents live (not the static QQQ_CONSTITUENTS
 // snapshot above), scans each via the app's Tradier-first market data router,

@@ -583,16 +583,14 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
               />
             </div>
 
-            {(moneynessRange[0] > 0 || moneynessRange[1] < 100 || cashReturnRange[0] > 5 || cashReturnRange[1] < 100 || premiumRange[0] > 0 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120) && (
-              <button
-                type="button"
-                onClick={() => handleResetAllFilters(true)}
-                className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition shrink-0 self-start sm:self-auto"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset All Filter Sliders</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => handleResetAllFilters(false)}
+              className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold cursor-pointer transition shrink-0 self-start sm:self-auto"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset All Filter Sliders</span>
+            </button>
           </div>
 
           {/* 5-Slider Deck: Moneyness Band, Cash Return, Option Premium, RSI (14), and Delta Greek */}

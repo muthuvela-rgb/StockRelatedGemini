@@ -108,6 +108,7 @@ const AppContent: React.FC = () => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         watchlistCount={currentWatchlist.length}
+        watchlist={currentWatchlist}
         activeWatchlistName={activeWatchlist.name}
         onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
         onOpenUserGuide={() => setIsUserGuideOpen(true)}

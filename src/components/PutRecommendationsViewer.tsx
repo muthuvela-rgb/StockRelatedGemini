@@ -1010,16 +1010,14 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               <SlidersHorizontal className="w-3.5 h-3.5 text-blue-400" />
               Dynamic Recommendation Filters
             </span>
-            {(moneynessRange[0] > 20 || moneynessRange[1] < 100 || cashReturnRange[0] > 8 || cashReturnRange[1] < 100 || premiumRange[0] > 0.35 || premiumRange[1] < 50 || rsiRange[0] > 0 || rsiRange[1] < 100 || deltaRange[0] > 0.001 || deltaRange[1] < 0.999 || bollingerRange[0] > -20 || bollingerRange[1] < 120 || excludeSpansEarnings) && (
-              <button
-                type="button"
-                onClick={() => handleResetAllFilters(true)}
-                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset All Filter Sliders</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => handleResetAllFilters(false)}
+              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold cursor-pointer transition"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset All Filter Sliders</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">

@@ -170,8 +170,13 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
                 <span className="text-[10px] font-mono tracking-widest uppercase font-bold text-cyan-400 bg-cyan-950/80 border border-cyan-700/60 px-2 py-0.5 rounded">
                   HUD // TECHNICAL BREAKDOWN
                 </span>
-                <span className="text-xl font-extrabold text-white font-mono tracking-tight">
+                <span className="text-xl font-extrabold text-white font-mono tracking-tight flex items-center gap-2">
                   {ticker}
+                  {p?.companyName && (
+                    <span className="text-xs sm:text-sm font-semibold text-slate-400 font-sans tracking-normal">
+                      — {p.companyName}
+                    </span>
+                  )}
                 </span>
                 <button
                   type="button"

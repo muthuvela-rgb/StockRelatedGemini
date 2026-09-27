@@ -25,6 +25,7 @@ import {
   BarChart3,
   Globe,
   RotateCcw,
+  Calendar,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -55,6 +56,7 @@ interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   watchlistCount: number;
+  watchlist?: string[];
   activeWatchlistName?: string;
   onOpenSavedTrades?: () => void;
   onOpenUserGuide?: () => void;
@@ -64,6 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   watchlistCount,
+  watchlist = [],
   activeWatchlistName,
   onOpenSavedTrades,
   onOpenUserGuide,
@@ -82,6 +85,57 @@ export const Header: React.FC<HeaderProps> = ({
     description: string;
   } | null>(null);
   const [showProviderModal, setShowProviderModal] = useState(false);
+
+  const [watchlistEarnings, setWatchlistEarnings] = useState<Array<{ ticker: string; date: string | null; timestamp: number | null; daysToEarnings?: number }>>([]);
+  const [loadingEarnings, setLoadingEarnings] = useState(false);
+
+  useEffect(() => {
+    if (!watchlist || watchlist.length === 0) {
+      setWatchlistEarnings([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingEarnings(true);
+
+    fetch(`/api/watchlist-earnings?tickers=${encodeURIComponent(watchlist.join(","))}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load watchlist earnings");
+        return res.json();
+      })
+      .then((data) => {
+        if (!isMounted) return;
+        const now = Date.now();
+        const list = (data.earnings || [])
+          .map((item: any) => {
+            let daysToEarnings: number | undefined = undefined;
+            if (item.timestamp) {
+              const diffMs = (item.timestamp * 1000) - now;
+              daysToEarnings = Math.ceil(diffMs / (24 * 3600 * 1000));
+            }
+            return { ...item, daysToEarnings };
+          })
+          .filter((item: any) => {
+            if (item.daysToEarnings === undefined) return false;
+            return item.daysToEarnings >= 0 && item.daysToEarnings <= 28;
+          })
+          .sort((a: any, b: any) => (a.daysToEarnings || 0) - (b.daysToEarnings || 0))
+          .slice(0, 10);
+
+        setWatchlistEarnings(list);
+        setLoadingEarnings(false);
+      })
+      .catch((err) => {
+        console.error("Error loading watchlist earnings:", err);
+        if (isMounted) {
+          setLoadingEarnings(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [watchlist]);
 
   useEffect(() => {
     const checkStatus = () => {
@@ -169,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 shadow-lg">
       <div className="w-full mx-auto px-4 sm:px-8 lg:px-12">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between py-3.5 lg:py-0 lg:h-16 gap-3 min-w-0">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between py-3.5 lg:py-1.5 lg:min-h-16 gap-3 min-w-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/20 shrink-0">
               <LineChart className="w-5 h-5 text-white" />
@@ -187,73 +241,100 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 text-xs text-slate-400">
-            {/* Global Active Bollinger Filter Pill */}
-            {isBollingerFiltered && (
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-950/80 border border-teal-500/50 text-teal-300 text-[11px] font-mono shadow-sm shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
-                <span className="font-semibold">BB: {bollingerRange[0]}%–{bollingerRange[1]}%</span>
-                <button
-                  onClick={resetBollingerRange}
-                  title="Reset global Bollinger filter (show all stocks across tabs)"
-                  className="p-0.5 hover:text-white rounded hover:bg-teal-900/60 cursor-pointer transition"
-                >
-                  <X className="w-3 h-3 text-teal-300 hover:text-white" />
-                </button>
-              </div>
-            )}
+          <div className="flex flex-col items-end gap-2 min-w-0">
+            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 text-xs text-slate-400">
+              {/* Global Active Bollinger Filter Pill */}
+              {isBollingerFiltered && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-950/80 border border-teal-500/50 text-teal-300 text-[11px] font-mono shadow-sm shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                  <span className="font-semibold">BB: {bollingerRange[0]}%–{bollingerRange[1]}%</span>
+                  <button
+                    onClick={resetBollingerRange}
+                    title="Reset global Bollinger filter (show all stocks across tabs)"
+                    className="p-0.5 hover:text-white rounded hover:bg-teal-900/60 cursor-pointer transition"
+                  >
+                    <X className="w-3 h-3 text-teal-300 hover:text-white" />
+                  </button>
+                </div>
+              )}
 
-            {/* FOMC & Next Rebalance Key Dates Box */}
-            <MarketCatalystsBox onNavigateTab={setActiveTab} />
+              {/* FOMC & Next Rebalance Key Dates Box */}
+              <MarketCatalystsBox onNavigateTab={setActiveTab} />
 
-            <button
-              onClick={() => setShowProviderModal(true)}
-              className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md font-mono text-[11px] sm:text-xs transition border cursor-pointer ${
-                providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
-                  ? "bg-cyan-950/70 text-cyan-300 border-cyan-600/50 hover:bg-cyan-900/70 shadow-sm"
-                  : providerStatus?.tradierInCooldown
-                  ? "bg-amber-950/70 text-amber-300 border-amber-600/50 hover:bg-amber-900/70 shadow-sm"
-                  : "bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800"
-              }`}
-              title="Click to view Market Data Feed status (Tradier Brokerage & SEC)"
-            >
-              <span
-                className={`w-2 h-2 rounded-full animate-pulse ${
+              <button
+                onClick={() => setShowProviderModal(true)}
+                className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-md font-mono text-[11px] sm:text-xs transition border cursor-pointer ${
                   providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
-                    ? "bg-cyan-400"
+                    ? "bg-cyan-950/70 text-cyan-300 border-cyan-600/50 hover:bg-cyan-900/70 shadow-sm"
                     : providerStatus?.tradierInCooldown
-                    ? "bg-amber-400"
-                    : "bg-emerald-500"
+                    ? "bg-amber-950/70 text-amber-300 border-amber-600/50 hover:bg-amber-900/70 shadow-sm"
+                    : "bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-800"
                 }`}
-              ></span>
-              <span className="font-semibold">
-                {providerStatus?.isTradierConfigured
-                  ? providerStatus?.tradierInCooldown
-                    ? "Tradier Cooldown"
-                    : "Live Tradier Data"
-                  : "Live Yahoo"}
+                title="Click to view Market Data Feed status (Tradier Brokerage & SEC)"
+              >
+                <span
+                  className={`w-2 h-2 rounded-full animate-pulse ${
+                    providerStatus?.isTradierConfigured && !providerStatus?.tradierInCooldown
+                      ? "bg-cyan-400"
+                      : providerStatus?.tradierInCooldown
+                      ? "bg-amber-400"
+                      : "bg-emerald-500"
+                  }`}
+                ></span>
+                <span className="font-semibold">
+                  {providerStatus?.isTradierConfigured
+                    ? providerStatus?.tradierInCooldown
+                      ? "Tradier Cooldown"
+                      : "Live Tradier Data"
+                    : "Live Yahoo"}
+                </span>
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new Event("reset-all-filters"))}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
+                title="Reset all active slider filters across all tabs back to default settings"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset All Filters</span>
+              </button>
+              <button
+                onClick={onOpenUserGuide}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
+                title="Open StockRelated User Guide & Tab Documentation"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>User Guide</span>
+              </button>
+              <UserAuthButton
+                watchlistCount={watchlistCount}
+                onOpenSavedTrades={onOpenSavedTrades}
+              />
+            </div>
+
+            {/* Watchlist Upcoming Earnings Row */}
+            <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400 max-w-full">
+              <span className="flex items-center gap-1 text-slate-400 font-semibold shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                <span>Watchlist Earnings (Next 4W):</span>
               </span>
-            </button>
-            <button
-              onClick={() => window.dispatchEvent(new Event("reset-all-filters"))}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
-              title="Reset all active slider filters across all tabs back to default settings"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset All Filters</span>
-            </button>
-            <button
-              onClick={onOpenUserGuide}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
-              title="Open StockRelated User Guide & Tab Documentation"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>User Guide</span>
-            </button>
-            <UserAuthButton
-              watchlistCount={watchlistCount}
-              onOpenSavedTrades={onOpenSavedTrades}
-            />
+              {loadingEarnings ? (
+                <span className="text-slate-500 font-mono animate-pulse">Scanning...</span>
+              ) : watchlistEarnings.length === 0 ? (
+                <span className="text-slate-500 font-medium italic">No active watchlist earnings</span>
+              ) : (
+                <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[10px] text-slate-300">
+                  {watchlistEarnings.map((item, idx) => (
+                    <React.Fragment key={item.ticker}>
+                      {idx > 0 && <span className="text-slate-700 font-normal select-none">•</span>}
+                      <span className="bg-slate-950/60 border border-slate-800/80 px-1.5 py-0.5 rounded flex items-center gap-1 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors">
+                        <span className="font-bold text-white">{item.ticker}</span>
+                        <span className="text-slate-400">({item.date?.slice(5) || "TBD"} - {item.daysToEarnings}d)</span>
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
