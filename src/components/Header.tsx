@@ -168,7 +168,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 shadow-lg">
       <div className="w-full mx-auto px-4 sm:px-8 lg:px-12">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between py-3.5 lg:py-0 lg:h-16 gap-3 min-w-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/20 shrink-0">
               <LineChart className="w-5 h-5 text-white" />
@@ -180,13 +180,13 @@ export const Header: React.FC<HeaderProps> = ({
                   Analytics & Tooling
                 </span>
               </div>
-              <p className="text-xs text-slate-400 hidden sm:block truncate">
+              <p className="text-xs text-slate-400 hidden xl:block truncate">
                 Options yield, fall detection, technicals & Black-Scholes Greeks
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-2.5 text-xs text-slate-400 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 text-xs text-slate-400">
             {/* Global Active Bollinger Filter Pill */}
             {isBollingerFiltered && (
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-950/80 border border-teal-500/50 text-teal-300 text-[11px] font-mono shadow-sm shrink-0">
