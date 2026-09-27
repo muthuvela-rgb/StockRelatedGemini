@@ -33,6 +33,7 @@ interface StockHudData {
   profile: {
     ticker?: string;
     companyName?: string;
+    name?: string;
     sector?: string;
     industry?: string;
     description?: string;
@@ -112,6 +113,7 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
 
   const t = data?.technicals;
   const p = data?.profile;
+  const companyName = p?.name || p?.companyName || "";
   const currentPrice = t?.current_price ?? 0;
   const ath = t?.all_time_high ?? null;
   const high52 = t?.fifty_two_week_high ?? null;
@@ -172,9 +174,9 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
                 </span>
                 <span className="text-xl font-extrabold text-white font-mono tracking-tight flex items-center gap-2">
                   {ticker}
-                  {p?.companyName && (
+                  {companyName && (
                     <span className="text-xs sm:text-sm font-semibold text-slate-400 font-sans tracking-normal">
-                      — {p.companyName}
+                      — {companyName}
                     </span>
                   )}
                 </span>
@@ -189,7 +191,7 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
               </div>
               <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
                 <span className="font-medium text-slate-300">
-                  {p?.companyName || "Equities / Security"}
+                  {companyName || "Equities / Security"}
                 </span>
                 {p?.sector && (
                   <>

@@ -55,6 +55,59 @@ function getGenAI(): GoogleGenAI {
   return genAIClient;
 }
 
+// Global robust helper to handle Gemini generation with automatic high-availability fallback
+async function generateContentWithModelFallback(params: {
+  contents: any;
+  config?: any;
+}) {
+  const ai = getGenAI();
+  const modelsToTry = [
+    "gemini-3.8-flash",       // Primary high-efficiency modern model
+    "gemini-flash-latest",    // Robust stable classic flash
+    "gemini-3.1-flash-lite",  // Ultra-efficient high-availability lite model
+    "gemini-3.1-pro-preview"  // Elite reasoning model (complex backup)
+  ];
+
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`[Gemini Fallback] Attempting generation with model: ${modelName}`);
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: params.contents,
+        config: params.config,
+      });
+
+      if (response && response.text) {
+        return response;
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Gemini Fallback] Model ${modelName} failed (${err?.status || err?.message || "unknown error"}). Trying next model...`);
+    }
+  }
+
+  throw lastError || new Error("All fallback Gemini models failed to generate content.");
+}
+
+// Robust fetch with configurable timeout (fails fast to avoid socket exhaustion)
+async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 3000): Promise<globalThis.Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 // In-memory cache for SEC filing summaries
 const secSummaryCache = new Map<string, any>();
 
@@ -1006,24 +1059,24 @@ async function getYahooAuth(forceRefresh = false): Promise<{ cookie: string; cru
 
   yahooAuthPromise = (async () => {
     try {
-      const cookieRes = await fetch("https://fc.yahoo.com", {
+      const cookieRes = await fetchWithTimeout("https://fc.yahoo.com", {
         headers: HTTP_HEADERS,
-      });
+      }, 3000);
       const cookie = cookieRes.headers.get("set-cookie") || "";
 
-      const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+      const crumbRes = await fetchWithTimeout("https://query2.finance.yahoo.com/v1/test/getcrumb", {
         headers: {
           ...HTTP_HEADERS,
           Cookie: cookie,
         },
-      });
+      }, 3000);
       const crumb = await crumbRes.text();
 
       cachedYahooCookie = cookie;
       cachedYahooCrumb = crumb;
       return { cookie, crumb };
     } catch (err) {
-      console.error("Failed to get Yahoo crumb/cookie:", err);
+      console.error("Failed to get Yahoo crumb/cookie (using fallback):", err);
       return { cookie: cachedYahooCookie || "", crumb: cachedYahooCrumb || "" };
     } finally {
       yahooAuthPromise = null;
@@ -1036,7 +1089,7 @@ async function getYahooAuth(forceRefresh = false): Promise<{ cookie: string; cru
 async function fetchYahooChart(ticker: string, range = "1y", interval = "1d") {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
-    const res = await fetch(url, { headers: HTTP_HEADERS });
+    const res = await fetchWithTimeout(url, { headers: HTTP_HEADERS }, 3000);
     if (!res.ok) return null;
     const json = await res.json();
     return json?.chart?.result?.[0] || null;
@@ -1062,7 +1115,7 @@ async function fetchYahooOptions(ticker: string, dateTimestamp?: number, retry =
     };
     if (cookie) headers["Cookie"] = cookie;
 
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers }, 3000);
     if (res.status === 401 && retry) {
       await getYahooAuth(true);
       return fetchYahooOptions(ticker, dateTimestamp, false);
@@ -1088,7 +1141,7 @@ async function fetchYahooQuoteSummary(ticker: string, retry = true): Promise<any
     };
     if (cookie) headers["Cookie"] = cookie;
 
-    const res = await fetch(url, { headers });
+    const res = await fetchWithTimeout(url, { headers }, 3000);
     if (res.status === 401 && retry) {
       await getYahooAuth(true);
       return fetchYahooQuoteSummary(ticker, false);
@@ -3925,8 +3978,7 @@ Provide an executive, high-density financial and strategic breakdown of this ${p
 5. Implications for implied volatility, downside put options risk, and sentiment.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+    const response = await generateContentWithModelFallback({
       contents: prompt,
       config: {
         systemInstruction: "You are an elite Wall Street securities analyst and SEC filing forensic specialist. You produce precise, insightful, and actionable breakdowns of 10-K, 10-Q, 8-K filings, and all amendments (such as 8-K/A, 10-Q/A, 10-K/A) with zero fluff.",
@@ -4991,9 +5043,7 @@ ${sampleHigh.join("\n")}
 
 Provide an institutional-grade strategic allocation and trade recommendations in strict JSON.`;
 
-    const ai = getGenAI();
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateContentWithModelFallback({
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -5667,10 +5717,10 @@ STRICT SAFETY:
     const ai = getGenAI();
     // Rotate through candidate models with fallback for high reliability
     const modelsToTry = [
-      "gemini-3.6-flash",
-      "gemini-3.1-flash-lite",
-      "gemini-flash-latest",
-      "gemini-3.8-flash"
+      "gemini-3.8-flash",       // Primary high-efficiency modern model
+      "gemini-flash-latest",    // Robust stable classic flash
+      "gemini-3.1-flash-lite",  // Ultra-efficient high-availability lite model
+      "gemini-3.1-pro-preview"  // Elite reasoning model (complex backup)
     ];
 
     let aiAnswer = "";

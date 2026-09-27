@@ -314,7 +314,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Watchlist Upcoming Earnings Row */}
             <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-400 max-w-full">
               <span className="flex items-center gap-1 text-slate-400 font-semibold shrink-0">
-                <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                <Calendar className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
                 <span>Watchlist Earnings (Next 4W):</span>
               </span>
               {loadingEarnings ? (
@@ -322,13 +322,13 @@ export const Header: React.FC<HeaderProps> = ({
               ) : watchlistEarnings.length === 0 ? (
                 <span className="text-slate-500 font-medium italic">No active watchlist earnings</span>
               ) : (
-                <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[10px] text-slate-300">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[10px]">
                   {watchlistEarnings.map((item, idx) => (
                     <React.Fragment key={item.ticker}>
                       {idx > 0 && <span className="text-slate-700 font-normal select-none">•</span>}
-                      <span className="bg-slate-950/60 border border-slate-800/80 px-1.5 py-0.5 rounded flex items-center gap-1 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors">
+                      <span className="bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 text-amber-400 animate-pulse hover:animate-none hover:text-amber-300 hover:border-amber-400 transition-all cursor-default shadow-sm shadow-amber-500/5">
                         <span className="font-bold text-white">{item.ticker}</span>
-                        <span className="text-slate-400">({item.date?.slice(5) || "TBD"} - {item.daysToEarnings}d)</span>
+                        <span>({item.date?.slice(5) || "TBD"} - {item.daysToEarnings}d)</span>
                       </span>
                     </React.Fragment>
                   ))}

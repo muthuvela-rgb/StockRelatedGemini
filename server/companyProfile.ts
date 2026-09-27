@@ -1,5 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Robust fetch with configurable timeout (fails fast to avoid socket exhaustion)
+async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 3000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 export interface CompanyProfile {
   ticker: string;
   name: string;
@@ -55,12 +72,12 @@ async function getAuth(forceRefresh = false): Promise<{ cookie: string; crumb: s
 
   authPromise = (async () => {
     try {
-      const cookieRes = await fetch("https://fc.yahoo.com", { headers: HTTP_HEADERS });
+      const cookieRes = await fetchWithTimeout("https://fc.yahoo.com", { headers: HTTP_HEADERS }, 3000);
       const cookie = cookieRes.headers.get("set-cookie") || "";
 
-      const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+      const crumbRes = await fetchWithTimeout("https://query2.finance.yahoo.com/v1/test/getcrumb", {
         headers: { ...HTTP_HEADERS, Cookie: cookie },
-      });
+      }, 3000);
       const crumb = await crumbRes.text();
 
       cachedCookie = cookie;
@@ -192,7 +209,7 @@ export async function getCompanyProfile(
     let chartMeta: any = null;
     try {
       const chartUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d`;
-      const chartRes = await fetch(chartUrl, { headers: HTTP_HEADERS });
+      const chartRes = await fetchWithTimeout(chartUrl, { headers: HTTP_HEADERS }, 3000);
       if (chartRes.ok) {
         const chartJson = await chartRes.json();
         chartMeta = chartJson?.chart?.result?.[0]?.meta || null;
@@ -212,7 +229,7 @@ export async function getCompanyProfile(
       const headers: Record<string, string> = { ...HTTP_HEADERS };
       if (cookie) headers["Cookie"] = cookie;
 
-      const sumRes = await fetch(sumUrl, { headers });
+      const sumRes = await fetchWithTimeout(sumUrl, { headers }, 3000);
       if (sumRes.ok) {
         const sumJson = await sumRes.json();
         quoteResData = sumJson?.quoteSummary?.result?.[0] || null;
