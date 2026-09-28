@@ -38,6 +38,7 @@ import { MultiTickerCompareAnalysis, MultiTickerCompareResult, PremiumVsExpirati
 import { formatCurrency, formatPct } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { ChartPointInspector } from "./ChartPointInspector";
+import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import {
   SortCriterion,
   ColumnDefinition,
@@ -119,15 +120,6 @@ export const COMPARISON_PALETTE = [
   "#eab308", // Yellow
 ];
 
-const PRESETS = [
-  { label: "Mega-Cap Tech", tickers: ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META"] },
-  { label: "Index ETFs", tickers: ["SPY", "QQQ", "IWM", "DIA"] },
-  { label: "Semiconductors", tickers: ["NVDA", "AMD", "TSM", "AVGO", "MU"] },
-  { label: "High Volatility", tickers: ["TSLA", "PLTR", "COIN", "MSTR", "AMD"] },
-  { label: "Defensive / Dividend", tickers: ["JNJ", "PG", "KO", "WMT", "BRK-B"] },
-  { label: "Financials", tickers: ["JPM", "BAC", "MS", "GS", "V"] },
-];
-
 export type MetricType = "cash_return" | "premium" | "iv" | "cushion" | "margin_return";
 
 interface MultiTickerCurveComparatorProps {
@@ -145,6 +137,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
   deltaRange = [0.05, 0.95],
   dteRange = [5, 10000],
 }) => {
+  const watchlistOptions = useWatchlistOptions(initialTickers);
   const [tickers, setTickers] = useState<string[]>(initialTickers);
   const [tickerInput, setTickerInput] = useState("");
   const [activeTickers, setActiveTickers] = useState<string[]>(initialTickers);
@@ -378,16 +371,16 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
               </label>
             </div>
             
-            {/* Quick Presets */}
+            {/* Watchlist Presets */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-400 font-medium text-[11px] mr-1">Presets:</span>
-              {PRESETS.map((p) => (
+              <span className="text-slate-400 font-medium text-[11px] mr-1">Watchlists:</span>
+              {watchlistOptions.map((o) => (
                 <button
-                  key={p.label}
-                  onClick={() => handleApplyPreset(p.tickers)}
+                  key={o.value}
+                  onClick={() => handleApplyPreset(o.tickers)}
                   className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium transition cursor-pointer"
                 >
-                  {p.label}
+                  {o.label}
                 </button>
               ))}
             </div>
