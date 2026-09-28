@@ -3747,6 +3747,9 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
 
             const cushionToStrikePct = Number((((currentPrice - nearest.strike) / currentPrice) * 100).toFixed(1));
 
+            const ivRaw = nearest.impliedVolatility || 0.35;
+            const greeks = calculateGreeks(nearest.strike, currentPrice || nearest.strike, ivRaw, exp.dte, optionType === "call");
+
             points.push({
               expiration: exp.dateStr,
               dte: exp.dte,
@@ -3770,6 +3773,12 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
               bollinger: bollinger,
               fibonacci: fibonacci,
               strike_bollinger_position: strikeBbPos,
+              greeks: {
+                delta: greeks.delta,
+                gamma: greeks.gamma,
+                theta: greeks.theta,
+                vega: greeks.vega,
+              },
             });
 
             if (!allExpirationsMap[exp.dateStr]) {
