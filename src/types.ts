@@ -273,6 +273,13 @@ export interface SecFilingScoreImpact {
 
 export interface PremiumCurvePoint {
   expiration: string;
+  dte?: number;
+  greeks?: {
+    delta: number;
+    gamma: number;
+    theta: number;
+    vega: number;
+  };
   strike: number;
   premium: number;
   bid: number;
@@ -368,6 +375,12 @@ export interface PremiumCurveAnalysis {
 export interface PremiumVsExpirationPoint {
   expiration: string;
   dte: number;
+  greeks?: {
+    delta: number;
+    gamma: number;
+    theta: number;
+    vega: number;
+  };
   target_strike: number;
   snapped_strike: number;
   strike_diff: number;

@@ -59,6 +59,7 @@ type MultiTableSortKey =
   | "avg_cash_return"
   | "avg_margin_return"
   | "avg_iv"
+  | "avg_delta"
   | "rsi_14"
   | "knee_point";
 
@@ -66,6 +67,7 @@ const COMPARATOR_COLUMNS: ColumnDefinition<MultiTableSortKey>[] = [
   { key: "avg_cash_return", label: "Avg Cash Return", defaultDirection: "desc", numeric: true },
   { key: "avg_margin_return", label: "Avg Margin Return", defaultDirection: "desc", numeric: true },
   { key: "avg_iv", label: "Avg IV %", defaultDirection: "desc", numeric: true },
+  { key: "avg_delta", label: "Avg Delta", defaultDirection: "asc", numeric: true },
   { key: "ticker", label: "Ticker Symbol", defaultDirection: "asc" },
   { key: "current_price", label: "Spot Price", defaultDirection: "desc", numeric: true },
   { key: "target_strike", label: "Target Strike", defaultDirection: "asc", numeric: true },
@@ -132,12 +134,16 @@ interface MultiTickerCurveComparatorProps {
   initialTickers?: string[];
   initialOptionType?: "put" | "call";
   initialPriceType?: "bid" | "ask";
+  deltaRange?: [number, number];
+  dteRange?: [number, number];
 }
 
 export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProps> = ({
   initialTickers = ["NVDA", "AAPL", "MSFT", "AMD", "QQQ"],
   initialOptionType = "put",
   initialPriceType = "bid",
+  deltaRange = [0.05, 0.95],
+  dteRange = [5, 10000],
 }) => {
   const [tickers, setTickers] = useState<string[]>(initialTickers);
   const [tickerInput, setTickerInput] = useState("");
@@ -153,6 +159,57 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
   // Inspector state
   const [inspectedPoint, setInspectedPoint] = useState<any | null>(null);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
+
+  const filteredResultsByTicker = useMemo(() => {
+    if (!data?.results_by_ticker) return {};
+    const res: Record<string, any> = {};
+    for (const [sym, r] of Object.entries(data.results_by_ticker)) {
+      const filteredPoints = r.points.filter((p) => {
+        const absDelta = p.greeks?.delta !== undefined ? Math.abs(p.greeks.delta) : 0.5;
+        const dte = p.dte !== undefined ? p.dte : 30;
+        return absDelta >= deltaRange[0] && absDelta <= deltaRange[1] && dte >= dteRange[0] && dte <= dteRange[1];
+      });
+      if (filteredPoints.length === 0) continue; // Skip if no points match
+      
+      const totalCashReturn = filteredPoints.reduce((sum, p) => sum + p.annualized_return_cash_secured, 0);
+      const totalMarginReturn = filteredPoints.reduce((sum, p) => sum + p.annualized_return_margin, 0);
+      const totalIv = filteredPoints.reduce((sum, p) => sum + p.implied_volatility, 0);
+      const count = filteredPoints.length;
+      
+      res[sym] = {
+        ...r,
+        points: filteredPoints,
+        avg_cash_return: Number((totalCashReturn / count).toFixed(2)),
+        avg_margin_return: Number((totalMarginReturn / count).toFixed(2)),
+        avg_iv: Number((totalIv / count).toFixed(2)),
+      };
+    }
+    return res;
+  }, [data?.results_by_ticker, deltaRange, dteRange]);
+
+  const filteredOverlaidChartData = useMemo(() => {
+    if (!data?.overlaid_chart_data) return [];
+    return data.overlaid_chart_data
+      .filter((row) => row.dte >= dteRange[0] && row.dte <= dteRange[1])
+      .map((row) => {
+        const newRow = { ...row, stocks: { ...row.stocks } } as any;
+        for (const t of Object.keys(row.stocks)) {
+          const pt = row.stocks[t];
+          if (pt) {
+            const absDelta = pt.greeks?.delta !== undefined ? Math.abs(pt.greeks.delta) : 0.5;
+            if (absDelta < deltaRange[0] || absDelta > deltaRange[1]) {
+              delete newRow.stocks[t];
+              for (const k of Object.keys(newRow)) {
+                if (k === t || k.startsWith(t + "_")) {
+                  delete newRow[k];
+                }
+              }
+            }
+          }
+        }
+        return newRow;
+      });
+  }, [data?.overlaid_chart_data, dteRange, deltaRange]);
 
   const fetchComparison = async (tickersToFetch = tickers) => {
     if (tickersToFetch.length === 0) return;
@@ -289,7 +346,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
   };
 
   // Top summary stats
-  const tickerSummaries = Object.values(data?.results_by_ticker || {});
+  const tickerSummaries = Object.values(filteredResultsByTicker || {});
   const highestYieldTicker = [...tickerSummaries].sort((a, b) => b.avg_cash_return - a.avg_cash_return)[0];
   const lowestIvTicker = [...tickerSummaries].sort((a, b) => a.avg_iv - b.avg_iv)[0];
   const highestIvTicker = [...tickerSummaries].sort((a, b) => b.avg_iv - a.avg_iv)[0];
@@ -631,10 +688,10 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
               <RefreshCw className="w-5 h-5 animate-spin text-indigo-500" />
               <span>Fetching option chains & computing curves across all tickers...</span>
             </div>
-          ) : data && data.overlaid_chart_data.length > 0 ? (
+          ) : data && filteredOverlaidChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
-                data={data.overlaid_chart_data}
+                data={filteredOverlaidChartData}
                 margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -784,7 +841,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                     />
                   );
                 })}
-                {data.overlaid_chart_data.length > 5 && (
+                {filteredOverlaidChartData.length > 5 && (
                   <Brush
                     dataKey="label"
                     height={22}
@@ -881,6 +938,13 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                     className="py-3 px-3"
                   />
                   <TableSortHeader
+                    field="avg_delta"
+                    label="Avg Delta"
+                    criteria={tableSortCriteria}
+                    onSortClick={handleTableSort}
+                    className="py-3 px-3 text-cyan-400"
+                  />
+                  <TableSortHeader
                     field="rsi_14"
                     label="RSI (14)"
                     criteria={tableSortCriteria}
@@ -949,6 +1013,10 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
 
                         <td className="py-3 px-3 text-amber-300">
                           {item.avg_iv.toFixed(1)}%
+                        </td>
+
+                        <td className="py-3 px-3 text-cyan-300 font-bold">
+                          Δ {item.avg_delta !== undefined ? item.avg_delta.toFixed(2) : "0.50"}
                         </td>
 
                         <td className="py-3 px-3">

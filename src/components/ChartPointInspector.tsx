@@ -216,6 +216,11 @@ export const ChartPointInspector: React.FC<ChartPointInspectorProps> = ({
           </div>
           <div className="text-[10px] text-slate-400">
             Per Contract (100 shares): <span className="text-slate-200 font-bold">${(bid * 100).toFixed(0)}</span>
+            {(point.greeks?.delta !== undefined || point.delta !== undefined) && (
+              <span className="text-cyan-400 font-bold block mt-0.5">
+                Delta (Δ): {Math.abs(point.greeks?.delta ?? point.delta ?? 0).toFixed(2)}
+              </span>
+            )}
           </div>
         </div>
 

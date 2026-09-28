@@ -388,10 +388,12 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
                 <div className="flex items-center gap-3">
                   <span>
                     Short Leg: <strong className="text-emerald-400 font-mono">${activeSpread.sellStrike}</strong> (Bid: ${activeSpread.sellPremium.toFixed(2)})
+                    {activeSpread.sellDelta !== undefined && <span className="text-cyan-400 ml-1">(Δ {activeSpread.sellDelta.toFixed(2)})</span>}
                   </span>
                   <span>•</span>
                   <span>
                     Long Leg: <strong className="text-amber-400 font-mono">${activeSpread.buyStrike}</strong> (Ask: ${activeSpread.buyPremium.toFixed(2)})
+                    {activeSpread.buyDelta !== undefined && <span className="text-cyan-400 ml-1">(Δ {activeSpread.buyDelta.toFixed(2)})</span>}
                   </span>
                 </div>
 
@@ -511,9 +513,19 @@ export const VerticalPutOptimizerPanel: React.FC<VerticalPutOptimizerPanelProps>
                           </td>
                           <td className="p-2 text-emerald-400 font-bold">
                             ${spread.sellStrike} (${spread.sellPremium.toFixed(2)})
+                            {spread.sellDelta !== undefined && (
+                              <div className="text-[10px] text-emerald-500/80 font-normal">
+                                Δ {spread.sellDelta.toFixed(2)}
+                              </div>
+                            )}
                           </td>
                           <td className="p-2 text-amber-400 font-bold">
                             ${spread.buyStrike} (${spread.buyPremium.toFixed(2)})
+                            {spread.buyDelta !== undefined && (
+                              <div className="text-[10px] text-amber-500/80 font-normal">
+                                Δ {spread.buyDelta.toFixed(2)}
+                              </div>
+                            )}
                           </td>
                           <td className="p-2 text-right text-emerald-300 font-bold">
                             ${spread.netCredit.toFixed(2)}

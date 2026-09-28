@@ -51,6 +51,8 @@ import {
   HierarchicalSortControl,
   TableSortHeader,
 } from "./HierarchicalSortControl";
+import { DeltaRangeSlider } from "./DeltaRangeSlider";
+import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
 
 type StrikeRangeSortKey =
   | "key"
@@ -60,6 +62,7 @@ type StrikeRangeSortKey =
   | "avg_cash_return"
   | "avg_margin_return"
   | "avg_iv"
+  | "avg_delta"
   | "knee_point";
 
 const STRIKE_RANGE_COLUMNS: ColumnDefinition<StrikeRangeSortKey>[] = [
@@ -70,6 +73,7 @@ const STRIKE_RANGE_COLUMNS: ColumnDefinition<StrikeRangeSortKey>[] = [
   { key: "snapped_strike", label: "Listed Strike", defaultDirection: "asc", numeric: true },
   { key: "key", label: "Strike (% Spot)", defaultDirection: "asc", numeric: true, extractor: (s: any) => s.target_strike ?? 0 },
   { key: "avg_iv", label: "Avg IV %", defaultDirection: "desc", numeric: true },
+  { key: "avg_delta", label: "Avg Delta", defaultDirection: "asc", numeric: true },
   { key: "knee_point", label: "Sweet-Spot Knee Premium", defaultDirection: "desc", numeric: true, extractor: (s: any) => s.knee_point?.premium ?? -1 },
 ];
 
@@ -131,6 +135,8 @@ const EXPIRATION_COLORS = [
 
 export const PremiumCurvesViewer: React.FC = () => {
   const [viewMode, setViewMode] = useState<"multi_exp_strike" | "single_strike_exp" | "compare_tickers">("single_strike_exp");
+  const [deltaRange, setDeltaRange] = useState<[number, number]>([0.05, 0.95]);
+  const [dteRange, setDteRange] = useState<[number, number]>([5, 10000]);
   const [ticker, setTicker] = useState(() => localStorage.getItem("stockrelated_last_ticker") || "QQQ");
 
   useEffect(() => {
@@ -263,10 +269,27 @@ export const PremiumCurvesViewer: React.FC = () => {
     setStrikeSortCriteria((prev) => handleHeaderClick(field, isShift, prev, defaultDir));
   };
 
-  const sortedRangeStrikes = useMemo(() => {
+  const filteredRangeStrikes = useMemo(() => {
     if (!expAnalysis?.range_strikes) return [];
-    return applyHierarchicalSort(expAnalysis.range_strikes, strikeSortCriteria, STRIKE_RANGE_COLUMNS);
-  }, [expAnalysis?.range_strikes, strikeSortCriteria]);
+    return expAnalysis.range_strikes.map((s) => {
+      const matchingPoints = s.points.filter((p) => {
+        const absDelta = p.greeks?.delta !== undefined ? Math.abs(p.greeks.delta) : 0.5;
+        const dte = p.dte !== undefined ? p.dte : 30;
+        return absDelta >= deltaRange[0] && absDelta <= deltaRange[1] && dte >= dteRange[0] && dte <= dteRange[1];
+      });
+      const totalDelta = matchingPoints.reduce((sum, p) => sum + (p.greeks?.delta !== undefined ? Math.abs(p.greeks.delta) : 0), 0);
+      const avg_delta = matchingPoints.length > 0 ? Number((totalDelta / matchingPoints.length).toFixed(2)) : 0;
+      return {
+        ...s,
+        points: matchingPoints,
+        avg_delta,
+      };
+    }).filter((s) => s.points.length > 0);
+  }, [expAnalysis?.range_strikes, deltaRange, dteRange]);
+
+  const sortedRangeStrikes = useMemo(() => {
+    return applyHierarchicalSort(filteredRangeStrikes, strikeSortCriteria, STRIKE_RANGE_COLUMNS);
+  }, [filteredRangeStrikes, strikeSortCriteria]);
 
   // Helpers for tooltip formatting
   const formatExpDateDetail = (expStr: string) => {
@@ -299,8 +322,17 @@ export const PremiumCurvesViewer: React.FC = () => {
   const expirations = analysis?.expirations || [];
   const chartDataMap: Record<number, any> = {};
 
-  if (analysis?.records) {
-    for (const r of analysis.records) {
+  const filteredRecords = useMemo(() => {
+    if (!analysis?.records) return [];
+    return analysis.records.filter((r) => {
+      const absDelta = r.greeks?.delta !== undefined ? Math.abs(r.greeks.delta) : 0.5;
+      const dte = r.dte !== undefined ? r.dte : 30;
+      return absDelta >= deltaRange[0] && absDelta <= deltaRange[1] && dte >= dteRange[0] && dte <= dteRange[1];
+    });
+  }, [analysis?.records, deltaRange, dteRange]);
+
+  if (filteredRecords) {
+    for (const r of filteredRecords) {
       if (!chartDataMap[r.strike]) {
         chartDataMap[r.strike] = {
           strike: r.strike,
@@ -318,7 +350,16 @@ export const PremiumCurvesViewer: React.FC = () => {
   const expPoints = expAnalysis?.points || [];
   const kneePoint = expAnalysis?.knee_point;
 
-  const formattedExpPoints = expPoints.map((p) => {
+  const filteredExpPoints = useMemo(() => {
+    if (!expAnalysis?.points) return [];
+    return expAnalysis.points.filter((p) => {
+      const absDelta = p.greeks?.delta !== undefined ? Math.abs(p.greeks.delta) : 0.5;
+      const dte = p.dte !== undefined ? p.dte : 30;
+      return absDelta >= deltaRange[0] && absDelta <= deltaRange[1] && dte >= dteRange[0] && dte <= dteRange[1];
+    });
+  }, [expAnalysis?.points, deltaRange, dteRange]);
+
+  const formattedExpPoints = filteredExpPoints.map((p) => {
     const isFb = Boolean(p.used_fallback || p.bid_used_fallback || (p as any).usedFallback || (p as any).isFallback);
     return {
       ...p,
@@ -346,6 +387,32 @@ export const PremiumCurvesViewer: React.FC = () => {
       bid_used_fallback: isFb,
     };
   });
+
+  const filteredRangeChartData = useMemo(() => {
+    if (!expAnalysis?.range_chart_data) return [];
+    return expAnalysis.range_chart_data
+      .filter((row) => row.dte >= dteRange[0] && row.dte <= dteRange[1])
+      .map((row) => {
+        const newRow = { ...row, strikes: { ...row.strikes } } as any;
+        if (expAnalysis.range_strikes) {
+          for (const s of expAnalysis.range_strikes) {
+            const p = row.strikes[s.key];
+            if (p) {
+              const absDelta = p.greeks?.delta !== undefined ? Math.abs(p.greeks.delta) : 0.5;
+              if (absDelta < deltaRange[0] || absDelta > deltaRange[1]) {
+                delete newRow.strikes[s.key];
+                delete newRow[`${s.key}_premium`];
+                delete newRow[`${s.key}_cash_return`];
+                delete newRow[`${s.key}_margin_return`];
+                delete newRow[`${s.key}_iv`];
+                delete newRow[`${s.key}_cushion`];
+              }
+            }
+          }
+        }
+        return newRow;
+      });
+  }, [expAnalysis?.range_chart_data, dteRange, deltaRange, expAnalysis?.range_strikes]);
 
   return (
     <div className="space-y-6">
@@ -761,12 +828,49 @@ export const PremiumCurvesViewer: React.FC = () => {
         )}
       </div>
 
+      {/* Curve Filters Deck: Delta & DTE Range */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-800/85">
+          <Sliders className="w-4 h-4 text-cyan-400" />
+          <span className="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
+            Premium Curve Filters (Delta & DTE Expiration Bounds)
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Delta Range Slider */}
+          <div className="bg-slate-950/35 border border-slate-800/50 rounded-xl p-4">
+            <DeltaRangeSlider
+              minDelta={deltaRange[0]}
+              maxDelta={deltaRange[1]}
+              onChange={setDeltaRange}
+              showPresets={true}
+            />
+          </div>
+
+          {/* DTE Expiration Range Slider */}
+          <div className="bg-slate-950/35 border border-slate-800/50 rounded-xl p-4">
+            <ExpirationDaysRangeSlider
+              minDays={dteRange[0]}
+              maxDays={dteRange[1]}
+              onChange={setDteRange}
+              dataMinDays={5}
+              dataMaxDays={10000}
+              showPresets={true}
+              compact={true}
+              label="Expiration Days (DTE) Range Filter"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* VIEW MODE 3: MULTI-TICKER COMPARISON */}
       {viewMode === "compare_tickers" && (
         <MultiTickerCurveComparator
           initialTickers={[ticker, "AAPL", "MSFT", "AMD", "QQQ"].filter((t, i, arr) => arr.indexOf(t) === i)}
           initialOptionType={optionType}
           initialPriceType={priceType}
+          deltaRange={deltaRange}
+          dteRange={dteRange}
         />
       )}
 
@@ -802,7 +906,7 @@ export const PremiumCurvesViewer: React.FC = () => {
               </h3>
               <p className="text-xs text-slate-400 mt-1">
                 {singleStrikeType === "range"
-                  ? `Comparing decay & returns across ${activeRangeStrikes.length} target strikes across ${(expAnalysis.range_chart_data || []).length} expiration dates`
+                  ? `Comparing decay & returns across ${activeRangeStrikes.length} target strikes across ${(filteredRangeChartData || []).length} expiration dates`
                   : `Visualizes premium progression across ${formattedExpPoints.length} expiration dates snapped to closest listed strikes`}
               </p>
             </div>
@@ -834,7 +938,7 @@ export const PremiumCurvesViewer: React.FC = () => {
               <div className="h-80 sm:h-96 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={expAnalysis.range_chart_data || []}
+                    data={filteredRangeChartData || []}
                     margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -1027,7 +1131,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                         />
                       );
                     })}
-                    {(expAnalysis.range_chart_data?.length || 0) > 4 && (
+                    {(filteredRangeChartData?.length || 0) > 4 && (
                       <Brush
                         dataKey="shortLabel"
                         height={22}
@@ -1114,6 +1218,13 @@ export const PremiumCurvesViewer: React.FC = () => {
                             className="pb-2 font-medium text-purple-300"
                           />
                           <TableSortHeader
+                            field="avg_delta"
+                            label="Avg Delta"
+                            criteria={strikeSortCriteria}
+                            onSortClick={handleStrikeSort}
+                            className="pb-2 font-medium text-cyan-400"
+                          />
+                          <TableSortHeader
                             field="knee_point"
                             label="Sweet-Spot Knee"
                             criteria={strikeSortCriteria}
@@ -1142,6 +1253,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                               <td className="py-2.5 text-emerald-400 font-bold">{s.avg_cash_return.toFixed(1)}% /yr</td>
                               <td className="py-2.5 text-blue-400 font-medium">{s.avg_margin_return.toFixed(1)}% /yr</td>
                               <td className="py-2.5 text-purple-300">{s.avg_iv.toFixed(1)}%</td>
+                              <td className="py-2.5 text-cyan-300 font-bold">Δ {s.avg_delta.toFixed(2)}</td>
                               <td className="py-2.5 text-amber-300 font-semibold">
                                 {s.knee_point ? (
                                   <span className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded text-[11px] w-fit">
@@ -1545,7 +1657,7 @@ export const PremiumCurvesViewer: React.FC = () => {
                 expiration={optimizerExp || expirations[0] || ""}
                 spotPrice={analysis.current_price || 0}
                 dte={getDteFromExp(optimizerExp || expirations[0] || "")}
-                data={(analysis.records || [])
+                data={(filteredRecords || [])
                   .filter((r) => r.expiration === (optimizerExp || expirations[0]))
                   .map((r) => ({
                     strike: r.strike,

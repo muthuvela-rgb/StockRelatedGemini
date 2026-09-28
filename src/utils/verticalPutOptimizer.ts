@@ -7,9 +7,11 @@ export interface VerticalPutSpread {
   sellStrike: number;
   sellPremium: number; // Bid collected from selling higher strike
   sellAsk?: number;
+  sellDelta?: number;  // Delta of sold strike
   buyStrike: number;
   buyPremium: number;  // Ask paid for buying lower strike
   buyBid?: number;
+  buyDelta?: number;   // Delta of bought strike
   netCredit: number;   // Net premium collected per share (sellPremium - buyPremium)
   totalCredit100: number; // Net premium per 100-share contract
   spreadWidth: number; // sellStrike - buyStrike
@@ -35,6 +37,7 @@ export interface OptionStrikeData {
   expiration?: string;
   days_to_expiration?: number;
   current_price?: number;
+  delta?: number;
 }
 
 /**
@@ -137,9 +140,11 @@ export function findVerticalPutSpreads(
           sellStrike,
           sellPremium: sellPrice,
           sellAsk: sellData.ask,
+          sellDelta: (sellData as any).delta,
           buyStrike,
           buyPremium: buyPrice,
           buyBid: buyData.bid,
+          buyDelta: (buyData as any).delta,
           netCredit,
           totalCredit100: netCredit * 100,
           spreadWidth,

@@ -3046,8 +3046,15 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
           };
         }
 
+        const ivRaw = row.impliedVolatility || 0.35;
+        const expDate = new Date(expStr);
+        const diffTime = expDate.getTime() - Date.now();
+        const dte = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+        const greeks = calculateGreeks(strike, currentPrice || strike, ivRaw, dte, optionType === "call");
+
         records.push({
           expiration: expStr,
+          dte,
           strike,
           premium: Number(premium.toFixed(2)),
           bid: Number(bid.toFixed(2)),
@@ -3064,6 +3071,13 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
           bollinger: bollinger,
           fibonacci: fibonacci,
           strike_bollinger_position: strikeBbPos,
+          implied_volatility: Number((ivRaw * 100).toFixed(2)),
+          greeks: {
+            delta: greeks.delta,
+            gamma: greeks.gamma,
+            theta: greeks.theta,
+            vega: greeks.vega,
+          },
         });
       }
     }
@@ -3453,6 +3467,9 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
           };
         }
 
+        const ivRaw = nearest.impliedVolatility || 0.35;
+        const greeks = calculateGreeks(nearest.strike, currentPrice || nearest.strike, ivRaw, dte, optionType === "call");
+
         const pointObj = {
           expiration: exp.dateStr,
           dte,
@@ -3471,7 +3488,7 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
           lastPrice: Number(last.toFixed(2)),
           volume: nearest.volume || 0,
           open_interest: nearest.openInterest || 0,
-          implied_volatility: nearest.impliedVolatility ? Number((nearest.impliedVolatility * 100).toFixed(2)) : 0,
+          implied_volatility: Number((ivRaw * 100).toFixed(2)),
           used_fallback: usedFallback,
           bid_used_fallback: usedFallback,
           usedFallback: usedFallback,
@@ -3483,6 +3500,12 @@ app.get("/api/premium-vs-expiration", async (req: Request, res: Response) => {
           bollinger: bollinger,
           fibonacci: fibonacci,
           strike_bollinger_position: strikeBbPos,
+          greeks: {
+            delta: greeks.delta,
+            gamma: greeks.gamma,
+            theta: greeks.theta,
+            vega: greeks.vega,
+          },
         };
 
         pointsByStrikeKey[ts.key].push(pointObj);
