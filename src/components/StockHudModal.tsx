@@ -37,11 +37,19 @@ interface StockHudData {
     sector?: string;
     industry?: string;
     description?: string;
+    shortDescription?: string;
+    longDescription?: string;
     ceo?: string;
     headquarters?: string;
     ipoYear?: string;
+    marketCap?: number;
+    formattedMarketCap?: string;
   } | null;
   sparkline: Array<{ date: string; close: number }>;
+  atmGreeks?: {
+    put: { delta: number; gamma: number; theta: number; vega: number; rho: number };
+    call: { delta: number; gamma: number; theta: number; vega: number; rho: number };
+  };
 }
 
 interface StockHudModalProps {
@@ -557,7 +565,7 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-mono">Market Cap</div>
                     <div className="text-base font-bold text-cyan-300 font-mono mt-0.5">
-                      {formatLargeNum(t?.market_cap)}
+                      {p?.formattedMarketCap || formatLargeNum(p?.marketCap) || formatLargeNum(t?.market_cap)}
                     </div>
                   </div>
                   {p?.ipoYear && (
@@ -586,6 +594,83 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* ATM Option Greeks (30D Expiry) Panel */}
+              {data?.atmGreeks && (
+                <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 shadow-inner">
+                  <div className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>ATM Option Greeks (Typical 30-Day Expiry)</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Put Option Greeks */}
+                    <div className="bg-slate-900/30 border border-slate-800/60 rounded-lg p-3">
+                      <div className="text-[10px] text-slate-400 font-bold uppercase font-mono tracking-wider text-rose-400 mb-2">
+                        ATM Put Option Greeks
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Delta</div>
+                          <div className="text-xs font-bold text-rose-400 font-mono mt-1">
+                            {data.atmGreeks.put.delta?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Gamma</div>
+                           <div className="text-xs font-bold text-slate-300 font-mono mt-1">
+                            {data.atmGreeks.put.gamma?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Theta</div>
+                          <div className="text-xs font-bold text-slate-300 font-mono mt-1">
+                            {data.atmGreeks.put.theta?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Vega</div>
+                          <div className="text-xs font-bold text-slate-300 font-mono mt-1">
+                            {data.atmGreeks.put.vega?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Call Option Greeks */}
+                    <div className="bg-slate-900/30 border border-slate-800/60 rounded-lg p-3">
+                      <div className="text-[10px] text-slate-400 font-bold uppercase font-mono tracking-wider text-emerald-400 mb-2">
+                        ATM Call Option Greeks
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Delta</div>
+                          <div className="text-xs font-bold text-emerald-400 font-mono mt-1">
+                            {data.atmGreeks.call.delta?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Gamma</div>
+                          <div className="text-xs font-bold text-slate-300 font-mono mt-1">
+                            {data.atmGreeks.call.gamma?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Theta</div>
+                          <div className="text-xs font-bold text-slate-300 font-mono mt-1">
+                            {data.atmGreeks.call.theta?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                        <div className="bg-slate-950/50 p-2 rounded border border-slate-900">
+                          <div className="text-[9px] text-slate-500 font-mono">Vega</div>
+                          <div className="text-xs font-bold text-slate-300 font-mono mt-1">
+                            {data.atmGreeks.call.vega?.toFixed(4) || "—"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Mini Sparkline Chart */}
               {data?.sparkline && data.sparkline.length > 5 && (
@@ -631,6 +716,23 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
+
+                  {/* Company Corporate Description */}
+                  {(() => {
+                    const companyDescription = p?.shortDescription || p?.description || p?.longDescription || "";
+                    if (!companyDescription) return null;
+                    return (
+                      <div className="border-t border-slate-800/80 pt-3 mt-3">
+                        <div className="text-[10px] text-slate-500 uppercase font-mono tracking-wider mb-1.5 flex items-center gap-1.5">
+                          <span className="w-1 h-1 rounded-full bg-slate-500" />
+                          <span>Corporate Overview</span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                          {companyDescription}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </>

@@ -47,6 +47,7 @@ import {
   DeltaRangeSlider,
   BollingerBandSlider,
 } from "./sliders";
+import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
 import {
   LineChart,
   Line,
@@ -1020,7 +1021,7 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <CashReturnRangeSlider
               range={cashReturnRange}
               onChange={setCashReturnRange}
@@ -1035,6 +1036,19 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
               range={rsiRange}
               onChange={setRsiRange}
               badgeCount={isolatedBadgeCounts.rsi}
+            />
+            <ExpirationDaysRangeSlider
+              minDays={customMinDte}
+              maxDays={customMaxDte}
+              onChange={([min, max]) => {
+                setCustomMinDte(min);
+                setCustomMaxDte(max);
+                setHorizon("custom_range");
+              }}
+              dataMinDays={7}
+              dataMaxDays={365}
+              showPresets={false}
+              compact={true}
             />
           </div>
 

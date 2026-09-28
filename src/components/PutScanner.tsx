@@ -1074,6 +1074,12 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
           onRsiRangeChange={setRsiRange}
           deltaRange={deltaRange}
           onDeltaRangeChange={setDeltaRange}
+          minDays={minDays}
+          maxDays={maxDays}
+          onDteRangeChange={(range) => {
+            setMinDays(range[0]);
+            setMaxDays(range[1]);
+          }}
           bollingerRange={bollingerRange}
           onBollingerRangeChange={setBollingerRange}
           searchTicker={filterSearch}

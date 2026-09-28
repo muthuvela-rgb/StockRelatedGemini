@@ -530,30 +530,13 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5 leading-relaxed max-w-xl">
-                  Fetches QQQ's current constituents live and scans each for 20-day Bollinger %B position. Re-run any time — the universe and results are computed fresh each call.
+                  Scans all QQQ Nasdaq-100 constituents live to isolate assets whose 20-day Bollinger Band position (%B) is at 5% or below (including zero and below).
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 bg-slate-950/60 border border-slate-800 rounded-lg p-1">
-              {(["extremes", "oversold", "overbought", "squeeze"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setBollingerMode(m)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold capitalize transition cursor-pointer ${
-                    bollingerMode === m
-                      ? "bg-purple-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-
             <button
               type="button"
               onClick={handleGenerateBollingerScan}
@@ -609,7 +592,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                 <button
                   onClick={() =>
                     handleCreateNewWatchlist(
-                      `QQQ Bollinger ${bollingerMode[0].toUpperCase()}${bollingerMode.slice(1)}`,
+                      "QQQ Bollinger ≤ 5%",
                       bollingerResult.symbols
                     )
                   }

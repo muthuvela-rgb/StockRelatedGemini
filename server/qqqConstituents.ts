@@ -135,22 +135,9 @@ export interface ScannedSymbol {
 }
 
 export function matchesBollingerMode(s: ScannedSymbol, mode: BollingerScanMode, squeezeThresholdPct: number): boolean {
-  const pb = s.bollinger.percentB;
-  switch (mode) {
-    case "oversold":
-      return pb <= 0.05;
-    case "overbought":
-      return pb >= 0.95;
-    case "extremes":
-      return pb <= 0.05 || pb >= 0.95;
-    case "squeeze":
-      return s.bollinger.bandwidthPct < squeezeThresholdPct;
-  }
+  return s.bollinger.percentB <= 0.05;
 }
 
 export function bollingerRankKey(s: ScannedSymbol, mode: BollingerScanMode): number {
-  if (mode === "oversold") return s.bollinger.percentB;
-  if (mode === "overbought") return -s.bollinger.percentB;
-  if (mode === "squeeze") return s.bollinger.bandwidthPct;
-  return -Math.abs(s.bollinger.percentB - 0.5);
+  return s.bollinger.percentB;
 }

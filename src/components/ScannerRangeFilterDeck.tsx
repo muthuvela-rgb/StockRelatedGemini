@@ -10,6 +10,7 @@ import { OptionPremiumRangeSlider } from "./sliders/OptionPremiumRangeSlider";
 import { RsiRangeSlider } from "./sliders/RsiRangeSlider";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import { BollingerBandSlider } from "./BollingerBandSlider";
+import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
 
 export { MONEYNESS_PRESETS } from "./sliders/MoneynessRangeSlider";
 export { CASH_RETURN_PRESETS } from "./sliders/CashReturnRangeSlider";
@@ -38,6 +39,11 @@ export interface ScannerFilterDeckProps {
   // Delta Greek Range
   deltaRange: [number, number]; // [0.0, 1.0]
   onDeltaRangeChange: (range: [number, number]) => void;
+
+  // DTE Expiration Range Sliders
+  minDays: number;
+  maxDays: number;
+  onDteRangeChange: (range: [number, number]) => void;
 
   // Bollinger Bands (%B) Range
   bollingerRange?: [number, number]; // [-20, 120]
@@ -80,6 +86,9 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
   onRsiRangeChange,
   deltaRange,
   onDeltaRangeChange,
+  minDays,
+  maxDays,
+  onDteRangeChange,
   bollingerRange = [-20, 120],
   onBollingerRangeChange,
   searchTicker,
@@ -101,6 +110,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
   const isPremiumFiltered = premiumRange[0] > 0 || premiumRange[1] < 50;
   const isRsiFiltered = rsiRange[0] > 0 || rsiRange[1] < 100;
   const isDeltaFiltered = deltaRange[0] > 0.001 || deltaRange[1] < 0.999;
+  const isDteFiltered = minDays > 7 || maxDays < 365;
   const isBollingerFiltered = bollingerRange[0] > -20 || bollingerRange[1] < 120;
   const isSearchFiltered = searchTicker.trim().length > 0;
 
@@ -110,6 +120,7 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
     isPremiumFiltered ||
     isRsiFiltered ||
     isDeltaFiltered ||
+    isDteFiltered ||
     isBollingerFiltered ||
     isSearchFiltered ||
     excludeSpansEarnings;
@@ -201,8 +212,8 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
         </div>
       </div>
 
-       {/* Grid of 3 Sliders: Cash Return, Option Premium, and RSI (14) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+       {/* Grid of 4 Sliders: Cash Return, Option Premium, RSI (14), and Expiration DTE */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* 1. Annualized Cash Return Slider */}
         <CashReturnRangeSlider
           range={cashReturnRange}
@@ -222,6 +233,17 @@ export const ScannerRangeFilterDeck: React.FC<ScannerFilterDeckProps> = ({
           range={rsiRange}
           onChange={onRsiRangeChange}
           badgeCount={rsiBadgeCount}
+        />
+
+        {/* 4. Expiration Days (DTE) Range Slider */}
+        <ExpirationDaysRangeSlider
+          minDays={minDays}
+          maxDays={maxDays}
+          onChange={onDteRangeChange}
+          dataMinDays={7}
+          dataMaxDays={365}
+          showPresets={false}
+          compact={true}
         />
       </div>
 

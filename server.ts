@@ -1681,7 +1681,7 @@ app.get("/api/watchlist/qqq-bollinger", async (req: Request, res: Response) => {
     const mode = (String(req.query.mode || "extremes") as BollingerScanMode);
     const period = Math.max(5, Number(req.query.period) || 20);
     const stddev = Number(req.query.stddev) || 2;
-    const limit = Math.max(1, Number(req.query.limit) || 25);
+    const limit = Math.max(1, Number(req.query.limit) || 100);
     const squeezeThresholdPct = Number(req.query.squeezeThreshold) || 6;
 
     const cacheKey = `${mode}:${period}:${stddev}:${limit}:${squeezeThresholdPct}`;
@@ -2244,11 +2244,20 @@ app.get("/api/stock-hud", async (req: Request, res: Response) => {
       }
     }
 
+    const spot = technicals?.current_price || (closes.length > 0 ? closes[closes.length - 1] : 100);
+    const ivPct = technicals?.implied_volatility_pct || technicals?.historical_volatility_pct || 30;
+    const iv = ivPct / 100;
+    const atmGreeks = {
+      put: calculateGreeks(spot, spot, iv, 30, false),
+      call: calculateGreeks(spot, spot, iv, 30, true),
+    };
+
     res.json({
       ticker: rawTicker,
       technicals,
       profile,
       sparkline: sparkline.slice(-60),
+      atmGreeks,
     });
   } catch (e: any) {
     console.error("Error in /api/stock-hud:", e);
