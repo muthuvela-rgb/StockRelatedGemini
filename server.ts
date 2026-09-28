@@ -3881,6 +3881,7 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
             bollinger: pt.bollinger,
             fibonacci: pt.fibonacci,
             strike_bollinger_position: pt.strike_bollinger_position,
+            greeks: pt.greeks,
             used_fallback: pt.used_fallback,
             bid_used_fallback: pt.used_fallback,
             usedFallback: pt.used_fallback,
