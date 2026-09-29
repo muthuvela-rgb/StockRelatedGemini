@@ -54,15 +54,20 @@ import yfinance as yf
 # ---------------------------------------------------------------------------
 CURRENT_EPS_GROWTH_MIN_PCT = 25.0      # C: QoQ (YoY-quarter) EPS growth
 ANNUAL_EPS_CAGR_MIN_PCT = 25.0         # A: multi-year EPS CAGR
-NEW_HIGH_PROXIMITY_PCT = 1.0           # N: price must be within 1% of 52w high
-MAX_SHARES_OUTSTANDING = 50_000_000    # S: O'Neil's classic small-float threshold
-                                        #    (mega-caps will typically fail this
-                                        #    half of S by design -- see README note)
+NEW_HIGH_PROXIMITY_PCT = 10.0          # N: price must be within 10% of 52w high
+MAX_SHARES_OUTSTANDING = 50_000_000    # S: O'Neil's classic small-float threshold.
+                                        #    Mostly obsolete for today's mega/large
+                                        #    caps, so it no longer gates the S pass/
+                                        #    fail call -- it only discounts S's
+                                        #    weight in the overall score (see
+                                        #    LARGE_FLOAT_WEIGHT below).
+LARGE_FLOAT_WEIGHT = 0.5               # S: weight applied when float > MAX_SHARES_OUTSTANDING
 VOLUME_SURGE_MIN_PCT = 40.0            # S: recent volume vs. 3-month average
 RS_PERCENTILE_MIN = 80.0               # L: percentile rank within Nasdaq-100
 INSTITUTIONAL_OWNERSHIP_MIN_PCT = 30.0  # I: % shares held by institutions
-SCORE_STRONG_MIN = 6                   # verdict tiers out of 7
-SCORE_WATCH_MIN = 4
+SCORE_STRONG_MIN = 6                   # verdict tiers, on the weighted score
+SCORE_WATCH_MIN = 4                    #    (max possible is 7, or less when S is
+                                        #    discounted or some criteria are N/A)
 
 STATIC_NASDAQ100_FALLBACK = [
     "NVDA", "AAPL", "MSFT", "AMZN", "AVGO", "GOOGL", "META", "TSLA", "MU", "AMD",
@@ -272,13 +277,15 @@ def score_supply_demand(d: dict) -> dict:
         return {"passed": None, "value": None, "detail": "Missing volume data"}
     vol_surge_pct = ((last_vol - avg_vol) / avg_vol) * 100
     float_ok = shares is not None and shares <= MAX_SHARES_OUTSTANDING
+    weight = 1.0 if float_ok or shares is None else LARGE_FLOAT_WEIGHT
     passed = vol_surge_pct >= VOLUME_SURGE_MIN_PCT
     shares_m = f"{shares / 1e6:.1f}M" if shares else "N/A"
+    float_note = "<=50M" if float_ok else f">50M, weight discounted to {weight:.1f}x"
     return {
         "passed": passed,
         "value": round(vol_surge_pct, 1),
-        "detail": f"Volume {vol_surge_pct:+.1f}% vs 3mo avg; float {shares_m} "
-                   f"({'<=50M' if float_ok else '>50M, classic float rule not met'})",
+        "weight": weight,
+        "detail": f"Volume {vol_surge_pct:+.1f}% vs 3mo avg; float {shares_m} ({float_note})",
     }
 
 
@@ -318,9 +325,24 @@ def score_market(market_result: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
-def verdict_for_score(score: int, evaluable: int) -> str:
+def verdict_for_score(score: float, evaluable: float, criteria: dict) -> str:
+    """Weighted score -> verdict tier, gated on earnings health.
+
+    A stock cannot be rated "Watch" or "Strong" -- however well it scores on
+    price/volume/sponsorship/market criteria -- unless its current-quarter
+    earnings (C) are actually growing, and its annual earnings (A) aren't
+    outright declining when that data is available. Without this gate, a
+    stock with collapsing earnings but strong price action (e.g. pure M&A
+    speculation) could still rank as a "Watch", which defeats the point of
+    a CANSLIM screen: earnings growth is not optional, it's the "C" and "A".
+    """
     if evaluable == 0:
         return "No Data"
+    c_passed = criteria["C"]["passed"]
+    a_passed = criteria["A"]["passed"]
+    earnings_gate_failed = c_passed is not True or a_passed is False
+    if earnings_gate_failed:
+        return "Weak"
     if score >= SCORE_STRONG_MIN:
         return "Strong"
     if score >= SCORE_WATCH_MIN:
@@ -339,14 +361,14 @@ def screen_ticker(ticker: str, universe_returns_pop: list[float], market_result:
         "I": score_institutional(data),
         "M": score_market(market_result),
     }
-    score = sum(1 for c in criteria.values() if c["passed"] is True)
-    evaluable = sum(1 for c in criteria.values() if c["passed"] is not None)
+    score = sum(c.get("weight", 1.0) for c in criteria.values() if c["passed"] is True)
+    evaluable = sum(c.get("weight", 1.0) for c in criteria.values() if c["passed"] is not None)
     return {
         "ticker": ticker,
         "criteria": criteria,
-        "score": score,
-        "evaluable": evaluable,
-        "verdict": verdict_for_score(score, evaluable),
+        "score": round(score, 1),
+        "evaluable": round(evaluable, 1),
+        "verdict": verdict_for_score(score, evaluable, criteria),
     }
 
 
@@ -375,7 +397,7 @@ def load_tickers(args) -> list[str]:
 
 
 def print_table(results: list[dict]) -> None:
-    header = f"{'TICKER':<8}{'C':^7}{'A':^7}{'N':^7}{'S':^7}{'L':^7}{'I':^7}{'M':^7}{'SCORE':^8}{'VERDICT':<10}"
+    header = f"{'TICKER':<8}{'C':^7}{'A':^7}{'N':^7}{'S':^7}{'L':^7}{'I':^7}{'M':^7}{'SCORE':^10}{'VERDICT':<10}"
     print(header)
     print("-" * len(header))
 
@@ -384,12 +406,16 @@ def print_table(results: list[dict]) -> None:
             return " N/A "
         return "  Y  " if c["passed"] else "  .  "
 
+    def fmt_num(n: float) -> str:
+        return f"{n:g}"
+
     for r in sorted(results, key=lambda x: (-x["score"], x["ticker"])):
         crit = r["criteria"]
         row = f"{r['ticker']:<8}"
         for letter in ["C", "A", "N", "S", "L", "I", "M"]:
             row += f"{cell(crit[letter]):^7}"
-        row += f"{str(r['score']) + '/' + str(len(crit)):^8}{r['verdict']:<10}"
+        score_str = f"{fmt_num(r['score'])}/{fmt_num(r['evaluable'])}"
+        row += f"{score_str:^10}{r['verdict']:<10}"
         print(row)
 
 
@@ -450,7 +476,7 @@ def main():
 
     if args.verbose:
         for r in sorted(results, key=lambda x: (-x["score"], x["ticker"])):
-            print(f"\n{r['ticker']} -- {r['score']}/{len(r['criteria'])} ({r['verdict']})")
+            print(f"\n{r['ticker']} -- {r['score']:g}/{r['evaluable']:g} ({r['verdict']})")
             for letter, c in r["criteria"].items():
                 mark = "PASS" if c["passed"] else ("N/A" if c["passed"] is None else "fail")
                 print(f"  {letter} [{mark:>4}] {c['detail']}")
