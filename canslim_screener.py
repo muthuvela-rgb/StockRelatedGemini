@@ -361,6 +361,14 @@ def screen_ticker(ticker: str, universe_returns_pop: list[float], market_result:
         "I": score_institutional(data),
         "M": score_market(market_result),
     }
+    # Some of the above compute "passed" from numpy/pandas comparisons, which
+    # yield numpy.bool_ rather than a native bool. numpy.bool_ is truthy-equal
+    # to Python's True/False but NOT identical to it (`numpy.True_ is True`
+    # is False), which silently breaks every `is True`/`is False` check below
+    # and in verdict_for_score's earnings gate. Normalize to native bool/None
+    # here, once, so identity checks are safe everywhere downstream.
+    for c in criteria.values():
+        c["passed"] = None if c["passed"] is None else bool(c["passed"])
     score = sum(c.get("weight", 1.0) for c in criteria.values() if c["passed"] is True)
     evaluable = sum(c.get("weight", 1.0) for c in criteria.values() if c["passed"] is not None)
     return {
