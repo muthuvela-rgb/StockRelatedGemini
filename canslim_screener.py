@@ -10,10 +10,17 @@ The 7 criteria (one per letter):
   C - Current Quarterly Earnings: most recent quarter's diluted EPS
       growth vs. the same quarter a year ago.
   A - Annual Earnings Growth: multi-year diluted EPS CAGR.
-  N - New High: price within a tight band of its 52-week high (the
-      standard objective proxy for "something new" driving the stock,
-      since genuine product/management catalysts aren't machine
-      readable).
+  N - Innovation Catalyst: IBD's own "N" 7-point buying checklist --
+      (1) is there something genuinely new (product/service/line/
+      management), as a hard yes/no gate judged from BOTH the latest
+      earnings call transcript AND recent news headlines (both sources
+      must agree for the gate to pass); (2) is the new thing already
+      producing accelerating revenue; (3) is price within range of its
+      52-week high; (4) is that high coming off a tight base, not an
+      extended run; (5) is volume confirming the move; (6) is the
+      company young (recent IPOs score higher); (7) has the industry
+      backdrop materially changed, again judged from transcript + news
+      agreement. See score_innovation_catalyst() for full logic.
   S - Supply & Demand: shares outstanding (float) + a recent volume
       surge vs. the 3-month average (accumulation signal).
   L - Leader vs. Laggard: trailing 12-month return percentile rank
@@ -31,15 +38,23 @@ Usage:
 
 Prerequisites:
   pip install yfinance pandas requests
+  pip install google-genai   # optional; falls back to a plain REST call if absent
 
-No API keys required -- uses Yahoo Finance (via yfinance) and the
-public Nasdaq-100 constituents API, consistent with this project's
-"no paid data feeds required" approach.
+Environment Variables (both optional -- N's LLM-based gate/sub-check
+fall back to "N/A" without them; everything else needs no API key):
+  export GEMINI_API_KEY="your_gemini_api_key"           # for the N catalyst/industry judgment
+  export ALPHA_VANTAGE_API_KEY="your_alphavantage_key"  # for the earnings call transcript
+
+Note: Alpha Vantage's free tier is rate-limited to 5 calls/minute, so
+this script throttles itself to one transcript fetch per ~13 seconds
+whenever ALPHA_VANTAGE_API_KEY is set -- a full Nasdaq-100 run will take
+noticeably longer than the quant-only criteria alone.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -48,6 +63,13 @@ from typing import Optional
 import pandas as pd
 import requests
 import yfinance as yf
+
+# Optional Gemini SDK -- falls back to a plain REST call if not installed.
+try:
+    from google import genai
+    HAS_GENAI_SDK = True
+except ImportError:
+    HAS_GENAI_SDK = False
 
 # ---------------------------------------------------------------------------
 # CANSLIM thresholds -- tune these to adjust screening strictness.
@@ -68,6 +90,19 @@ INSTITUTIONAL_OWNERSHIP_MIN_PCT = 30.0  # I: % shares held by institutions
 SCORE_STRONG_MIN = 6                   # verdict tiers, on the weighted score
 SCORE_WATCH_MIN = 4                    #    (max possible is 7, or less when S is
                                         #    discounted or some criteria are N/A)
+
+# N (Innovation Catalyst) sub-check thresholds -- see score_innovation_catalyst().
+N_BASE_LOOKBACK_TRADING_DAYS = 45      # N4: trailing window checked for a tight base
+N_BASE_EXCLUDE_RECENT_DAYS = 5         # N4: exclude the most recent days (the breakout itself)
+N_BASE_MAX_RANGE_PCT = 25.0            # N4: max price range (%) over that window to call it a "base"
+N_VOLUME_LOOKBACK_TRADING_DAYS = 60    # N5: window used to find breakout-day volume vs. baseline
+N_VOLUME_RECENT_TRADING_DAYS = 10      # N5: "recent" (possible breakout) sub-window within it
+N_BREAKOUT_VOLUME_SURGE_MIN_PCT = 40.0  # N5: peak recent volume vs. prior baseline average
+N_MAX_COMPANY_AGE_YEARS = 15.0         # N6: public this long or less scores as "young"
+N_SUBCHECKS_MIN_PASS = 4               # N: how many of the 6 non-gate sub-checks (N2-N7)
+                                        #    must pass, once the N1 gate has passed
+GEMINI_MODEL = "gemini-3.8-flash"
+AV_CALL_DELAY_SECONDS = 13             # Alpha Vantage free tier: throttle to ~5 calls/min
 
 STATIC_NASDAQ100_FALLBACK = [
     "NVDA", "AAPL", "MSFT", "AMZN", "AVGO", "GOOGL", "META", "TSLA", "MU", "AMD",
@@ -182,6 +217,11 @@ def fetch_ticker_data(ticker: str) -> dict:
     except Exception:
         out["annual_eps"] = None
 
+    try:
+        out["quarterly_revenue"] = qis.loc["Total Revenue"].dropna() if qis is not None and "Total Revenue" in qis.index else None
+    except Exception:
+        out["quarterly_revenue"] = None
+
     # Price/volume/shares
     try:
         fi = t.fast_info
@@ -203,14 +243,30 @@ def fetch_ticker_data(ticker: str) -> dict:
     except Exception:
         out["institutions_pct"] = None
 
-    # 12-month return for RS ranking (only needed if not already in universe_returns)
+    # 12-month price/volume history -- used for the RS return, and for N's
+    # base-tightness (N4) and breakout-volume (N5) sub-checks.
     try:
-        hist = t.history(period="1y", interval="1d")["Close"].dropna()
+        hist_df = t.history(period="1y", interval="1d")
+        out["price_history"] = hist_df if not hist_df.empty else None
+        closes = hist_df["Close"].dropna()
         out["twelve_month_return_pct"] = (
-            (float(hist.iloc[-1]) / float(hist.iloc[0]) - 1.0) * 100 if len(hist) >= 2 else None
+            (float(closes.iloc[-1]) / float(closes.iloc[0]) - 1.0) * 100 if len(closes) >= 2 else None
         )
     except Exception:
+        out["price_history"] = None
         out["twelve_month_return_pct"] = None
+
+    # Listing age (approximate) -- used for N's company-age sub-check (N6).
+    try:
+        hist_max = t.history(period="max", interval="1mo")
+        if not hist_max.empty:
+            earliest = hist_max.index[0]
+            now = pd.Timestamp.now(tz=earliest.tz)
+            out["listing_age_years"] = (now - earliest).days / 365.25
+        else:
+            out["listing_age_years"] = None
+    except Exception:
+        out["listing_age_years"] = None
 
     return out
 
@@ -258,6 +314,7 @@ def score_annual_earnings(d: dict) -> dict:
 
 
 def score_new_high(d: dict) -> dict:
+    """N3: is price within range of its 52-week high."""
     price, high = d.get("last_price"), d.get("year_high")
     if not price or not high:
         return {"passed": None, "value": None, "detail": "Missing price/52w-high data"}
@@ -266,6 +323,296 @@ def score_new_high(d: dict) -> dict:
         "passed": pct_below <= NEW_HIGH_PROXIMITY_PCT,
         "value": round(pct_below, 2),
         "detail": f"${price:.2f} is {pct_below:.2f}% below 52w high ${high:.2f}",
+    }
+
+
+def score_revenue_acceleration(d: dict) -> dict:
+    """N2: is the (presumed) new product/service/line actually producing
+    revenue growth, not just an announcement -- latest quarter's YoY revenue
+    growth must be positive.
+
+    Ideally this would compare two consecutive quarters' YoY growth rates to
+    confirm actual acceleration, but yfinance's free quarterly_income_stmt
+    typically only returns ~5 quarters -- one short of the 6 needed to
+    compute two YoY figures -- so this checks single-quarter YoY growth
+    instead of a multi-quarter acceleration trend."""
+    rev = d.get("quarterly_revenue")
+    if rev is None or len(rev) < 2:
+        return {"passed": None, "value": None, "detail": "Insufficient quarterly revenue history"}
+    latest_date, latest_val = rev.index[0], rev.iloc[0]
+    target = latest_date - pd.DateOffset(years=1)
+    window = rev[(rev.index <= target + pd.Timedelta(days=45)) & (rev.index >= target - pd.Timedelta(days=45))]
+    if window.empty or pd.isna(window.iloc[0]) or window.iloc[0] == 0 or pd.isna(latest_val):
+        return {"passed": None, "value": None, "detail": "Cannot compute revenue YoY growth"}
+    prior_val = window.iloc[0]
+    growth = (latest_val - prior_val) / abs(prior_val) * 100
+    return {
+        "passed": growth > 0,
+        "value": round(growth, 1),
+        "detail": f"Revenue YoY {growth:.1f}% (latest quarter only -- yfinance's free quarterly "
+                   f"history is too short to confirm a multi-quarter acceleration trend)",
+    }
+
+
+def score_base_tightness(d: dict) -> dict:
+    """N4: is the move to new highs coming off a tight base, rather than an
+    already-extended run. Approximated as the price range over a trailing
+    window, excluding the most recent days (the breakout itself) -- this is
+    a heuristic proxy, not real cup-with-handle/flat-base pattern
+    recognition."""
+    hist = d.get("price_history")
+    if hist is None or hist.empty:
+        return {"passed": None, "value": None, "detail": "Missing price history"}
+    closes = hist["Close"].dropna()
+    if len(closes) < N_BASE_LOOKBACK_TRADING_DAYS:
+        return {"passed": None, "value": None, "detail": "Insufficient price history for base check"}
+    window = closes.iloc[-N_BASE_LOOKBACK_TRADING_DAYS:-N_BASE_EXCLUDE_RECENT_DAYS]
+    if window.empty:
+        return {"passed": None, "value": None, "detail": "Insufficient price history for base check"}
+    lo, hi = float(window.min()), float(window.max())
+    if lo <= 0:
+        return {"passed": None, "value": None, "detail": "Invalid price data for base check"}
+    range_pct = (hi - lo) / lo * 100
+    passed = range_pct <= N_BASE_MAX_RANGE_PCT
+    weeks = N_BASE_LOOKBACK_TRADING_DAYS // 5
+    label = "tight base" if passed else "extended / not a tight base"
+    return {
+        "passed": passed,
+        "value": round(range_pct, 1),
+        "detail": f"Trailing ~{weeks}wk range (ex. last wk) {range_pct:.1f}% -- {label}",
+    }
+
+
+def score_breakout_volume(d: dict) -> dict:
+    """N5: is volume confirming the move -- peak volume in a recent window
+    vs. the baseline average before it."""
+    hist = d.get("price_history")
+    if hist is None or hist.empty:
+        return {"passed": None, "value": None, "detail": "Missing volume history"}
+    vol = hist["Volume"].dropna()
+    if len(vol) < N_VOLUME_LOOKBACK_TRADING_DAYS:
+        return {"passed": None, "value": None, "detail": "Insufficient volume history"}
+    recent = vol.iloc[-N_VOLUME_RECENT_TRADING_DAYS:]
+    baseline = vol.iloc[-N_VOLUME_LOOKBACK_TRADING_DAYS:-N_VOLUME_RECENT_TRADING_DAYS]
+    if baseline.empty or baseline.mean() == 0:
+        return {"passed": None, "value": None, "detail": "Insufficient volume history"}
+    surge_pct = (float(recent.max()) - float(baseline.mean())) / float(baseline.mean()) * 100
+    passed = surge_pct >= N_BREAKOUT_VOLUME_SURGE_MIN_PCT
+    return {
+        "passed": passed,
+        "value": round(surge_pct, 1),
+        "detail": f"Peak volume (last {N_VOLUME_RECENT_TRADING_DAYS}d) {surge_pct:+.1f}% vs prior baseline avg",
+    }
+
+
+def score_company_age(d: dict) -> dict:
+    """N6: younger companies (recent IPOs with a fresh product) tend to
+    score higher, per O'Neil's own finding that most monster stocks were
+    young companies."""
+    age = d.get("listing_age_years")
+    if age is None:
+        return {"passed": None, "value": None, "detail": "Listing age unavailable"}
+    passed = age <= N_MAX_COMPANY_AGE_YEARS
+    label = "young / recent IPO" if passed else "established / older company"
+    return {
+        "passed": passed,
+        "value": round(age, 1),
+        "detail": f"Public for ~{age:.1f} years -- {label}",
+    }
+
+
+# ---------------------------------------------------------------------------
+# N's LLM-based signals: earnings call transcript + recent news headlines,
+# each independently judged by Gemini, with agreement required between the
+# two sources before gating (N1) or scoring (N7). Both are optional -- with
+# no GEMINI_API_KEY/ALPHA_VANTAGE_API_KEY, these simply come back as
+# "insufficient data" and N1/N7 fall back to None (excluded from scoring),
+# same as any other missing-data criterion in this script.
+# ---------------------------------------------------------------------------
+_EMPTY_CATALYST_JUDGMENT = {
+    "new_catalyst": {"found": None, "rationale": "no data"},
+    "industry_shift": {"found": None, "rationale": "no data"},
+}
+
+
+def fetch_recent_news_headlines(ticker: str, max_items: int = 8) -> list[str]:
+    """Recent news headlines for `ticker` via yfinance (last ~2-4 weeks in
+    practice -- yfinance's news feed doesn't reliably go back further)."""
+    try:
+        news = yf.Ticker(ticker).news or []
+    except Exception:
+        return []
+    items = []
+    for n in news:
+        content = n.get("content", n)  # yfinance has changed this schema across versions
+        title = content.get("title") or n.get("title")
+        summary = content.get("summary") or content.get("description") or ""
+        if not title:
+            continue
+        items.append(f"- {title}. {summary}".strip())
+        if len(items) >= max_items:
+            break
+    return items
+
+
+def fetch_earnings_transcript_text(ticker: str, av_key: Optional[str], max_chars: int = 12000) -> Optional[str]:
+    """Latest earnings call transcript via Alpha Vantage, same endpoint used
+    by earnings_summarizer.py. Throttled to respect the free tier's 5
+    calls/minute limit."""
+    if not av_key:
+        return None
+    time.sleep(AV_CALL_DELAY_SECONDS)
+    try:
+        r = requests.get(
+            "https://www.alphavantage.co/query",
+            params={"function": "EARNINGS_CALL_TRANSCRIPT", "symbol": ticker, "apikey": av_key},
+            timeout=30,
+        )
+        data = r.json()
+    except Exception as e:
+        print(f"[{ticker}] Alpha Vantage transcript fetch failed: {e}", file=sys.stderr)
+        return None
+    if not isinstance(data, dict) or "Error Message" in data or "Note" in data or "Information" in data:
+        return None
+    transcript = data.get("transcript")
+    if isinstance(transcript, str):
+        content = transcript
+    elif isinstance(transcript, list):
+        content = "\n".join(f"[{i.get('speaker', '?')}]: {i.get('content', i.get('text', ''))}" for i in transcript)
+    else:
+        content = ""
+    if not content or len(content) < 50:
+        return None
+    return content[:max_chars]
+
+
+def call_gemini_catalyst_judgment(ticker: str, source_label: str, text: Optional[str], gemini_key: Optional[str]) -> dict:
+    """Ask Gemini to judge, from `text` (a transcript or a news digest),
+    whether there's a genuine new catalyst (N1) and/or a changed industry
+    backdrop (N7). Returns _EMPTY_CATALYST_JUDGMENT (found=None for both) if
+    there's no text, no key, or the call/parse fails."""
+    if not text or not gemini_key:
+        return _EMPTY_CATALYST_JUDGMENT
+
+    prompt = f"""You are an equity research analyst extracting objective signals from a {source_label} for {ticker}.
+
+TEXT:
+{text}
+
+Answer STRICTLY as compact JSON with exactly this shape, no markdown fences, no extra commentary:
+{{"new_catalyst": {{"found": true or false, "rationale": "<=20 words"}}, "industry_shift": {{"found": true or false, "rationale": "<=20 words"}}}}
+
+Definitions:
+- new_catalyst.found = true only if the text describes an actually NEW product, service, business line, or management/leadership change -- not routine updates or minor tweaks.
+- industry_shift.found = true only if the text describes a materially changed industry backdrop for this company (deregulation, demand surge, supply shock, new competitive dynamic) -- not routine market commentary.
+"""
+    try:
+        if HAS_GENAI_SDK:
+            client = genai.Client(api_key=gemini_key)
+            response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+            raw = response.text or ""
+        else:
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+                params={"key": gemini_key},
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=60,
+            )
+            r.raise_for_status()
+            raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        parsed = json.loads(match.group(0) if match else raw)
+        nc = parsed.get("new_catalyst", {}) or {}
+        ind = parsed.get("industry_shift", {}) or {}
+        return {
+            "new_catalyst": {"found": nc.get("found"), "rationale": nc.get("rationale", "")},
+            "industry_shift": {"found": ind.get("found"), "rationale": ind.get("rationale", "")},
+        }
+    except Exception as e:
+        print(f"[{ticker}] Gemini judgment ({source_label}) failed: {e}", file=sys.stderr)
+        return _EMPTY_CATALYST_JUDGMENT
+
+
+def combine_dual_source(transcript_field: dict, news_field: dict) -> dict:
+    """Requires both the transcript-based and news-based judgments to agree
+    (both True) before a signal counts as confirmed. Either side missing
+    (found=None) makes the combined result unresolved (None), not a fail."""
+    t_found, n_found = transcript_field.get("found"), news_field.get("found")
+    if t_found is None or n_found is None:
+        return {"passed": None, "detail": "insufficient data from one or both sources (transcript/news)", "rationale": ""}
+    passed = bool(t_found) and bool(n_found)
+    rationale = f"transcript: {transcript_field.get('rationale', '')} | news: {news_field.get('rationale', '')}"
+    return {"passed": passed, "detail": f"transcript={t_found}, news={n_found} (both must agree)", "rationale": rationale}
+
+
+def score_innovation_catalyst(ticker: str, d: dict, gemini_key: Optional[str], av_key: Optional[str]) -> dict:
+    """N (Innovation Catalyst): IBD's own 7-point "N" checklist. #1 is a
+    hard yes/no gate (requiring the earnings-call-transcript judgment AND
+    the news-headline judgment to agree there's a genuine new catalyst);
+    #2-#6 are quantitative; #7 (industry backdrop) uses the same dual-source
+    agreement rule as #1 but doesn't gate, it's just one of the 6 sub-checks
+    counted after the gate passes."""
+    news_items = fetch_recent_news_headlines(ticker)
+    news_text = "\n".join(news_items) if news_items else None
+    transcript_text = fetch_earnings_transcript_text(ticker, av_key)
+
+    news_judgment = call_gemini_catalyst_judgment(ticker, "recent news headline digest", news_text, gemini_key)
+    transcript_judgment = call_gemini_catalyst_judgment(ticker, "earnings call transcript", transcript_text, gemini_key)
+
+    gate = combine_dual_source(transcript_judgment["new_catalyst"], news_judgment["new_catalyst"])
+    sub_checks = {"N1_new_catalyst_gate": gate}
+
+    if gate["passed"] is None:
+        return {
+            "passed": None, "value": None,
+            "detail": f"N1 (new catalyst gate) unresolved -- {gate['detail']}",
+            "sub_checks": sub_checks,
+        }
+    if gate["passed"] is False:
+        return {
+            "passed": False, "value": 0,
+            "detail": f"N1 (new catalyst gate) FAILED -- {gate['detail']} | {gate['rationale']}",
+            "sub_checks": sub_checks,
+        }
+
+    n7_combo = combine_dual_source(transcript_judgment["industry_shift"], news_judgment["industry_shift"])
+    subs = {
+        "N2_revenue_accel": score_revenue_acceleration(d),
+        "N3_new_high": score_new_high(d),
+        "N4_base_tightness": score_base_tightness(d),
+        "N5_breakout_volume": score_breakout_volume(d),
+        "N6_company_age": score_company_age(d),
+        "N7_industry_shift": {
+            "passed": n7_combo["passed"], "value": None,
+            "detail": f"{n7_combo['detail']} | {n7_combo['rationale']}",
+        },
+    }
+    # Same numpy.bool_ vs. Python bool identity pitfall as screen_ticker's
+    # top-level normalization (see its comment) -- some of these sub-checks
+    # derive "passed" from pandas/numpy comparisons, and the `is True`/
+    # `is not None` checks below need native types to work correctly.
+    for s in subs.values():
+        s["passed"] = None if s["passed"] is None else bool(s["passed"])
+    sub_checks.update(subs)
+
+    evaluated = [s for s in subs.values() if s["passed"] is not None]
+    if not evaluated:
+        return {
+            "passed": None, "value": None,
+            "detail": f"N1 gate passed, but no sub-checks were evaluable -- {gate['detail']}",
+            "sub_checks": sub_checks,
+        }
+    passed_count = sum(1 for s in evaluated if s["passed"] is True)
+    overall_passed = passed_count >= N_SUBCHECKS_MIN_PASS
+    breakdown = ", ".join(
+        f"{k}={'Y' if s['passed'] else ('N/A' if s['passed'] is None else 'n')}" for k, s in subs.items()
+    )
+    return {
+        "passed": overall_passed,
+        "value": passed_count,
+        "detail": f"N1 gate passed; {passed_count}/{len(evaluated)} evaluable sub-checks passed "
+                   f"(need >={N_SUBCHECKS_MIN_PASS}) -- {breakdown}",
+        "sub_checks": sub_checks,
     }
 
 
@@ -350,12 +697,18 @@ def verdict_for_score(score: float, evaluable: float, criteria: dict) -> str:
     return "Weak"
 
 
-def screen_ticker(ticker: str, universe_returns_pop: list[float], market_result: dict) -> dict:
+def screen_ticker(
+    ticker: str,
+    universe_returns_pop: list[float],
+    market_result: dict,
+    gemini_key: Optional[str] = None,
+    av_key: Optional[str] = None,
+) -> dict:
     data = fetch_ticker_data(ticker)
     criteria = {
         "C": score_current_earnings(data),
         "A": score_annual_earnings(data),
-        "N": score_new_high(data),
+        "N": score_innovation_catalyst(ticker, data, gemini_key, av_key),
         "S": score_supply_demand(data),
         "L": score_leadership(data, universe_returns_pop),
         "I": score_institutional(data),
@@ -449,11 +802,19 @@ def main():
     parser.add_argument("--benchmark", default="QQQ", help="Market-direction benchmark index (default: QQQ)")
     parser.add_argument("--csv-out", help="Optional path to write detailed results as CSV")
     parser.add_argument("--verbose", action="store_true", help="Print per-criterion detail for each ticker")
+    parser.add_argument("--gemini-key", help="Gemini API key for N's catalyst/industry judgment (or set GEMINI_API_KEY)")
+    parser.add_argument("--av-key", help="Alpha Vantage API key for N's earnings call transcript (or set ALPHA_VANTAGE_API_KEY)")
     args = parser.parse_args()
 
     tickers = load_tickers(args)
     if not tickers:
         parser.error("No tickers provided. Use --tickers, --tickers-file, or --from-watchlist.")
+
+    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY", "") or None
+    av_key = args.av_key or os.environ.get("ALPHA_VANTAGE_API_KEY", "") or None
+    if not gemini_key or not av_key:
+        print("[N] Note: GEMINI_API_KEY and/or ALPHA_VANTAGE_API_KEY not set -- "
+              "N's catalyst/industry-shift checks will show as N/A.", file=sys.stderr)
 
     print(f"[1/4] Resolving Nasdaq-100 RS benchmark universe...")
     universe, source = fetch_nasdaq100_constituents()
@@ -472,7 +833,7 @@ def main():
     results = []
     for i, ticker in enumerate(tickers, 1):
         try:
-            result = screen_ticker(ticker, universe_returns_pop, market_result)
+            result = screen_ticker(ticker, universe_returns_pop, market_result, gemini_key, av_key)
             results.append(result)
         except Exception as e:
             print(f"      ! Skipping {ticker}: {e}", file=sys.stderr)
