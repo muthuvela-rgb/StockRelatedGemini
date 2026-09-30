@@ -851,10 +851,33 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
               onClick={(e: any) => {
                 if (!e || !e.activePayload || !e.activePayload.length) return;
                 let targetContract: OptionGreeks | null = null;
-                // If user has highlighted an expiration, select that contract first
-                if (highlightedExp) {
+
+                // 1. Calculate mathematically closest point vertically based on actual Y coordinate in pixels!
+                if (e.activePayload.length > 1 && e.chartY !== undefined) {
+                  let minDistance = Infinity;
+                  let closestItem: any = null;
+                  for (const p of e.activePayload) {
+                    const cy = p.cy ?? p.y ?? p.coordinate?.y;
+                    if (cy !== undefined) {
+                      const dist = Math.abs(cy - e.chartY);
+                      if (dist < minDistance) {
+                        minDistance = dist;
+                        closestItem = p;
+                      }
+                    }
+                  }
+                  if (closestItem) {
+                    const expKey = closestItem.dataKey;
+                    targetContract = closestItem.payload?.[`${expKey}_contract`];
+                  }
+                }
+
+                // 2. If highlighted expiration matches, default as primary fallback
+                if (!targetContract && highlightedExp) {
                   targetContract = e.activePayload[0]?.payload?.[`${highlightedExp}_contract`];
                 }
+
+                // 3. Last fallback (sequential loop)
                 if (!targetContract) {
                   for (const p of e.activePayload) {
                     const c = p?.payload?.[`${p.dataKey}_contract`];
@@ -864,6 +887,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                     }
                   }
                 }
+
                 if (targetContract && onSelectContract) {
                   onSelectContract(targetContract);
                 }

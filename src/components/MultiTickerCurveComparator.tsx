@@ -686,6 +686,60 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
               <ComposedChart
                 data={filteredOverlaidChartData}
                 margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
+                onClick={(e: any) => {
+                  if (!e || !e.activePayload || !e.activePayload.length) return;
+
+                  // 1. Calculate mathematically closest point vertically based on actual Y coordinate in pixels!
+                  let closestItem: any = null;
+                  if (e.activePayload.length > 1 && e.chartY !== undefined) {
+                    let minDistance = Infinity;
+                    for (const p of e.activePayload) {
+                      const cy = p.cy ?? p.y ?? p.coordinate?.y;
+                      if (cy !== undefined) {
+                        const dist = Math.abs(cy - e.chartY);
+                        if (dist < minDistance) {
+                          minDistance = dist;
+                          closestItem = p;
+                        }
+                      }
+                    }
+                  }
+
+                  if (!closestItem) {
+                    closestItem = e.activePayload[0];
+                  }
+
+                  if (closestItem) {
+                    const t = closestItem.name; // This is the ticker symbol (e.g. MSFT)
+                    const payload = closestItem.payload; // Row data
+                    const stockObj = payload?.stocks?.[t];
+                    if (stockObj) {
+                      const pointId = `cmp-${t}-${payload.expiration}`;
+                      const isFallback = Boolean(
+                        stockObj.isFallback ??
+                        stockObj.bid_used_fallback ??
+                        stockObj.used_fallback ??
+                        stockObj.usedFallback
+                      );
+                      setSelectedPointKey(pointId);
+                      setInspectedPoint({
+                        ...stockObj,
+                        isFallback,
+                        usedFallback: isFallback,
+                        used_fallback: isFallback,
+                        bid_used_fallback: isFallback,
+                        target_strike: stockObj.strike,
+                        snapped_strike: stockObj.strike,
+                        current_price: stockObj.spot,
+                        annualized_return_cash_secured: stockObj.returnCashSecured,
+                        annualized_return_margin: stockObj.returnMargin,
+                        implied_volatility: stockObj.iv,
+                        cushion_to_strike_pct: stockObj.cushion,
+                        themeColor: isFallback ? "#f59e0b" : (tickerColorMap[t] || "#38bdf8"),
+                      });
+                    }
+                  }
+                }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis
@@ -790,28 +844,8 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                         return (
                           <g
                             key={fallbackKey}
-                            className="cursor-pointer group"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPointKey(pointId);
-                              setInspectedPoint({
-                                ...stockObj,
-                                isFallback,
-                                usedFallback: isFallback,
-                                used_fallback: isFallback,
-                                bid_used_fallback: isFallback,
-                                target_strike: stockObj.strike,
-                                snapped_strike: stockObj.strike,
-                                current_price: stockObj.spot,
-                                annualized_return_cash_secured: stockObj.returnCashSecured,
-                                annualized_return_margin: stockObj.returnMargin,
-                                implied_volatility: stockObj.iv,
-                                cushion_to_strike_pct: stockObj.cushion,
-                                themeColor: isFallback ? "#f59e0b" : color,
-                              });
-                            }}
+                            className="group"
                           >
-                            <circle cx={cx} cy={cy} r={14} fill="transparent" />
                             {isSelected && (
                               <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
                             )}
