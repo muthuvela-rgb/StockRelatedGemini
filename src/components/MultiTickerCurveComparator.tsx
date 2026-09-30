@@ -152,6 +152,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
   // Inspector state
   const [inspectedPoint, setInspectedPoint] = useState<any | null>(null);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
+  const [persistedTooltip, setPersistedTooltip] = useState<{ label: any; payload: any[] } | null>(null);
 
   const filteredResultsByTicker = useMemo(() => {
     if (!data?.results_by_ticker) return {};
@@ -686,6 +687,14 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
               <ComposedChart
                 data={filteredOverlaidChartData}
                 margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
+                onMouseMove={(e: any) => {
+                  if (e && e.activePayload && e.activePayload.length) {
+                    setPersistedTooltip({
+                      label: e.activeLabel,
+                      payload: e.activePayload,
+                    });
+                  }
+                }}
                 onClick={(e: any) => {
                   if (!e || !e.activePayload || !e.activePayload.length) return;
 
@@ -694,8 +703,10 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                   if (e.activePayload.length > 1 && e.chartY !== undefined) {
                     let minDistance = Infinity;
                     for (const p of e.activePayload) {
-                      const cy = p.cy ?? p.y ?? p.coordinate?.y;
-                      if (cy !== undefined) {
+                      const axisId = p.yAxisId || "left";
+                      const yScale = e.yAxisMap?.[axisId]?.scale || e.yAxisMap?.[0]?.scale;
+                      if (yScale && p.value !== undefined && p.value !== null) {
+                        const cy = yScale(p.value);
                         const dist = Math.abs(cy - e.chartY);
                         if (dist < minDistance) {
                           minDistance = dist;
@@ -766,13 +777,16 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                 <RechartsTooltip
                   position={{ x: 65, y: 15 }}
                   isAnimationActive={false}
+                  active={true}
                   content={({ active, payload, label }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const rowData = payload[0]?.payload;
+                    const displayPayload = active && payload && payload.length ? payload : persistedTooltip?.payload;
+                    const displayLabel = active && label ? label : persistedTooltip?.label;
+                    if (!displayPayload || !displayPayload.length) return null;
+                    const rowData = displayPayload[0]?.payload;
                     return (
                       <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-xs max-w-xs space-y-2">
                         <div className="font-bold text-white border-b border-slate-800 pb-1 flex justify-between">
-                          <span>{label}</span>
+                          <span>{displayLabel}</span>
                           <span className="text-slate-400 font-mono">{rowData?.dte} DTE</span>
                         </div>
                         <div className="space-y-1.5">
@@ -844,8 +858,30 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                         return (
                           <g
                             key={fallbackKey}
-                            className="group"
+                            className="cursor-pointer group animate-in fade-in duration-100"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setSelectedPointKey(pointId);
+                              setInspectedPoint({
+                                ...stockObj,
+                                isFallback,
+                                usedFallback: isFallback,
+                                used_fallback: isFallback,
+                                bid_used_fallback: isFallback,
+                                target_strike: stockObj.strike,
+                                snapped_strike: stockObj.strike,
+                                current_price: stockObj.spot,
+                                annualized_return_cash_secured: stockObj.returnCashSecured,
+                                annualized_return_margin: stockObj.returnMargin,
+                                implied_volatility: stockObj.iv,
+                                cushion_to_strike_pct: stockObj.cushion,
+                                themeColor: isFallback ? "#f59e0b" : color,
+                              });
+                            }}
                           >
+                            {/* Precise click target (r=8.5 avoids bleeding/overlaps with vertically aligned curves) */}
+                            <circle cx={cx} cy={cy} r={8.5} fill="transparent" />
+
                             {isSelected && (
                               <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
                             )}
@@ -859,7 +895,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                               fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color}
                               stroke={isSelected ? (isFallback ? "#f59e0b" : color) : isFallback ? "#fef08a" : "#0f172a"}
                               strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                              className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                              className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                             />
                           </g>
                         );

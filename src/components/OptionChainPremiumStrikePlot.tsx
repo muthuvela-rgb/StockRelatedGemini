@@ -165,6 +165,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const [internalRsiRange, setInternalRsiRange] = useState<[number, number]>([0, 100]);
   const bollingerContext = useBollingerFilter();
   const [internalBollingerRange, setInternalBollingerRange] = useState<[number, number]>([-20, 120]);
+  const [persistedTooltip, setPersistedTooltip] = useState<{ label: any; payload: any[] } | null>(null);
 
   const activeDeltaRange = deltaRange || internalDeltaRange;
   const handleDeltaChange = (newRange: [number, number]) => {
@@ -848,6 +849,14 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             <LineChart
               data={allExpChartData}
               margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
+              onMouseMove={(e: any) => {
+                if (e && e.activePayload && e.activePayload.length) {
+                  setPersistedTooltip({
+                    label: e.activeLabel,
+                    payload: e.activePayload,
+                  });
+                }
+              }}
               onClick={(e: any) => {
                 if (!e || !e.activePayload || !e.activePayload.length) return;
                 let targetContract: OptionGreeks | null = null;
@@ -857,8 +866,10 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                   let minDistance = Infinity;
                   let closestItem: any = null;
                   for (const p of e.activePayload) {
-                    const cy = p.cy ?? p.y ?? p.coordinate?.y;
-                    if (cy !== undefined) {
+                    const axisId = p.yAxisId || "left";
+                    const yScale = e.yAxisMap?.[axisId]?.scale || e.yAxisMap?.[0]?.scale;
+                    if (yScale && p.value !== undefined && p.value !== null) {
+                      const cy = yScale(p.value);
                       const dist = Math.abs(cy - e.chartY);
                       if (dist < minDistance) {
                         minDistance = dist;
@@ -932,20 +943,24 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 position={{ x: 65, y: 15 }}
                 isAnimationActive={false}
                 cursor={false}
+                active={true}
                 content={({ active, payload, label }) => {
-                  if (!active || !payload || !payload.length) return null;
+                  const displayPayload = active && payload && payload.length ? payload : persistedTooltip?.payload;
+                  const displayLabel = active && label ? label : persistedTooltip?.label;
+                  if (!displayPayload || !displayPayload.length) return null;
+
                   return (
                     <div className="bg-slate-950/95 border border-slate-700 rounded-xl p-3 shadow-2xl backdrop-blur-md text-xs space-y-2 max-w-xs z-50">
                       <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                        <span className="font-bold text-white text-sm">Strike: ${label}</span>
+                        <span className="font-bold text-white text-sm">Strike: ${displayLabel}</span>
                         <span className="text-slate-400 font-mono">
                           {currentPrice
-                            ? `${(((Number(label) - currentPrice) / currentPrice) * 100).toFixed(1)}% of Spot`
+                            ? `${(((Number(displayLabel) - currentPrice) / currentPrice) * 100).toFixed(1)}% of Spot`
                             : ""}
                         </span>
                       </div>
                       <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                        {payload
+                        {displayPayload
                           .filter((p: any) => p.value !== undefined && p.value !== null)
                           .map((p: any) => {
                             const expKey = p.name;
@@ -1021,15 +1036,44 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                         contract.used_fallback ??
                         (contract as any).usedFallback
                       );
-                      if (isFallback) {
-                        return (
-                          <g key={`fb-dot-${exp}-${payload.strike}`} className="cursor-pointer" onClick={() => onSelectContract && onSelectContract(contract)}>
-                            <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
-                            <circle cx={cx} cy={cy} r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
-                          </g>
-                        );
-                      }
-                      return null;
+                      const isSelected = selectedContractSymbol === contract.contractSymbol;
+
+                      return (
+                        <g 
+                          key={`dot-${exp}-${payload.strike}`} 
+                          className="cursor-pointer group animate-in fade-in duration-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onSelectContract) {
+                              onSelectContract(contract);
+                            }
+                          }}
+                        >
+                          {/* Precise invisible larger hit testing area (no overlap) */}
+                          <circle cx={cx} cy={cy} r={8.5} fill="transparent" />
+                          
+                          {/* Pulsing selected ring */}
+                          {isSelected && (
+                            <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : color} strokeWidth={2.5} className="animate-pulse" />
+                          )}
+                          
+                          {/* Fallback dashed ring */}
+                          {isFallback && (
+                            <circle cx={cx} cy={cy} r={6.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
+                          )}
+                          
+                          {/* Visual core dot */}
+                          <circle 
+                            cx={cx} 
+                            cy={cy} 
+                            r={isSelected ? 5.5 : isFallback ? 4 : 3} 
+                            fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color} 
+                            stroke={isSelected ? color : "#0f172a"}
+                            strokeWidth={isSelected ? 2 : 1.2}
+                            className="transition-colors duration-150 group-hover:fill-white"
+                          />
+                        </g>
+                      );
                     }) as any}
                     activeDot={{
                       r: 6,
@@ -1067,6 +1111,14 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             <AreaChart
               data={singleExpChartData}
               margin={{ top: 15, right: 45, left: 10, bottom: 25 }}
+              onMouseMove={(e: any) => {
+                if (e && e.activePayload && e.activePayload.length) {
+                  setPersistedTooltip({
+                    label: e.activeLabel,
+                    payload: e.activePayload,
+                  });
+                }
+              }}
               onClick={(e: any) => {
                 const contract = e?.activePayload?.[0]?.payload?.contract;
                 if (contract && onSelectContract) {
@@ -1138,9 +1190,11 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 position={{ x: 65, y: 15 }}
                 isAnimationActive={false}
                 cursor={false}
+                active={true}
                 content={({ active, payload }) => {
-                  if (!active || !payload || !payload.length) return null;
-                  const d = payload[0].payload;
+                  const displayPayload = active && payload && payload.length ? payload : persistedTooltip?.payload;
+                  if (!displayPayload || !displayPayload.length) return null;
+                  const d = displayPayload[0].payload;
                   return (
                     <div
                       onClick={() => {
@@ -1228,16 +1282,37 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                     payload?.contract?.used_fallback ??
                     (payload?.contract as any)?.usedFallback
                   );
-                  if (isFallback) {
-                    return (
-                      <g key={`fb-bid-${payload.strike}`} className="cursor-pointer" onClick={() => payload?.contract && onSelectContract && onSelectContract(payload.contract)}>
-                        <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" className="animate-pulse" />
-                        <circle cx={cx} cy={cy} r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
-                      </g>
-                    );
-                  }
+                  const isSelected = selectedContractSymbol === payload?.contract?.contractSymbol;
+                  const color = tab === "puts" ? "#f43f5e" : "#10b981";
+
                   return (
-                    <circle key={`norm-bid-${payload.strike}`} cx={cx} cy={cy} r={2.5} fill={tab === "puts" ? "#f43f5e" : "#10b981"} opacity={0.6} />
+                    <g
+                      key={`bid-${payload.strike}`}
+                      className="cursor-pointer group animate-in fade-in duration-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (payload?.contract && onSelectContract) {
+                          onSelectContract(payload.contract);
+                        }
+                      }}
+                    >
+                      {/* Precise hit area */}
+                      <circle cx={cx} cy={cy} r={8.5} fill="transparent" />
+                      
+                      {/* Pulsing ring if selected */}
+                      {isSelected && (
+                        <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : color} strokeWidth={2.5} className="animate-pulse" />
+                      )}
+
+                      {isFallback ? (
+                        <>
+                          <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
+                          <circle cx={cx} cy={cy} r={4.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1.5} />
+                        </>
+                      ) : (
+                        <circle cx={cx} cy={cy} r={isSelected ? 5.5 : 3.5} fill={isSelected ? "#ffffff" : color} stroke={isSelected ? color : "#0f172a"} strokeWidth={isSelected ? 2 : 1.2} />
+                      )}
+                    </g>
                   );
                 }) as any}
                 activeDot={{
