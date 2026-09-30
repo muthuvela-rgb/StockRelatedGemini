@@ -45,6 +45,7 @@ interface StockHudData {
     ipoYear?: string;
     marketCap?: number;
     formattedMarketCap?: string;
+    targetMeanPrice?: number | null;
   } | null;
   sparkline: Array<{ date: string; close: number }>;
   atmGreeks?: {
@@ -143,6 +144,10 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
   const isRsiOversold = rsi !== null && rsi <= 30;
 
   // IV vs HV
+  const targetMeanPrice = p?.targetMeanPrice ?? null;
+  const distancePct = targetMeanPrice && currentPrice
+    ? ((currentPrice - targetMeanPrice) / targetMeanPrice) * 100
+    : null;
   const iv = t?.implied_volatility_pct ?? null;
   const hv = t?.historical_volatility_pct ?? null;
   const ivSpread = iv !== null && hv !== null ? iv - hv : null;
@@ -219,18 +224,38 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-5">
             {currentPrice > 0 && (
               <div className="text-right">
-                <div className="text-xs text-slate-400 font-mono">Current Spot</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Current Spot</div>
                 <div className="text-lg font-bold text-emerald-400 font-mono">
                   ${currentPrice.toFixed(2)}
                 </div>
               </div>
             )}
+
+            {targetMeanPrice && (
+              <div className="text-right shrink-0 border-l border-slate-800 pl-4">
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Analyst Target</div>
+                <div className="text-xs font-bold text-cyan-400 font-mono mt-1.5 flex items-center justify-end gap-1.5 leading-none">
+                  <span>${targetMeanPrice.toFixed(2)}</span>
+                  <span
+                    className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-pulse shadow-md border ${
+                      distancePct && distancePct <= 0
+                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+                        : "bg-rose-500/15 text-rose-400 border-rose-500/25"
+                    }`}
+                    title={`Spot price is ${distancePct && distancePct <= 0 ? "undervalued by" : "overvalued by"} ${distancePct ? Math.abs(distancePct).toFixed(1) : 0}% relative to consensus`}
+                  >
+                    {distancePct && distancePct >= 0 ? `+${distancePct.toFixed(1)}%` : `${distancePct ? distancePct.toFixed(1) : 0}%`}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors ml-2"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors ml-1"
               title="Close HUD (Esc)"
             >
               <X className="w-5 h-5" />

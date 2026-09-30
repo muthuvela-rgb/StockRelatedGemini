@@ -45,6 +45,7 @@ export interface CompanyProfile {
   fiftyTwoWeekHigh: number | null;
   fiftyTwoWeekLow: number | null;
   isEtf: boolean;
+  targetMeanPrice?: number | null;
 }
 
 const HTTP_HEADERS: Record<string, string> = {
@@ -241,12 +242,12 @@ export async function getCompanyProfile(
       console.warn(`Chart fetch failed for profile ${ticker}:`, e);
     }
 
-    // 2. Fetch Quote Summary for assetProfile, defaultKeyStatistics, summaryDetail, price, fundProfile
+    // 2. Fetch Quote Summary for assetProfile, defaultKeyStatistics, summaryDetail, price, fundProfile, financialData
     let quoteResData: any = null;
     try {
       let sumUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
         ticker
-      )}?modules=assetProfile,defaultKeyStatistics,summaryDetail,price,fundProfile`;
+      )}?modules=assetProfile,defaultKeyStatistics,summaryDetail,price,fundProfile,financialData`;
       if (crumb) sumUrl += `&crumb=${encodeURIComponent(crumb)}`;
 
       const headers: Record<string, string> = { ...HTTP_HEADERS };
@@ -266,6 +267,7 @@ export async function getCompanyProfile(
     const stats = quoteResData?.defaultKeyStatistics || {};
     const detail = quoteResData?.summaryDetail || {};
     const fund = quoteResData?.fundProfile || {};
+    const finData = quoteResData?.financialData || {};
 
     // Determine company name
     const companyName =
@@ -418,6 +420,7 @@ export async function getCompanyProfile(
       fiftyTwoWeekHigh: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
       fiftyTwoWeekLow: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       isEtf,
+      targetMeanPrice: finData.targetMeanPrice?.raw ? Number(finData.targetMeanPrice.raw.toFixed(2)) : null,
     };
 
     // Store in cache
