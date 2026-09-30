@@ -75,21 +75,17 @@ except ImportError:
 # CANSLIM thresholds -- tune these to adjust screening strictness.
 # ---------------------------------------------------------------------------
 CURRENT_EPS_GROWTH_MIN_PCT = 25.0      # C: QoQ (YoY-quarter) EPS growth
+CURRENT_REV_GROWTH_MIN_PCT = 20.0      # C: QoQ (YoY-quarter) Revenue growth
 ANNUAL_EPS_CAGR_MIN_PCT = 25.0         # A: multi-year EPS CAGR
+MIN_ROE_PCT = 17.0                     # A: Return on Equity minimum %
 NEW_HIGH_PROXIMITY_PCT = 10.0          # N: price must be within 10% of 52w high
-MAX_SHARES_OUTSTANDING = 50_000_000    # S: O'Neil's classic small-float threshold.
-                                        #    Mostly obsolete for today's mega/large
-                                        #    caps, so it no longer gates the S pass/
-                                        #    fail call -- it only discounts S's
-                                        #    weight in the overall score (see
-                                        #    LARGE_FLOAT_WEIGHT below).
-LARGE_FLOAT_WEIGHT = 0.5               # S: weight applied when float > MAX_SHARES_OUTSTANDING
-VOLUME_SURGE_MIN_PCT = 40.0            # S: recent volume vs. 3-month average
+N_WEIGHT = 0.75                        # N: calibrated weight (0.75 out of total 6.75)
+UD_VOLUME_RATIO_MIN = 1.0              # S: 50-day Up/Down volume ratio (accumulation > 1.0)
+UP_DAY_VOLUME_SURGE_MIN_PCT = 25.0     # S: peak recent up-day volume vs 50-day average
 RS_PERCENTILE_MIN = 80.0               # L: percentile rank within Nasdaq-100
 INSTITUTIONAL_OWNERSHIP_MIN_PCT = 30.0  # I: % shares held by institutions
-SCORE_STRONG_MIN = 6                   # verdict tiers, on the weighted score
-SCORE_WATCH_MIN = 4                    #    (max possible is 7, or less when S is
-                                        #    discounted or some criteria are N/A)
+SCORE_STRONG_MIN = 5.5                 # verdict tiers, out of 6.75 total possible
+SCORE_WATCH_MIN = 4.0                  #    (strong >= 5.5, watch >= 4.0)
 
 # N (Innovation Catalyst) sub-check thresholds -- see score_innovation_catalyst().
 N_BASE_LOOKBACK_TRADING_DAYS = 45      # N4: trailing window checked for a tight base
@@ -243,6 +239,14 @@ def fetch_ticker_data(ticker: str) -> dict:
     except Exception:
         out["institutions_pct"] = None
 
+    # Return on Equity (ROE) for A metric
+    try:
+        inf = t.info or {}
+        roe_val = inf.get("returnOnEquity")
+        out["return_on_equity"] = float(roe_val) * 100 if roe_val is not None else None
+    except Exception:
+        out["return_on_equity"] = None
+
     # 12-month price/volume history -- used for the RS return, and for N's
     # base-tightness (N4) and breakout-volume (N5) sub-checks.
     try:
@@ -276,6 +280,7 @@ def fetch_ticker_data(ticker: str) -> dict:
 # ---------------------------------------------------------------------------
 def score_current_earnings(d: dict) -> dict:
     q = d.get("quarterly_eps")
+    rev = d.get("quarterly_revenue")
     if q is None or len(q) < 2:
         return {"passed": None, "value": None, "detail": "Insufficient quarterly EPS history"}
     latest_date, latest_eps = q.index[0], q.iloc[0]
@@ -288,16 +293,35 @@ def score_current_earnings(d: dict) -> dict:
         prior_eps = prior.iloc[0]
     if prior_eps == 0 or pd.isna(prior_eps) or pd.isna(latest_eps):
         return {"passed": None, "value": None, "detail": "Cannot compute YoY EPS growth"}
-    growth = ((latest_eps - prior_eps) / abs(prior_eps)) * 100
+    eps_growth = ((latest_eps - prior_eps) / abs(prior_eps)) * 100
+
+    # Sales/Revenue YoY confirmation (CANSLIM requires sales to confirm earnings)
+    rev_growth = None
+    if rev is not None and len(rev) >= 2:
+        r_latest_date, r_latest_val = rev.index[0], rev.iloc[0]
+        r_target = r_latest_date - pd.DateOffset(years=1)
+        r_prior_window = rev[(rev.index <= r_target + pd.Timedelta(days=45)) & (rev.index >= r_target - pd.Timedelta(days=45))]
+        if not r_prior_window.empty and not pd.isna(r_prior_window.iloc[0]) and r_prior_window.iloc[0] != 0:
+            rev_growth = ((r_latest_val - r_prior_window.iloc[0]) / abs(r_prior_window.iloc[0])) * 100
+
+    eps_passed = eps_growth >= CURRENT_EPS_GROWTH_MIN_PCT
+    # If revenue is available, require positive growth (>=20% ideal)
+    rev_passed = (rev_growth >= CURRENT_REV_GROWTH_MIN_PCT or rev_growth > 0) if rev_growth is not None else True
+    passed = eps_passed and rev_passed
+
+    detail = f"EPS YoY {eps_growth:+.1f}% (min {CURRENT_EPS_GROWTH_MIN_PCT:.0f}%)"
+    if rev_growth is not None:
+        detail += f" | Sales YoY {rev_growth:+.1f}%"
     return {
-        "passed": growth >= CURRENT_EPS_GROWTH_MIN_PCT,
-        "value": round(growth, 1),
-        "detail": f"Latest Q EPS {latest_eps:.2f} vs YoY {prior_eps:.2f} = {growth:.1f}%",
+        "passed": passed,
+        "value": round(eps_growth, 1),
+        "detail": detail,
     }
 
 
 def score_annual_earnings(d: dict) -> dict:
     a = d.get("annual_eps")
+    roe = d.get("return_on_equity")
     if a is None or len(a) < 2:
         return {"passed": None, "value": None, "detail": "Insufficient annual EPS history"}
     latest_eps = a.iloc[0]
@@ -306,10 +330,19 @@ def score_annual_earnings(d: dict) -> dict:
     if earliest_eps <= 0 or pd.isna(earliest_eps) or pd.isna(latest_eps) or years < 1:
         return {"passed": None, "value": None, "detail": "Cannot compute EPS CAGR"}
     cagr = ((latest_eps / earliest_eps) ** (1 / years) - 1) * 100
+
+    cagr_passed = cagr >= ANNUAL_EPS_CAGR_MIN_PCT
+    # O'Neil ROE rule: ROE >= 17% ensures capital efficiency
+    roe_passed = (roe >= MIN_ROE_PCT) if roe is not None else True
+    passed = cagr_passed and roe_passed
+
+    detail = f"EPS CAGR {cagr:.1f}% ({years}y)"
+    if roe is not None:
+        detail += f" | ROE {roe:.1f}% (min {MIN_ROE_PCT:.0f}%)"
     return {
-        "passed": cagr >= ANNUAL_EPS_CAGR_MIN_PCT,
+        "passed": passed,
         "value": round(cagr, 1),
-        "detail": f"EPS CAGR over {years}y: {cagr:.1f}% ({earliest_eps:.2f} -> {latest_eps:.2f})",
+        "detail": detail,
     }
 
 
@@ -565,12 +598,14 @@ def score_innovation_catalyst(ticker: str, d: dict, gemini_key: Optional[str], a
     if gate["passed"] is None:
         return {
             "passed": None, "value": None,
+            "weight": N_WEIGHT,
             "detail": f"N1 (new catalyst gate) unresolved -- {gate['detail']}",
             "sub_checks": sub_checks,
         }
     if gate["passed"] is False:
         return {
             "passed": False, "value": 0,
+            "weight": N_WEIGHT,
             "detail": f"N1 (new catalyst gate) FAILED -- {gate['detail']} | {gate['rationale']}",
             "sub_checks": sub_checks,
         }
@@ -599,6 +634,7 @@ def score_innovation_catalyst(ticker: str, d: dict, gemini_key: Optional[str], a
     if not evaluated:
         return {
             "passed": None, "value": None,
+            "weight": N_WEIGHT,
             "detail": f"N1 gate passed, but no sub-checks were evaluable -- {gate['detail']}",
             "sub_checks": sub_checks,
         }
@@ -610,6 +646,7 @@ def score_innovation_catalyst(ticker: str, d: dict, gemini_key: Optional[str], a
     return {
         "passed": overall_passed,
         "value": passed_count,
+        "weight": N_WEIGHT,
         "detail": f"N1 gate passed; {passed_count}/{len(evaluated)} evaluable sub-checks passed "
                    f"(need >={N_SUBCHECKS_MIN_PASS}) -- {breakdown}",
         "sub_checks": sub_checks,
@@ -617,22 +654,72 @@ def score_innovation_catalyst(ticker: str, d: dict, gemini_key: Optional[str], a
 
 
 def score_supply_demand(d: dict) -> dict:
-    shares = d.get("shares_outstanding")
-    last_vol = d.get("last_volume")
-    avg_vol = d.get("three_month_avg_volume")
-    if not last_vol or not avg_vol:
-        return {"passed": None, "value": None, "detail": "Missing volume data"}
-    vol_surge_pct = ((last_vol - avg_vol) / avg_vol) * 100
-    float_ok = shares is not None and shares <= MAX_SHARES_OUTSTANDING
-    weight = 1.0 if float_ok or shares is None else LARGE_FLOAT_WEIGHT
-    passed = vol_surge_pct >= VOLUME_SURGE_MIN_PCT
-    shares_m = f"{shares / 1e6:.1f}M" if shares else "N/A"
-    float_note = "<=50M" if float_ok else f">50M, weight discounted to {weight:.1f}x"
+    """S: Supply and Demand (Volume Dynamics / Institutional Accumulation).
+    Evaluates the 50-day Up/Down Volume Ratio (U/D Ratio >= 1.0 indicates net
+    accumulation) and checks for recent up-day volume surges.
+    Weight is fixed at 1.0 (no float penalties)."""
+    hist = d.get("price_history")
+    if hist is None or hist.empty or len(hist) < 15:
+        # Fallback to last volume vs 3-month average if history is short
+        last_vol = d.get("last_volume")
+        avg_vol = d.get("three_month_avg_volume")
+        if not last_vol or not avg_vol:
+            return {"passed": None, "value": None, "weight": 1.0, "detail": "Missing volume data"}
+        vol_surge_pct = ((last_vol - avg_vol) / avg_vol) * 100
+        passed = vol_surge_pct >= UP_DAY_VOLUME_SURGE_MIN_PCT
+        return {
+            "passed": passed,
+            "value": round(vol_surge_pct, 1),
+            "weight": 1.0,
+            "detail": f"Last volume {vol_surge_pct:+.1f}% vs 3mo avg",
+        }
+
+    closes = hist["Close"].dropna()
+    volumes = hist["Volume"].dropna()
+    idx = closes.index.intersection(volumes.index)
+    closes = closes.loc[idx]
+    volumes = volumes.loc[idx]
+
+    window_len = min(50, len(closes))
+    window_closes = closes.iloc[-window_len:]
+    window_vols = volumes.iloc[-window_len:]
+
+    price_diffs = window_closes.diff().iloc[1:]
+    vols = window_vols.iloc[1:]
+
+    up_vols = vols[price_diffs > 0]
+    down_vols = vols[price_diffs < 0]
+
+    total_up = float(up_vols.sum()) if not up_vols.empty else 0.0
+    total_down = float(down_vols.sum()) if not down_vols.empty else 0.0
+
+    if total_down > 0:
+        ud_ratio = round(total_up / total_down, 2)
+    else:
+        ud_ratio = 2.0 if total_up > 0 else 1.0
+
+    # Peak up-day surge in the last 10 trading days vs 50-day average
+    recent_len = min(10, len(closes))
+    recent_closes = closes.iloc[-recent_len:]
+    recent_vols = volumes.iloc[-recent_len:]
+    recent_diffs = recent_closes.diff().iloc[1:]
+    recent_up_vols = recent_vols.iloc[1:][recent_diffs > 0]
+
+    avg_vol = float(window_vols.mean())
+    peak_up_vol = float(recent_up_vols.max()) if not recent_up_vols.empty else float(vols.mean())
+    up_surge_pct = round(((peak_up_vol - avg_vol) / avg_vol) * 100, 1) if avg_vol > 0 else 0.0
+
+    # Passed if Up/Down volume ratio shows accumulation (>= 1.0)
+    passed = ud_ratio >= UD_VOLUME_RATIO_MIN
+
+    status_label = "Net Accumulation" if ud_ratio >= 1.0 else "Net Distribution"
+    detail = f"50d U/D Vol Ratio: {ud_ratio:.2f}x ({status_label}); Recent Up-Day Surge: {up_surge_pct:+.1f}% vs avg"
+
     return {
         "passed": passed,
-        "value": round(vol_surge_pct, 1),
-        "weight": weight,
-        "detail": f"Volume {vol_surge_pct:+.1f}% vs 3mo avg; float {shares_m} ({float_note})",
+        "value": ud_ratio,
+        "weight": 1.0,
+        "detail": detail,
     }
 
 

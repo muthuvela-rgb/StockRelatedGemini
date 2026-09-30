@@ -43,6 +43,7 @@ export type ActiveTab =
   | "fall-detector"
   | "stock-charts"
   | "technicals"
+  | "canslim-screener"
   | "short-puts"
   | "option-chain"
   | "premium-curves"
@@ -162,6 +163,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "fall-detector" as ActiveTab, label: "Fall Detector", icon: TrendingDown, badge: "Context" },
     { id: "stock-charts" as ActiveTab, label: "Stock Charts", icon: LineChart, badge: "Up to 50Y" },
     { id: "technicals" as ActiveTab, label: "Technicals", icon: Activity },
+    { id: "canslim-screener" as ActiveTab, label: "CANSLIM Screener", icon: Sparkles, badge: "7-Pt O'Neil" },
     { id: "short-puts" as ActiveTab, label: "Short-Dated", icon: Clock },
     { id: "option-chain" as ActiveTab, label: "Option Chain & Greeks", icon: Layers },
     { id: "premium-curves" as ActiveTab, label: "Premium Curves", icon: Search },

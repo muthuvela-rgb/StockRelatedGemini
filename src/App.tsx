@@ -5,6 +5,7 @@ import { PutRecommendationsViewer } from "./components/PutRecommendationsViewer"
 import { PutScanner } from "./components/PutScanner";
 import { FallDetector } from "./components/FallDetector";
 import { TechnicalsScreener } from "./components/TechnicalsScreener";
+import { CanslimScreener } from "./components/CanslimScreener";
 import { ShortDatedScreener } from "./components/ShortDatedScreener";
 import { OptionChainViewer } from "./components/OptionChainViewer";
 import { PremiumCurvesViewer } from "./components/PremiumCurvesViewer";
@@ -142,6 +143,11 @@ const AppContent: React.FC = () => {
         </div>
         <div className={activeTab === "technicals" ? "" : "hidden"}>
           <TechnicalsScreener watchlist={currentWatchlist} />
+        </div>
+        <div className={activeTab === "canslim-screener" ? "" : "hidden"}>
+          <CanslimScreener onNavigateTab={(tab, ticker) => {
+            setActiveTab(tab as ActiveTab);
+          }} />
         </div>
         <div className={activeTab === "short-puts" ? "" : "hidden"}>
           <ShortDatedScreener watchlist={currentWatchlist} />

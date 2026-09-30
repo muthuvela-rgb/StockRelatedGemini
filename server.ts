@@ -32,6 +32,12 @@ import {
 } from "./server/qqqConstituents";
 import { getCompanyProfile } from "./server/companyProfile";
 import { EXPANDED_500_UNIVERSE, getExpanded500Universe } from "./src/data/universe500";
+import {
+  computeMarketDirection,
+  fetchUniverseReturns,
+  screenTickerCanslim,
+  CanslimScreenResponse,
+} from "./server/canslim";
 
 const app = express();
 const PORT = 3000;
@@ -1086,7 +1092,7 @@ async function getYahooAuth(forceRefresh = false): Promise<{ cookie: string; cru
   return yahooAuthPromise;
 }
 
-async function fetchYahooChart(ticker: string, range = "1y", interval = "1d") {
+export async function fetchYahooChart(ticker: string, range = "1y", interval = "1d") {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
     const res = await fetchWithTimeout(url, { headers: HTTP_HEADERS }, 3000);
@@ -1129,10 +1135,10 @@ async function fetchYahooOptions(ticker: string, dateTimestamp?: number, retry =
   }
 }
 
-async function fetchYahooQuoteSummary(ticker: string, retry = true): Promise<any> {
+export async function fetchYahooQuoteSummary(ticker: string, retry = true): Promise<any> {
   try {
     const { cookie, crumb } = await getYahooAuth();
-    let url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,summaryDetail,upgradeDowngradeHistory,calendarEvents`;
+    let url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,summaryDetail,majorHoldersBreakdown,price,earningsHistory,incomeStatementHistoryQuarterly,upgradeDowngradeHistory,calendarEvents`;
     if (crumb) url += `&crumb=${encodeURIComponent(crumb)}`;
 
     const headers: Record<string, string> = {
@@ -2225,11 +2231,23 @@ app.get("/api/stock-hud", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "ticker query parameter is required" });
     }
 
-    const [technicals, profile, chart] = await Promise.all([
+    const [technicals, profile, chart, marketDirection, universeReturnsMap] = await Promise.all([
       getTechnicalsForTicker(rawTicker),
       getCompanyProfile(rawTicker, getGenAI()).catch(() => null),
       fetchMarketChart(rawTicker, "6mo", "1d").catch(() => null),
+      computeMarketDirection("QQQ"),
+      fetchUniverseReturns([rawTicker]),
     ]);
+
+    const universeReturns = Array.from(universeReturnsMap.values());
+    const canslimResult = await screenTickerCanslim(
+      rawTicker,
+      universeReturns,
+      marketDirection,
+      getGenAI(),
+      fetchYahooQuoteSummary,
+      fetchYahooChart
+    ).catch(() => null);
 
     // Build mini sparkline points for HUD
     const timestamps = chart?.timestamp || [];
@@ -2258,6 +2276,7 @@ app.get("/api/stock-hud", async (req: Request, res: Response) => {
       profile,
       sparkline: sparkline.slice(-60),
       atmGreeks,
+      canslim: canslimResult,
     });
   } catch (e: any) {
     console.error("Error in /api/stock-hud:", e);
@@ -2282,6 +2301,77 @@ app.get("/api/technicals", async (req: Request, res: Response) => {
     res.json({ results });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// CANSLIM 7-Point Checklist Screener
+app.get("/api/canslim/screen", async (req: Request, res: Response) => {
+  try {
+    const tickersParam = (req.query.tickers as string) || "NVDA,AAPL,MSFT,AVGO,META,AMZN,PLTR,TSLA,MU,AMD";
+    const benchmark = (req.query.benchmark as string) || "QQQ";
+    const tickers = tickersParam.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+
+    const marketDirection = await computeMarketDirection(benchmark);
+    const universeReturnsMap = await fetchUniverseReturns([
+      "NVDA", "AAPL", "MSFT", "AMZN", "AVGO", "GOOGL", "META", "TSLA", "MU", "AMD",
+      "COST", "NFLX", "PLTR", "ADBE", "CSCO", "QCOM", "TXN", "AMAT", "INTU", "AMGN"
+    ]);
+    const universeReturns = Array.from(universeReturnsMap.values());
+
+    const genAI = getGenAI();
+
+    const results = await Promise.all(
+      tickers.map((t) => screenTickerCanslim(t, universeReturns, marketDirection, genAI, fetchYahooQuoteSummary, fetchYahooChart))
+    );
+
+    // Sort by score desc, then ticker asc
+    results.sort((a, b) => b.score - a.score || a.ticker.localeCompare(b.ticker));
+
+    const response: CanslimScreenResponse = {
+      benchmark,
+      market_direction: marketDirection,
+      results,
+      screened_at: new Date().toISOString(),
+    };
+
+    res.json(response);
+  } catch (err: any) {
+    console.error("CANSLIM screener error:", err);
+    res.status(500).json({ error: err.message || "Failed to screen tickers" });
+  }
+});
+
+app.post("/api/canslim/screen", async (req: Request, res: Response) => {
+  try {
+    const tickers: string[] = req.body.tickers || ["NVDA", "AAPL", "MSFT", "AVGO", "META", "AMZN", "PLTR", "TSLA", "MU", "AMD"];
+    const benchmark: string = req.body.benchmark || "QQQ";
+
+    const marketDirection = await computeMarketDirection(benchmark);
+    const universeReturnsMap = await fetchUniverseReturns([
+      "NVDA", "AAPL", "MSFT", "AMZN", "AVGO", "GOOGL", "META", "TSLA", "MU", "AMD",
+      "COST", "NFLX", "PLTR", "ADBE", "CSCO", "QCOM", "TXN", "AMAT", "INTU", "AMGN"
+    ]);
+    const universeReturns = Array.from(universeReturnsMap.values());
+
+    const genAI = getGenAI();
+
+    const results = await Promise.all(
+      tickers.map((t) => screenTickerCanslim(t, universeReturns, marketDirection, genAI, fetchYahooQuoteSummary, fetchYahooChart))
+    );
+
+    results.sort((a, b) => b.score - a.score || a.ticker.localeCompare(b.ticker));
+
+    const response: CanslimScreenResponse = {
+      benchmark,
+      market_direction: marketDirection,
+      results,
+      screened_at: new Date().toISOString(),
+    };
+
+    res.json(response);
+  } catch (err: any) {
+    console.error("CANSLIM screener error:", err);
+    res.status(500).json({ error: err.message || "Failed to screen tickers" });
   }
 });
 

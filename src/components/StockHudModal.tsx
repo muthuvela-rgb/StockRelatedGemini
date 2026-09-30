@@ -15,6 +15,7 @@ import {
   Check,
   Compass,
   Zap,
+  Sparkles,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -50,6 +51,7 @@ interface StockHudData {
     put: { delta: number; gamma: number; theta: number; vega: number; rho: number };
     call: { delta: number; gamma: number; theta: number; vega: number; rho: number };
   };
+  canslim?: any;
 }
 
 interface StockHudModalProps {
@@ -255,6 +257,59 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
             </div>
           ) : (
             <>
+              {/* CANSLIM Score Card Header Callout */}
+              {data?.canslim && (
+                <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-blue-400 uppercase tracking-wider font-mono">
+                        CANSLIM Composite Fundamental Rating
+                      </div>
+                      <div className="text-slate-200 text-xs mt-0.5 leading-relaxed">
+                        {data.canslim.company_name || ticker} scores{" "}
+                        <strong className="text-cyan-400 font-mono text-sm">{data.canslim.score.toFixed(2)}</strong> /{" "}
+                        {data.canslim.evaluable.toFixed(2)} ({data.canslim.score_pct}% match).
+                        {data.canslim.catalyst_summary && (
+                          <span className="text-slate-400 block sm:inline sm:ml-1">
+                            • Catalyst: {data.canslim.catalyst_summary}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`px-3 py-1 rounded-lg text-xs font-bold font-mono tracking-wide border shadow-md ${
+                        data.canslim.verdict === "Strong"
+                          ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+                          : data.canslim.verdict === "Watch"
+                          ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                          : "bg-slate-800 text-slate-400 border-slate-700"
+                      }`}
+                    >
+                      VERDICT: {data.canslim.verdict.toUpperCase()}
+                    </span>
+
+                    {onNavigateTab && (
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onNavigateTab("canslim-screener" as ActiveTab, ticker);
+                        }}
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-sans text-[11px] font-semibold flex items-center gap-1 transition shadow cursor-pointer"
+                      >
+                        Audit Details
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Top Row: ATH, 52W High, RSI, IV vs HV */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {/* 1. All-Time High (ATH) */}
