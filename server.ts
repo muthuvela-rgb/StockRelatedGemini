@@ -1677,8 +1677,8 @@ app.get("/api/watchlist-earnings", async (req: Request, res: Response) => {
 });
 
 // Dynamic QQQ Bollinger Band watchlist scan
-// Fetches QQQ's CURRENT constituents live (not the static QQQ_CONSTITUENTS
-// snapshot above), scans each via the app's Tradier-first market data router,
+// Dynamic QQQ Bollinger Band watchlist scan
+// Fetches QQQ's CURRENT constituents live or scans a custom tickers list,
 // and returns symbols matching the requested Bollinger %B trigger mode.
 const qqqBollingerScanCache = new Map<string, { data: any; expiresAt: number }>();
 
@@ -1689,15 +1689,30 @@ app.get("/api/watchlist/qqq-bollinger", async (req: Request, res: Response) => {
     const stddev = Number(req.query.stddev) || 2;
     const limit = Math.max(1, Number(req.query.limit) || 100);
     const squeezeThresholdPct = Number(req.query.squeezeThreshold) || 6;
+    const customTickersParam = req.query.tickers as string;
 
-    const cacheKey = `${mode}:${period}:${stddev}:${limit}:${squeezeThresholdPct}`;
+    const cacheKey = `${mode}:${period}:${stddev}:${limit}:${squeezeThresholdPct}:${customTickersParam || "default"}`;
     const cached = qqqBollingerScanCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return res.json({ ...cached.data, cached: true });
     }
 
-    const { symbols: constituents, source } = await fetchLiveQqqConstituents();
-    const universe = ["QQQ", ...constituents];
+    let universe: string[] = [];
+    let source = "custom-watchlist";
+    let universeSize = 0;
+
+    if (customTickersParam) {
+      universe = customTickersParam
+        .split(",")
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean);
+      universeSize = universe.length;
+    } else {
+      const live = await fetchLiveQqqConstituents();
+      universe = live.symbols;
+      source = live.source;
+      universeSize = live.symbols.length;
+    }
 
     const scanned: ScannedSymbol[] = [];
     const batchSize = 8;
@@ -1721,7 +1736,21 @@ app.get("/api/watchlist/qqq-bollinger", async (req: Request, res: Response) => {
       for (const r of results) if (r) scanned.push(r);
     }
 
-    const qqqRegime = scanned.find((s) => s.symbol === "QQQ") || null;
+    // Always fetch QQQ for regime details
+    let qqqRegime: ScannedSymbol | null = null;
+    try {
+      const qqqChart = await fetchMarketChart("QQQ", "6mo", "1d");
+      const qqqCloses: number[] = (qqqChart?.indicators?.quote?.[0]?.close || []).filter(
+        (c: any) => c !== null && c !== undefined && !isNaN(c)
+      );
+      const qqqBollinger = computeBollingerFromCloses(qqqCloses, period, stddev);
+      if (qqqBollinger && qqqCloses.length > 0) {
+        qqqRegime = { symbol: "QQQ", price: qqqCloses[qqqCloses.length - 1], bollinger: qqqBollinger };
+      }
+    } catch {
+      // ignore
+    }
+
     const constituentResults = scanned.filter((s) => s.symbol !== "QQQ");
 
     const matched = constituentResults
@@ -1729,7 +1758,8 @@ app.get("/api/watchlist/qqq-bollinger", async (req: Request, res: Response) => {
       .sort((a, b) => bollingerRankKey(a, mode) - bollingerRankKey(b, mode))
       .slice(0, limit);
 
-    const symbols = Array.from(new Set(["QQQ", ...matched.map((m) => m.symbol)]));
+    // Omit QQQ from output list
+    const symbols = Array.from(new Set(matched.map((m) => m.symbol)));
 
     const responseData = {
       generatedAt: new Date().toISOString(),
@@ -1737,7 +1767,7 @@ app.get("/api/watchlist/qqq-bollinger", async (req: Request, res: Response) => {
       period,
       stddev,
       constituentSource: source,
-      universeSize: constituents.length,
+      universeSize,
       scannedCount: scanned.length,
       qqqRegime,
       symbols,

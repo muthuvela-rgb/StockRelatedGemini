@@ -130,6 +130,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [bollingerMode, setBollingerMode] = useState<"extremes" | "oversold" | "overbought" | "squeeze">("extremes");
   const [bollingerLoading, setBollingerLoading] = useState(false);
   const [bollingerError, setBollingerError] = useState<string | null>(null);
+  const [scanCurrentWatchlistOnly, setScanCurrentWatchlistOnly] = useState(false);
   const [bollingerResult, setBollingerResult] = useState<{
     symbols: string[];
     matches: Array<{ symbol: string; price: number; bollinger: { percentB: number; bandwidthPct: number } }>;
@@ -205,7 +206,11 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     setBollingerLoading(true);
     setBollingerError(null);
     try {
-      const res = await fetch(`/api/watchlist/qqq-bollinger?mode=${bollingerMode}&limit=25`);
+      let url = `/api/watchlist/qqq-bollinger?mode=${bollingerMode}&limit=25`;
+      if (scanCurrentWatchlistOnly && activeWatchlist?.tickers?.length > 0) {
+        url += `&tickers=${encodeURIComponent(activeWatchlist.tickers.join(","))}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
         throw new Error(errJson?.error || `Scan failed: ${res.status}`);
@@ -536,7 +541,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-4">
             <button
               type="button"
               onClick={handleGenerateBollingerScan}
@@ -546,6 +551,16 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
               {bollingerLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
               <span>{bollingerLoading ? "Scanning..." : "Generate Scan"}</span>
             </button>
+
+            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-300 select-none cursor-pointer bg-slate-900/50 hover:bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg transition">
+              <input
+                type="checkbox"
+                checked={scanCurrentWatchlistOnly}
+                onChange={(e) => setScanCurrentWatchlistOnly(e.target.checked)}
+                className="rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-950 w-3.5 h-3.5 cursor-pointer"
+              />
+              <span>Scan Active Watchlist ({activeWatchlist.name}) Only</span>
+            </label>
           </div>
 
           {bollingerError && (
