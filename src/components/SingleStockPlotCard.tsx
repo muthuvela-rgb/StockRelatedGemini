@@ -518,7 +518,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                         fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
                         stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
                         strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                        className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                        className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                       />
                     </g>
                   );
@@ -579,7 +579,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                         fill={isSellStrike ? "#10b981" : isBuyStrike ? "#f59e0b" : isSelected ? "#ffffff" : isFallback ? "#f59e0b" : themeColor}
                         stroke={isSellStrike ? "#ffffff" : isBuyStrike ? "#ffffff" : isSelected ? (isFallback ? "#f59e0b" : themeColor) : isFallback ? "#fef08a" : "#0f172a"}
                         strokeWidth={isSelected || isSellStrike || isBuyStrike ? 2.5 : (isFallback ? 2 : 1.5)}
-                        className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                        className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                       />
                     </g>
                   );
@@ -645,7 +645,7 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
                         fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
                         stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
                         strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                        className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                        className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                       />
                     </g>
                   );

@@ -23,6 +23,7 @@ import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { StockChartsViewer } from "./components/StockChartsViewer";
 import { TickerHudProvider } from "./context/TickerHudContext";
 import { BollingerFilterProvider } from "./context/BollingerFilterContext";
+import { SidebarNavigation } from "./components/SidebarNavigation";
 import { LineChart, BookOpen } from "lucide-react";
 
 // Fallback default tickers, used only until AuthContext's watchlists have hydrated.
@@ -35,6 +36,35 @@ const AppContent: React.FC = () => {
   const [isSavedTradesOpen, setIsSavedTradesOpen] = useState<boolean>(false);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [customTickerForRecs, setCustomTickerForRecs] = useState<string | undefined>(undefined);
+
+  // Layout mode: "sidebar" (modern collapsible terminal) vs "tabs" (classic horizontal tabs)
+  // Fully reversible toggle persisted in localStorage so users can switch anytime
+  const [layoutMode, setLayoutMode] = useState<"sidebar" | "tabs">(() => {
+    const saved = localStorage.getItem("stockrelated_nav_layout");
+    return saved === "tabs" || saved === "sidebar" ? saved : "sidebar";
+  });
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem("stockrelated_sidebar_collapsed") === "true";
+  });
+
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+
+  const handleToggleLayoutMode = () => {
+    setLayoutMode((prev) => {
+      const next = prev === "sidebar" ? "tabs" : "sidebar";
+      localStorage.setItem("stockrelated_nav_layout", next);
+      return next;
+    });
+  };
+
+  const handleToggleSidebarCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("stockrelated_sidebar_collapsed", String(next));
+      return next;
+    });
+  };
 
   const {
     user,
@@ -105,17 +135,38 @@ const AppContent: React.FC = () => {
   return (
     <TickerHudProvider onNavigateTab={handleNavigateTabWithTicker}>
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        watchlistCount={currentWatchlist.length}
-        watchlist={currentWatchlist}
-        activeWatchlistName={activeWatchlist.name}
-        onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
-        onOpenUserGuide={() => setIsUserGuideOpen(true)}
-      />
+        <Header
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          watchlistCount={currentWatchlist.length}
+          watchlist={currentWatchlist}
+          activeWatchlistName={activeWatchlist.name}
+          onOpenSavedTrades={() => setIsSavedTradesOpen(true)}
+          onOpenUserGuide={() => setIsUserGuideOpen(true)}
+          layoutMode={layoutMode}
+          onToggleLayoutMode={handleToggleLayoutMode}
+          onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+        />
 
-      <main className="flex-1 w-full mx-auto px-4 sm:px-8 lg:px-12 py-6">
+        <div className="flex-1 flex w-full min-h-0">
+          {layoutMode === "sidebar" && (
+            <SidebarNavigation
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              watchlistCount={currentWatchlist.length}
+              activeWatchlistName={activeWatchlist.name}
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={handleToggleSidebarCollapse}
+              isMobileOpen={isMobileSidebarOpen}
+              onCloseMobile={() => setIsMobileSidebarOpen(false)}
+            />
+          )}
+
+          <main className={`flex-1 min-w-0 w-full mx-auto py-6 transition-all ${
+            layoutMode === "sidebar"
+              ? "px-3 sm:px-6 lg:px-8 max-w-[1920px]"
+              : "px-4 sm:px-8 lg:px-12"
+          }`}>
         <div className={activeTab === "put-recommendations" ? "" : "hidden"}>
           <PutRecommendationsViewer
             watchlist={currentWatchlist}
@@ -185,6 +236,7 @@ const AppContent: React.FC = () => {
           <JuniorInvestorAcademy />
         </div>
       </main>
+    </div>
 
       {/* Cloud Firestore Saved Trades Modal */}
       <SavedTradesModal

@@ -1070,6 +1070,11 @@ export interface MacroQuote {
   low52w?: number;
   sparkline?: number[];
   notes?: string;
+  mortgageType?: "fixed" | "arm";
+  mortgageBenchmark?: string;
+  mortgageSpread?: string;
+  mortgageEstRate?: string;
+  mortgageDetail?: string;
 }
 
 export interface MacroHistoricalPoint {
@@ -1129,6 +1134,56 @@ export interface UserWatchlist {
   id: string;
   name: string;
   tickers: string[];
+}
+
+export interface UnemploymentHistoryPoint {
+  date: string; // e.g. "2024-10"
+  label: string; // e.g. "Oct '24"
+  fullPeriod: string; // e.g. "October 2024"
+  rate: number;
+  year: string;
+  period: string;
+}
+
+export interface InflationComponentStats {
+  seriesId: string;
+  name: string; // e.g. "Headline CPI (All Items)" | "Core CPI (Less Food & Energy)"
+  latestPeriod: string; // e.g. "August 2026"
+  indexValue: number;
+  yoyRate: number; // e.g. 3.4
+  momRate: number; // e.g. +0.3
+  prevYearIndex: number;
+  prevMonthIndex: number;
+  description: string;
+}
+
+export interface LaborDepartmentStats {
+  timestamp: string;
+  source: string;
+  sourceUrl: string;
+  unemployment: {
+    seriesId: string;
+    seriesTitle: string;
+    latestPeriod: string;
+    latestRate: number;
+    prevRate: number;
+    momChange: number;
+    twoYearLow: number;
+    twoYearHigh: number;
+    twoYearAvg: number;
+    history: UnemploymentHistoryPoint[];
+    nextReleaseDate: string;
+    nextReleaseTime: string;
+    releaseNote: string;
+  };
+  inflation: {
+    headline: InflationComponentStats;
+    core: InflationComponentStats;
+    nextReleaseDate: string;
+    nextReleaseTime: string;
+    releaseNote: string;
+    fedTarget: number; // 2.0%
+  };
 }
 
 

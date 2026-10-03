@@ -230,7 +230,7 @@ export const MultiStockOverlaidChart: React.FC<MultiStockOverlaidChartProps> = (
                           fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : color}
                           stroke={isSelected ? (isFallback ? "#f59e0b" : color) : isFallback ? "#fef08a" : "#0f172a"}
                           strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                          className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                          className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                         />
                       </g>
                     );

@@ -6109,6 +6109,17 @@ app.get("/api/macro/script", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/api/macro/labor-stats", async (req: Request, res: Response) => {
+  try {
+    const { getLaborDepartmentStats } = await import("./server/macroService");
+    const stats = await getLaborDepartmentStats();
+    res.json({ success: true, ...stats });
+  } catch (err: any) {
+    console.error("Error in /api/macro/labor-stats:", err);
+    res.status(500).json({ success: false, error: err?.message || "Failed to fetch labor department stats" });
+  }
+});
+
 // ==========================================
 // VITE MIDDLEWARE & SERVER STARTUP
 // ==========================================

@@ -1467,7 +1467,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                 fill={isSellLeg ? "#10b981" : isBuyLeg ? "#f59e0b" : isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#06b6d4"}
                                 stroke={isSellLeg ? "#ffffff" : isBuyLeg ? "#ffffff" : isSelected ? (isFallback ? "#f59e0b" : "#06b6d4") : isFallback ? "#fef08a" : "#0f172a"}
                                 strokeWidth={isSelected || isSellLeg || isBuyLeg ? 2.5 : (isFallback ? 2 : 1.5)}
-                                className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                                className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                               />
                             </g>
                           );
@@ -1538,7 +1538,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                   fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
                                   stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
                                   strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                                  className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                                  className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                                 />
                               </g>
                             );
@@ -1754,7 +1754,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                 fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#06b6d4"}
                                 stroke={isSelected ? (isFallback ? "#f59e0b" : "#06b6d4") : isFallback ? "#fef08a" : "#0f172a"}
                                 strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                                className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                                className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                               />
                             </g>
                           );
@@ -1812,7 +1812,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                                   fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
                                   stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
                                   strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                                  className="transition-all duration-150 group-hover:scale-150 group-hover:stroke-white group-hover:stroke-[2px]"
+                                  className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
                                 />
                               </g>
                             );

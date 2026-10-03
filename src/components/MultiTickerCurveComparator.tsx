@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   TrendingUp,
   Search,
@@ -152,7 +152,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
   // Inspector state
   const [inspectedPoint, setInspectedPoint] = useState<any | null>(null);
   const [selectedPointKey, setSelectedPointKey] = useState<string | null>(null);
-  const [persistedTooltip, setPersistedTooltip] = useState<{ label: any; payload: any[] } | null>(null);
+  const lastPayloadRef = useRef<{ label: any; payload: any[] } | null>(null);
 
   const filteredResultsByTicker = useMemo(() => {
     if (!data?.results_by_ticker) return {};
@@ -687,14 +687,6 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
               <ComposedChart
                 data={filteredOverlaidChartData}
                 margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
-                onMouseMove={(e: any) => {
-                  if (e && e.activePayload && e.activePayload.length) {
-                    setPersistedTooltip({
-                      label: e.activeLabel,
-                      payload: e.activePayload,
-                    });
-                  }
-                }}
                 onClick={(e: any) => {
                   if (!e || !e.activePayload || !e.activePayload.length) return;
 
@@ -779,9 +771,13 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                   isAnimationActive={false}
                   active={true}
                   content={({ active, payload, label }) => {
-                    const displayPayload = active && payload && payload.length ? payload : persistedTooltip?.payload;
-                    const displayLabel = active && label ? label : persistedTooltip?.label;
-                    if (!displayPayload || !displayPayload.length) return null;
+                    if (active && payload && payload.length) {
+                      lastPayloadRef.current = { label, payload };
+                    }
+                    const data = lastPayloadRef.current;
+                    if (!data || !data.payload || !data.payload.length) return null;
+                    const displayPayload = data.payload;
+                    const displayLabel = data.label;
                     const rowData = displayPayload[0]?.payload;
                     return (
                       <div className="bg-slate-950 border border-slate-700 rounded-xl p-3 shadow-2xl text-xs max-w-xs space-y-2">

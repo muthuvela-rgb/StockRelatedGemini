@@ -114,6 +114,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
 
   // Overlays & Toggles
   const [showSma20, setShowSma20] = useState(true);
+  const [showDma50, setShowDma50] = useState(true);
   const [showBollinger, setShowBollinger] = useState(true);
   const [showRsiOverlay, setShowRsiOverlay] = useState(false);
   const [showRsiVolumePane, setShowRsiVolumePane] = useState(true);
@@ -269,7 +270,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
     }
   };
 
-  // Enrich bars with 20-day Volume SMA and day direction
+  // Enrich bars with 20-day Volume SMA, day direction, and 50-day Moving Average (50 DMA)
   const enrichedBars = useMemo(() => {
     if (!chartData || !chartData.bars) return [];
     const rawBars = chartData.bars;
@@ -287,10 +288,23 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
       const volumeSma20 = count > 0 ? Math.round(volSum / count) : b.volume;
       const isUpDay = b.close >= (b.open ?? b.close);
 
+      // Calculate 50-day Moving Average (50 DMA)
+      let closeSum = 0;
+      let dma50Count = 0;
+      const dma50StartIdx = Math.max(0, i - 49);
+      for (let k = dma50StartIdx; k <= i; k++) {
+        if (rawBars[k].close > 0) {
+          closeSum += rawBars[k].close;
+          dma50Count++;
+        }
+      }
+      const dma50 = dma50Count > 0 ? Number((closeSum / dma50Count).toFixed(2)) : null;
+
       return {
         ...b,
         volumeSma20,
         isUpDay,
+        dma50,
       };
     });
   }, [chartData]);
@@ -367,6 +381,10 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
       if (showSma20 && b.sma20 !== null) {
         if (b.sma20 > max) max = b.sma20;
         if (b.sma20 < min && b.sma20 > 0) min = b.sma20;
+      }
+      if (showDma50 && b.dma50 !== undefined && b.dma50 !== null) {
+        if (b.dma50 > max) max = b.dma50;
+        if (b.dma50 < min && b.dma50 > 0) min = b.dma50;
       }
     }
 
@@ -762,6 +780,19 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
             <span>20-Day SMA</span>
           </button>
 
+          {/* 50-Day DMA */}
+          <button
+            onClick={() => setShowDma50(!showDma50)}
+            className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 cursor-pointer ${
+              showDma50
+                ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm"
+                : "bg-slate-800/80 text-slate-500 border-slate-700 hover:text-slate-300"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-400 inline-block" />
+            <span>50-Day DMA</span>
+          </button>
+
           {/* Bollinger Bands */}
           <button
             onClick={() => setShowBollinger(!showBollinger)}
@@ -1117,6 +1148,13 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
               </div>
             )}
 
+            {showDma50 && !comparisonMode && (
+              <div className="flex items-center gap-1.5 text-rose-400">
+                <span className="w-3 h-0.5 bg-rose-400 inline-block" />
+                <span>50 DMA</span>
+              </div>
+            )}
+
             {showBollinger && !comparisonMode && (
               <div className="flex items-center gap-1.5 text-sky-400">
                 <span className="w-3 h-0.5 bg-sky-400 border-b border-dashed border-sky-400 inline-block" />
@@ -1211,6 +1249,12 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
                     <span className="text-amber-400">20 SMA:</span>
                     <span className="text-amber-300 font-semibold">${pinnedBar.sma20.toFixed(2)}</span>
+                  </div>
+                )}
+                {showDma50 && pinnedBar.dma50 !== undefined && pinnedBar.dma50 !== null && (
+                  <div className="flex justify-between items-center text-[11px] text-rose-400">
+                    <span>50 DMA:</span>
+                    <span className="font-semibold">${pinnedBar.dma50.toFixed(2)}</span>
                   </div>
                 )}
                 {showBollinger && pinnedBar.bollingerUpper !== null && (
@@ -1426,6 +1470,20 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   />
                 )}
 
+                {/* 50-Day Moving Average (50 DMA) */}
+                {showDma50 && !comparisonMode && (
+                  <Line
+                    yAxisId="price"
+                    type="monotone"
+                    dataKey="dma50"
+                    stroke="#f43f5e"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                    name="50-Day DMA"
+                  />
+                )}
+
                 {/* Primary Closing Price (Line & Gradient Area) */}
                 {!comparisonMode && (
                   <Area
@@ -1526,6 +1584,13 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                             <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
                               <span className="text-amber-400">20 SMA:</span>
                               <span className="text-amber-300 font-semibold">${data.sma20.toFixed(2)}</span>
+                            </div>
+                          )}
+
+                          {showDma50 && data.dma50 !== undefined && data.dma50 !== null && (
+                            <div className="flex justify-between items-center text-[11px] text-rose-400">
+                              <span>50 DMA:</span>
+                              <span className="font-semibold">${data.dma50.toFixed(2)}</span>
                             </div>
                           )}
 

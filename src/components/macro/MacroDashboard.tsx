@@ -19,10 +19,13 @@ import { LiveAssetCards } from "./LiveAssetCards";
 import { HistoricalMacroChart } from "./HistoricalMacroChart";
 import { FedCalendarTable } from "./FedCalendarTable";
 import { MacroResearchPanel } from "./MacroResearchPanel";
-import { MacroIntelligenceResponse, MacroHistoricalPoint } from "../../types";
+import { LaborDepartmentPostcards } from "./LaborDepartmentPostcards";
+import { MacroIntelligenceResponse, MacroHistoricalPoint, LaborDepartmentStats } from "../../types";
 
 export const MacroDashboard: React.FC = () => {
   const [data, setData] = useState<MacroIntelligenceResponse | null>(null);
+  const [laborStats, setLaborStats] = useState<LaborDepartmentStats | null>(null);
+  const [laborLoading, setLaborLoading] = useState<boolean>(true);
   const [historicalData, setHistoricalData] = useState<MacroHistoricalPoint[]>([]);
   const [duration, setDuration] = useState<string>("1y");
   const [loading, setLoading] = useState<boolean>(true);
@@ -48,6 +51,21 @@ export const MacroDashboard: React.FC = () => {
     }
   };
 
+  // Fetch U.S. Labor Department (BLS) Unemployment & Inflation data
+  const fetchLaborStats = async () => {
+    try {
+      setLaborLoading(true);
+      const res = await fetch("/api/macro/labor-stats");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setLaborStats(json);
+    } catch (err) {
+      console.error("Error loading labor stats:", err);
+    } finally {
+      setLaborLoading(false);
+    }
+  };
+
   // Fetch historical series for charts
   const fetchHistoricalSeries = async (dur: string) => {
     try {
@@ -67,6 +85,7 @@ export const MacroDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchMacroIntelligence();
+    fetchLaborStats();
     fetchHistoricalSeries(duration);
   }, []);
 
@@ -127,13 +146,14 @@ export const MacroDashboard: React.FC = () => {
             <button
               onClick={() => {
                 fetchMacroIntelligence();
+                fetchLaborStats();
                 fetchHistoricalSeries(duration);
               }}
-              disabled={loading || historicalLoading}
+              disabled={loading || historicalLoading || laborLoading}
               title="Refresh live data"
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white transition disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-400" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${loading || laborLoading ? "animate-spin text-blue-400" : ""}`} />
             </button>
           </div>
         </div>
@@ -182,12 +202,15 @@ export const MacroDashboard: React.FC = () => {
         onRefresh={() => fetchHistoricalSeries(duration)}
       />
 
-      {/* 3. Deep Research & Analysis Panel */}
+      {/* 3. Official U.S. Labor Department (BLS) Unemployment & Inflation Postcards */}
+      <LaborDepartmentPostcards stats={laborStats} loading={laborLoading} />
+
+      {/* 4. Deep Research & Analysis Panel */}
       {data && (
         <MacroResearchPanel insights={data.insights} />
       )}
 
-      {/* 4. Federal Reserve Calendar & Governor Speeches */}
+      {/* 5. Federal Reserve Calendar & Governor Speeches */}
       {data && (
         <FedCalendarTable events={data.fedEvents} />
       )}

@@ -26,6 +26,8 @@ import {
   Globe,
   RotateCcw,
   Calendar,
+  Menu,
+  LayoutGrid,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -61,6 +63,9 @@ interface HeaderProps {
   activeWatchlistName?: string;
   onOpenSavedTrades?: () => void;
   onOpenUserGuide?: () => void;
+  layoutMode?: "sidebar" | "tabs";
+  onToggleLayoutMode?: () => void;
+  onToggleMobileSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -71,6 +76,9 @@ export const Header: React.FC<HeaderProps> = ({
   activeWatchlistName,
   onOpenSavedTrades,
   onOpenUserGuide,
+  layoutMode = "sidebar",
+  onToggleLayoutMode,
+  onToggleMobileSidebar,
 }) => {
   const { user } = useAuth();
   const { isBollingerFiltered, bollingerRange, resetBollingerRange } = useBollingerFilter();
@@ -227,6 +235,17 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="w-full mx-auto px-4 sm:px-8 lg:px-12">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between py-3.5 lg:py-1.5 lg:min-h-16 gap-3 min-w-0">
           <div className="flex items-center gap-3 min-w-0">
+            {layoutMode === "sidebar" && onToggleMobileSidebar && (
+              <button
+                type="button"
+                onClick={onToggleMobileSidebar}
+                className="md:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer shrink-0"
+                title="Open Navigation Menu"
+              >
+                <Menu className="w-5 h-5 text-cyan-400" />
+              </button>
+            )}
+
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/20 shrink-0">
               <LineChart className="w-5 h-5 text-white" />
             </div>
@@ -245,6 +264,33 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="flex flex-col items-end gap-2 min-w-0">
             <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 text-xs text-slate-400">
+              {/* Reversible Layout Switcher Toggle */}
+              {onToggleLayoutMode && (
+                <button
+                  type="button"
+                  onClick={onToggleLayoutMode}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-semibold transition cursor-pointer shadow-sm active:scale-95"
+                  title={
+                    layoutMode === "sidebar"
+                      ? "Switch to Classic Horizontal Tabs layout"
+                      : "Switch to Modern Collapsible Sidebar layout"
+                  }
+                >
+                  {layoutMode === "sidebar" ? (
+                    <>
+                      <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="hidden sm:inline text-slate-400">Layout:</span>
+                      <span className="text-cyan-300 font-mono">Sidebar</span>
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="hidden sm:inline text-slate-400">Layout:</span>
+                      <span className="text-amber-300 font-mono">Classic Tabs</span>
+                    </>
+                  )}
+                </button>
+              )}
               {/* Global Active Bollinger Filter Pill */}
               {isBollingerFiltered && (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-950/80 border border-teal-500/50 text-teal-300 text-[11px] font-mono shadow-sm shrink-0">
@@ -340,71 +386,73 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Navigation Tabs with Desktop & Mobile Scroll Controls */}
-        <div className="relative border-t border-slate-800/60 py-1.5 flex items-center">
-          {/* Scroll Left Button */}
-          {canScrollLeft && (
-            <button
-              onClick={() => scrollBy(-200)}
-              title="Scroll left"
-              className="absolute left-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          )}
+        {/* Navigation Tabs with Desktop & Mobile Scroll Controls (Shown only in Classic Tabs mode) */}
+        {layoutMode === "tabs" && (
+          <div className="relative border-t border-slate-800/60 py-1.5 flex items-center">
+            {/* Scroll Left Button */}
+            {canScrollLeft && (
+              <button
+                onClick={() => scrollBy(-200)}
+                title="Scroll left"
+                className="absolute left-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
 
-          <div
-            ref={navRef}
-            onScroll={checkScroll}
-            onWheel={handleWheel}
-            className="flex items-center space-x-1.5 overflow-x-auto scroll-smooth py-1 w-full px-1 scrollbar-thin scrollbar-thumb-slate-700 hover:scrollbar-thumb-slate-600 scrollbar-track-transparent"
-          >
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  id={`tab-${tab.id}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-150 cursor-pointer select-none ${
-                    isActive
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400/40"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
-                  <span>{tab.label}</span>
-                  {tab.badge && (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
-                      isActive ? "bg-blue-700/80 text-blue-100" : "bg-slate-800 text-slate-400 border border-slate-700"
-                    }`}>
-                      {tab.badge}
-                    </span>
-                  )}
-                  {tab.count !== undefined && (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                      isActive ? "bg-white text-blue-700" : "bg-slate-800 text-slate-300 border border-slate-700"
-                    }`}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            <div
+              ref={navRef}
+              onScroll={checkScroll}
+              onWheel={handleWheel}
+              className="flex items-center space-x-1.5 overflow-x-auto scroll-smooth py-1 w-full px-1 scrollbar-thin scrollbar-thumb-slate-700 hover:scrollbar-thumb-slate-600 scrollbar-track-transparent"
+            >
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    id={`tab-${tab.id}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all duration-150 cursor-pointer select-none ${
+                      isActive
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400/40"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
+                    <span>{tab.label}</span>
+                    {tab.badge && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                        isActive ? "bg-blue-700/80 text-blue-100" : "bg-slate-800 text-slate-400 border border-slate-700"
+                      }`}>
+                        {tab.badge}
+                      </span>
+                    )}
+                    {tab.count !== undefined && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                        isActive ? "bg-white text-blue-700" : "bg-slate-800 text-slate-300 border border-slate-700"
+                      }`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Scroll Right Button */}
+            {canScrollRight && (
+              <button
+                onClick={() => scrollBy(200)}
+                title="Scroll right"
+                className="absolute right-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
-
-          {/* Scroll Right Button */}
-          {canScrollRight && (
-            <button
-              onClick={() => scrollBy(200)}
-              title="Scroll right"
-              className="absolute right-0 z-10 p-1.5 rounded-lg bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/80 shadow-md backdrop-blur-sm transition-all cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Market Data Provider Status Modal */}

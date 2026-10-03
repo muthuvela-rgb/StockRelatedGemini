@@ -16,6 +16,7 @@ export interface HistoricalBar {
   rsiOversold?: boolean;
   bollingerUpperBreach?: boolean;
   bollingerLowerBreach?: boolean;
+  dma50?: number | null;
 }
 
 export interface ChartTechnicalSummary {

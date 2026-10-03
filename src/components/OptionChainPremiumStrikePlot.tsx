@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -165,7 +165,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
   const [internalRsiRange, setInternalRsiRange] = useState<[number, number]>([0, 100]);
   const bollingerContext = useBollingerFilter();
   const [internalBollingerRange, setInternalBollingerRange] = useState<[number, number]>([-20, 120]);
-  const [persistedTooltip, setPersistedTooltip] = useState<{ label: any; payload: any[] } | null>(null);
+  const lastPayloadRef = useRef<{ label: any; payload: any[] } | null>(null);
 
   const activeDeltaRange = deltaRange || internalDeltaRange;
   const handleDeltaChange = (newRange: [number, number]) => {
@@ -849,14 +849,6 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             <LineChart
               data={allExpChartData}
               margin={{ top: 15, right: 30, left: 10, bottom: 25 }}
-              onMouseMove={(e: any) => {
-                if (e && e.activePayload && e.activePayload.length) {
-                  setPersistedTooltip({
-                    label: e.activeLabel,
-                    payload: e.activePayload,
-                  });
-                }
-              }}
               onClick={(e: any) => {
                 if (!e || !e.activePayload || !e.activePayload.length) return;
                 let targetContract: OptionGreeks | null = null;
@@ -945,9 +937,13 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 cursor={false}
                 active={true}
                 content={({ active, payload, label }) => {
-                  const displayPayload = active && payload && payload.length ? payload : persistedTooltip?.payload;
-                  const displayLabel = active && label ? label : persistedTooltip?.label;
-                  if (!displayPayload || !displayPayload.length) return null;
+                  if (active && payload && payload.length) {
+                    lastPayloadRef.current = { label, payload };
+                  }
+                  const data = lastPayloadRef.current;
+                  if (!data || !data.payload || !data.payload.length) return null;
+                  const displayPayload = data.payload;
+                  const displayLabel = data.label;
 
                   return (
                     <div className="bg-slate-950/95 border border-slate-700 rounded-xl p-3 shadow-2xl backdrop-blur-md text-xs space-y-2 max-w-xs z-50">
@@ -1075,20 +1071,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                         </g>
                       );
                     }) as any}
-                    activeDot={{
-                      r: 6,
-                      fill: color,
-                      stroke: "#ffffff",
-                      strokeWidth: 2,
-                      cursor: "pointer",
-                      onClick: (_, event: any) => {
-                        const payload = event?.payload;
-                        const contract = payload?.[`${exp}_contract`];
-                        if (contract && onSelectContract) {
-                          onSelectContract(contract);
-                        }
-                      },
-                    }}
+                    activeDot={false}
                     connectNulls
                   />
                 );
@@ -1111,14 +1094,6 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
             <AreaChart
               data={singleExpChartData}
               margin={{ top: 15, right: 45, left: 10, bottom: 25 }}
-              onMouseMove={(e: any) => {
-                if (e && e.activePayload && e.activePayload.length) {
-                  setPersistedTooltip({
-                    label: e.activeLabel,
-                    payload: e.activePayload,
-                  });
-                }
-              }}
               onClick={(e: any) => {
                 const contract = e?.activePayload?.[0]?.payload?.contract;
                 if (contract && onSelectContract) {
@@ -1192,8 +1167,12 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 cursor={false}
                 active={true}
                 content={({ active, payload }) => {
-                  const displayPayload = active && payload && payload.length ? payload : persistedTooltip?.payload;
-                  if (!displayPayload || !displayPayload.length) return null;
+                  if (active && payload && payload.length) {
+                    lastPayloadRef.current = { label: "", payload };
+                  }
+                  const data = lastPayloadRef.current;
+                  if (!data || !data.payload || !data.payload.length) return null;
+                  const displayPayload = data.payload;
                   const d = displayPayload[0].payload;
                   return (
                     <div
@@ -1315,19 +1294,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                     </g>
                   );
                 }) as any}
-                activeDot={{
-                  r: 6,
-                  fill: "#ffffff",
-                  stroke: tab === "puts" ? "#f43f5e" : "#10b981",
-                  strokeWidth: 2,
-                  cursor: "pointer",
-                  onClick: (_, event: any) => {
-                    const payload = event?.payload;
-                    if (payload?.contract && onSelectContract) {
-                      onSelectContract(payload.contract);
-                    }
-                  },
-                }}
+                activeDot={false}
               />
 
               {/* Ask Curve (Left Axis) */}
@@ -1340,6 +1307,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                 strokeDasharray="2 2"
                 strokeWidth={1.5}
                 dot={false}
+                activeDot={false}
               />
 
               {/* Annualized Cash Secured Return Curve (Right Axis) */}
@@ -1365,19 +1333,7 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
                     }
                     return null;
                   }) as any}
-                  activeDot={{
-                    r: 6,
-                    fill: "#10b981",
-                    stroke: "#064e3b",
-                    strokeWidth: 2,
-                    cursor: "pointer",
-                    onClick: (_, event: any) => {
-                      const payload = event?.payload;
-                      if (payload?.contract && onSelectContract) {
-                        onSelectContract(payload.contract);
-                      }
-                    },
-                  }}
+                  activeDot={false}
                 />
               )}
               {singleExpChartData.length > 5 && (
