@@ -55,6 +55,7 @@ import {
 } from "../types/stockChart";
 import { CompanyProfileCard } from "./CompanyProfileCard";
 import { TableTopScrollbar } from "./TableTopScrollbar";
+import { OptionPremiumExpirationCurve } from "./OptionPremiumExpirationCurve";
 
 interface StockChartsViewerProps {
   watchlist?: string[];
@@ -1311,7 +1312,40 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   if (e && e.activePayload && e.activePayload.length > 0) {
                     const clicked = e.activePayload[0].payload as HistoricalBar & Record<string, any>;
                     if (clicked && clicked.date) {
-                      setPinnedBar((prev) => (prev?.date === clicked.date ? null : clicked));
+                      // Extract the D3 price scale to invert vertical pixel position back into standard dollar price
+                      const priceScale = e.yAxisMap?.price;
+                      let clickedPrice = clicked.close;
+
+                      if (priceScale && typeof priceScale.invert === "function" && typeof e.chartY === "number") {
+                        const invertedVal = priceScale.invert(e.chartY);
+                        if (!isNaN(invertedVal) && isFinite(invertedVal)) {
+                          clickedPrice = invertedVal;
+                        }
+                      } else if (Array.isArray(yDomain) && typeof yDomain[0] === "number" && typeof yDomain[1] === "number" && typeof e.chartY === "number") {
+                        // High-accuracy linear interpolation fallback
+                        // Default Recharts top/bottom margins of 10px inside h-[490px] container
+                        const minPrice = yDomain[0];
+                        const maxPrice = yDomain[1];
+                        const plotHeight = 470; // 490px total height - 20px margins
+                        const relativeY = Math.max(0, Math.min(plotHeight, e.chartY - 10));
+                        const pct = relativeY / plotHeight;
+                        const fallbackVal = maxPrice - (pct * (maxPrice - minPrice));
+                        if (!isNaN(fallbackVal) && isFinite(fallbackVal)) {
+                          clickedPrice = fallbackVal;
+                        }
+                      }
+
+                      setPinnedBar((prev) => {
+                        // Toggle off if they double-clicked the exact same spot, otherwise pin to new coordinates
+                        const prevPrice = prev ? (prev.clickedPrice !== undefined ? prev.clickedPrice : prev.close) : 0;
+                        if (prev?.date === clicked.date && Math.abs(prevPrice - clickedPrice) < 0.1) {
+                          return null;
+                        }
+                        return {
+                          ...clicked,
+                          clickedPrice,
+                        };
+                      });
                     }
                   }
                 }}
@@ -1683,6 +1717,15 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
           )}
         </div>
       </div>
+
+      {/* Click-Triggered Options Expiration Premium & Yield Curve Panel */}
+      {pinnedBar && chartData && (
+        <OptionPremiumExpirationCurve
+          ticker={chartData.primaryTicker}
+          pinnedBar={pinnedBar}
+          onClose={() => setPinnedBar(null)}
+        />
+      )}
 
       {/* Dedicated Synchronized RSI & Volume Sub-Pane */}
       {showRsiVolumePane && chartData && chartData.bars && (
