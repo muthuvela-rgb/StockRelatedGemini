@@ -1316,17 +1316,26 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                       const priceScale = e.yAxisMap?.price;
                       let clickedPrice = clicked.close;
 
-                      if (priceScale && typeof priceScale.invert === "function" && typeof e.chartY === "number") {
-                        const invertedVal = priceScale.invert(e.chartY);
+                      let scaleFn = null;
+                      if (priceScale) {
+                        if (typeof priceScale.invert === "function") {
+                          scaleFn = priceScale;
+                        } else if (priceScale.scale && typeof priceScale.scale.invert === "function") {
+                          scaleFn = priceScale.scale;
+                        }
+                      }
+
+                      if (scaleFn && typeof e.chartY === "number") {
+                        const invertedVal = scaleFn.invert(e.chartY);
                         if (!isNaN(invertedVal) && isFinite(invertedVal)) {
                           clickedPrice = invertedVal;
                         }
                       } else if (Array.isArray(yDomain) && typeof yDomain[0] === "number" && typeof yDomain[1] === "number" && typeof e.chartY === "number") {
                         // High-accuracy linear interpolation fallback
-                        // Default Recharts top/bottom margins of 10px inside h-[490px] container
+                        // Default Recharts top/bottom margins of 10px inside h-[490px] container, accounting for brush and x-axis space
                         const minPrice = yDomain[0];
                         const maxPrice = yDomain[1];
-                        const plotHeight = 470; // 490px total height - 20px margins
+                        const plotHeight = 410; // 490px total height - 80px for margins, x-axis ticks, brush
                         const relativeY = Math.max(0, Math.min(plotHeight, e.chartY - 10));
                         const pct = relativeY / plotHeight;
                         const fallbackVal = maxPrice - (pct * (maxPrice - minPrice));

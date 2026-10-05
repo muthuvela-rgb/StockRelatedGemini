@@ -60,6 +60,33 @@ import {
   TableSortHeader,
 } from "./HierarchicalSortControl";
 
+const COMPANY_COLORS = [
+  "#38bdf8", // Sky Blue
+  "#34d399", // Emerald
+  "#f43f5e", // Rose
+  "#fbbf24", // Amber
+  "#a855f7", // Purple
+  "#ec4899", // Pink
+  "#f97316", // Orange
+  "#84cc16", // Lime
+  "#6366f1", // Indigo
+  "#06b6d4", // Cyan
+  "#14b8a6", // Teal
+  "#d946ef", // Fuchsia
+  "#eab308", // Yellow
+  "#fda4af", // Light Rose
+];
+
+export const getTickerColor = (ticker: string): string => {
+  if (!ticker) return "#06b6d4";
+  let hash = 0;
+  for (let i = 0; i < ticker.length; i++) {
+    hash = ticker.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % COMPANY_COLORS.length;
+  return COMPANY_COLORS[idx];
+};
+
 const PUT_SCANNER_COLUMNS: ColumnDefinition<keyof PutOptionRecord>[] = [
   {
     key: "moneyness_pct",
@@ -239,6 +266,44 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
   const [records, setRecords] = useState<PutOptionRecord[]>([]);
   const [scannedSummary, setScannedSummary] = useState<any[]>([]);
   const [inspectedChartPoint, setInspectedChartPoint] = useState<any | null>(null);
+  const [hoveredTickerForPlot, setHoveredTickerForPlot] = useState<string | null>(null);
+  const [selectedTickerForPlotHighlight, setSelectedTickerForPlotHighlight] = useState<string | null>(null);
+
+  const [prosperoDigest, setProsperoDigest] = useState<any | null>(null);
+  const [syncingProspero, setSyncingProspero] = useState<boolean>(false);
+  const [showProsperoPanel, setShowProsperoPanel] = useState<boolean>(true);
+
+  // Fetch Prospero signals on load
+  useEffect(() => {
+    fetch("/api/newsletter/prospero/signals")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.macroRegime) {
+          setProsperoDigest(data);
+        }
+      })
+      .catch((err) => console.error("Error loading Prospero signals:", err));
+  }, []);
+
+  const handleSyncProspero = async () => {
+    setSyncingProspero(true);
+    try {
+      const res = await fetch("/api/newsletter/prospero/sync", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data && data.success && data.digest) {
+        setProsperoDigest(data.digest);
+      } else {
+        alert(data.error || "Failed to sync Prospero newsletter.");
+      }
+    } catch (err) {
+      console.error("Error syncing Prospero newsletter:", err);
+      alert("Failed to sync newsletter due to a network or server error.");
+    } finally {
+      setSyncingProspero(false);
+    }
+  };
 
   const handleScan = async () => {
     setLoading(true);
@@ -1021,6 +1086,162 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
         )}
       </div>
 
+      {/* Prospero.ai Newsletter Intelligence & Institutional Flow HUD */}
+      {prosperoDigest && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl backdrop-blur-sm relative overflow-hidden">
+          {/* Subtle decorative background gradient */}
+          <div className="absolute top-0 right-0 w-80 h-32 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="flex flex-col md:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/10 ring-1 ring-white/10 shrink-0">
+                <Sparkles className="w-4.5 h-4.5 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm font-bold text-white font-display tracking-tight">
+                    Prospero.ai Substack Intelligence
+                  </h2>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
+                    Scoring Engine Feed
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium truncate max-w-xl" title={prosperoDigest.title}>
+                  Latest Issue: "{prosperoDigest.title}"
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 self-end md:self-auto">
+              {prosperoDigest.publishDate && (
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Published: {new Date(prosperoDigest.publishDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleSyncProspero}
+                disabled={syncingProspero}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-xs font-semibold text-slate-200 border border-slate-700/80 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                title="Fetch latest posts from Substack RSS and parse signals with Gemini"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${syncingProspero ? "animate-spin" : ""}`} />
+                <span>{syncingProspero ? "Analyzing..." : "Sync Newsletter"}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Left Side: Macro Regime & Summary */}
+            <div className="lg:col-span-4 bg-slate-950/40 p-3.5 rounded-xl border border-slate-850 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">
+                  Newsletter Macro Regime Bias
+                </span>
+                
+                <div className="mt-2.5 flex items-center gap-2">
+                  {prosperoDigest.macroRegime === "BULLISH" && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      BULLISH OUTLOOK
+                    </span>
+                  )}
+                  {prosperoDigest.macroRegime === "BEARISH" && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                      BEARISH RISK
+                    </span>
+                  )}
+                  {(prosperoDigest.macroRegime === "NEUTRAL" || prosperoDigest.macroRegime === "HIGH_VOLATILITY") && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      NEUTRAL / CHOPPY
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] leading-relaxed text-slate-300 mt-3 font-normal">
+                  {prosperoDigest.macroSummary}
+                </p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-slate-800/60 text-[10px] text-slate-500">
+                💡 Aligned safest short puts receive score boosts (+10 for accumulation), while distribution triggers penalties (-15).
+              </div>
+            </div>
+
+            {/* Right Side: Ticker Signals List */}
+            <div className="lg:col-span-8 flex flex-col justify-between">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold mb-2">
+                Active Institutional Net Flow & Signals
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {prosperoDigest.tickerSignals && prosperoDigest.tickerSignals.map((sig: any) => {
+                  const isBull = sig.sentiment === "BULLISH";
+                  const isBear = sig.sentiment === "BEARISH";
+                  const instFlow = sig.prosperoMetrics?.institutionalFlow || "NEUTRAL";
+                  const downsideAlert = sig.prosperoMetrics?.downsideRiskAlert || false;
+
+                  return (
+                    <div 
+                      key={sig.ticker}
+                      className="bg-slate-950/40 p-3 rounded-xl border border-slate-850 hover:border-slate-800 transition-colors flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-sm text-white font-mono">{sig.ticker}</span>
+                            {isBull && (
+                              <span className="text-[10px] text-emerald-400 font-mono font-medium">Bullish</span>
+                            )}
+                            {isBear && (
+                              <span className="text-[10px] text-rose-400 font-mono font-medium">Bearish</span>
+                            )}
+                            {!isBull && !isBear && (
+                              <span className="text-[10px] text-slate-400 font-mono font-medium">Neutral</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {instFlow === "ACCUMULATION" && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-semibold">
+                                INFLOW
+                              </span>
+                            )}
+                            {instFlow === "DISTRIBUTION" && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono font-semibold">
+                                OUTFLOW
+                              </span>
+                            )}
+                            {downsideAlert && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-semibold">
+                                RISK
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 leading-normal mt-2 font-normal">
+                          {sig.keyRationale}
+                        </p>
+                      </div>
+
+                      <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 border-t border-slate-850/60 pt-2 font-mono">
+                        <span>Conviction: {sig.convictionScore > 0 ? `+${sig.convictionScore}` : sig.convictionScore}</span>
+                        <span className={instFlow === "ACCUMULATION" ? "text-emerald-400" : instFlow === "DISTRIBUTION" ? "text-rose-400" : ""}>
+                          {instFlow === "ACCUMULATION" ? "Score +10" : instFlow === "DISTRIBUTION" ? "Score -15" : "Neutral"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
@@ -1708,7 +1929,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       <Scatter
                         yAxisId="left"
                         dataKey="premium"
-                        name="Option Premium ($)"
+                        name="Option Premium ($) (Circles)"
                         fill="#06b6d4"
                         shape={((props: any): any => {
                           const { cx, cy, payload, key: rechartsKey, index } = props;
@@ -1727,34 +1948,43 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                             payload?.used_fallback ??
                             payload?.usedFallback
                           );
+                          const tColor = getTickerColor(payload?.ticker);
+
+                          // Interactive highlighting/dimming based on legend hover & selection
+                          const isHighlighted = (selectedTickerForPlotHighlight === null && hoveredTickerForPlot === null) ||
+                            payload?.ticker === selectedTickerForPlotHighlight ||
+                            payload?.ticker === hoveredTickerForPlot;
+                          const pointOpacity = isHighlighted ? 1 : 0.15;
+                          const dynamicDotRadius = isSelected ? 7 : (isFallback ? 5.5 : 5);
 
                           return (
                             <g
                               key={fallbackKey}
-                              className="cursor-pointer group"
+                              className="cursor-pointer transition-opacity duration-200"
+                              style={{ opacity: pointOpacity }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setInspectedChartPoint({
                                   ...payload,
-                                  themeColor: isFallback ? "#f59e0b" : "#06b6d4",
+                                  themeColor: isFallback ? "#f59e0b" : tColor,
                                 });
                               }}
                             >
                               <circle cx={cx} cy={cy} r={14} fill="transparent" />
                               {isSelected && (
-                                <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#38bdf8"} strokeWidth={2.5} className="animate-pulse" />
+                                <circle cx={cx} cy={cy} r={dynamicDotRadius + 4} fill="none" stroke={isFallback ? "#f59e0b" : tColor} strokeWidth={2.5} className="animate-pulse" />
                               )}
                               {isFallback && (
-                                <circle cx={cx} cy={cy} r={7.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
+                                <circle cx={cx} cy={cy} r={dynamicDotRadius + 2.5} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                               )}
                               <circle
                                 cx={cx}
                                 cy={cy}
-                                r={isSelected ? 6 : (isFallback ? 4.5 : 4)}
-                                fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#06b6d4"}
-                                stroke={isSelected ? (isFallback ? "#f59e0b" : "#06b6d4") : isFallback ? "#fef08a" : "#0f172a"}
+                                r={dynamicDotRadius}
+                                fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : tColor}
+                                stroke={isSelected ? (isFallback ? "#f59e0b" : tColor) : isFallback ? "#fef08a" : "#0f172a"}
                                 strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                                className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
+                                className="transition-all duration-150 hover:scale-125"
                               />
                             </g>
                           );
@@ -1766,7 +1996,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         <Scatter
                           yAxisId="right"
                           dataKey="returnCashSecured"
-                          name="Annualized % Return (Cash Secured)"
+                          name="Annualized % Return (Cash Secured) (Squares)"
                           fill="#10b981"
                           shape={((props: any): any => {
                             const { cx, cy, payload, key: rechartsKey, index } = props;
@@ -1785,34 +2015,46 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                               payload?.used_fallback ??
                               payload?.usedFallback
                             );
+                            const tColor = getTickerColor(payload?.ticker);
+
+                            // Interactive highlighting/dimming based on legend hover & selection
+                            const isHighlighted = (selectedTickerForPlotHighlight === null && hoveredTickerForPlot === null) ||
+                              payload?.ticker === selectedTickerForPlotHighlight ||
+                              payload?.ticker === hoveredTickerForPlot;
+                            const pointOpacity = isHighlighted ? 1 : 0.15;
+
+                            const size = isSelected ? 12 : (isFallback ? 9.5 : 8.5);
+                            const offset = size / 2;
 
                             return (
                               <g
                                 key={fallbackKey}
-                                className="cursor-pointer group"
+                                className="cursor-pointer transition-opacity duration-200"
+                                style={{ opacity: pointOpacity }}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setInspectedChartPoint({
                                     ...payload,
-                                    themeColor: isFallback ? "#f59e0b" : "#10b981",
+                                    themeColor: isFallback ? "#f59e0b" : tColor,
                                   });
                                 }}
                               >
                                 <circle cx={cx} cy={cy} r={14} fill="transparent" />
                                 {isSelected && (
-                                  <circle cx={cx} cy={cy} r={9} fill="none" stroke={isFallback ? "#f59e0b" : "#34d399"} strokeWidth={2.5} className="animate-pulse" />
+                                  <rect x={cx - offset - 2} y={cy - offset - 2} width={size + 4} height={size + 4} fill="none" stroke={isFallback ? "#f59e0b" : tColor} strokeWidth={2.5} className="animate-pulse" />
                                 )}
                                 {isFallback && (
-                                  <circle cx={cx} cy={cy} r={7} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
+                                  <rect x={cx - offset - 1.5} y={cy - offset - 1.5} width={size + 3} height={size + 3} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="2 2" />
                                 )}
-                                <circle
-                                  cx={cx}
-                                  cy={cy}
-                                  r={isSelected ? 6 : (isFallback ? 4 : 3.5)}
-                                  fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : "#10b981"}
-                                  stroke={isSelected ? (isFallback ? "#f59e0b" : "#10b981") : isFallback ? "#fef08a" : "#0f172a"}
+                                <rect
+                                  x={cx - offset}
+                                  y={cy - offset}
+                                  width={size}
+                                  height={size}
+                                  fill={isSelected ? "#ffffff" : isFallback ? "#f59e0b" : tColor}
+                                  stroke={isSelected ? (isFallback ? "#f59e0b" : tColor) : isFallback ? "#fef08a" : "#0f172a"}
                                   strokeWidth={isSelected ? 2.5 : (isFallback ? 2 : 1.5)}
-                                  className="transition-colors duration-150 group-hover:fill-white group-hover:stroke-white group-hover:stroke-[2px]"
+                                  className="transition-all duration-150 hover:scale-125"
                                 />
                               </g>
                             );
@@ -1832,6 +2074,55 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
+
+                {/* Ticker Color Map Key Legend with Hover & Click Highlighting */}
+                {uniqueTickers.length > 1 && (
+                  <div className="mt-4 p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-wrap items-center justify-center gap-2 shadow-inner">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mr-2 block w-full text-center sm:w-auto">
+                      Highlight Stock Plot:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTickerForPlotHighlight(null)}
+                      onMouseEnter={() => setHoveredTickerForPlot(null)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold font-mono transition-all border cursor-pointer ${
+                        selectedTickerForPlotHighlight === null
+                          ? "bg-slate-800 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/10"
+                          : "bg-slate-950/60 text-slate-400 border-slate-800/80 hover:text-white"
+                      }`}
+                    >
+                      Show All
+                    </button>
+                    {uniqueTickers.map((t) => {
+                      const color = getTickerColor(t);
+                      const isSel = selectedTickerForPlotHighlight === t;
+                      const isGov = hoveredTickerForPlot === t;
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setSelectedTickerForPlotHighlight(isSel ? null : t)}
+                          onMouseEnter={() => setHoveredTickerForPlot(t)}
+                          onMouseLeave={() => setHoveredTickerForPlot(null)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold font-mono transition-all border cursor-pointer ${
+                            isSel
+                              ? "bg-slate-800 text-white shadow-sm"
+                              : "bg-slate-950/60 text-slate-400 hover:text-white hover:border-slate-700"
+                          }`}
+                          style={{
+                            borderColor: isSel || isGov ? color : "rgba(30, 41, 59, 0.8)",
+                          }}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span>{t}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Point Inspector */}
                 {inspectedChartPoint && (

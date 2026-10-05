@@ -1,0 +1,52 @@
+{
+  "title": "Prospero.ai Macro Flow and Institutional Accumulation Monitor",
+  "publishDate": "2026-10-05T05:21:30.293Z",
+  "macroRegime": "BULLISH",
+  "macroSummary": "Institutional dark pool net flow indicates heavy accumulation in key tech clusters. Broad market momentum remains supportive of short-put cash yield strategies, as long as strikes are kept below Bollinger lower support boundaries. Recommended focus lies in hyper-scalers showing consistent net accumulation.",
+  "tickerSignals": [
+    {
+      "ticker": "NVDA",
+      "sentiment": "BULLISH",
+      "convictionScore": 0.9,
+      "prosperoMetrics": {
+        "institutionalFlow": "ACCUMULATION",
+        "downsideRiskAlert": false,
+        "upsideBreakoutAlert": true
+      },
+      "keyRationale": "Net institutional net accumulation continues to pace at 5-day highs. Dark pool blocks indicate massive buyer interest at major Fibonacci retracements."
+    },
+    {
+      "ticker": "TSLA",
+      "sentiment": "NEUTRAL",
+      "convictionScore": 0.2,
+      "prosperoMetrics": {
+        "institutionalFlow": "NEUTRAL",
+        "downsideRiskAlert": false,
+        "upsideBreakoutAlert": false
+      },
+      "keyRationale": "Retail volume remains high but institutional net flow shows mixed distribution and accumulation near key moving average support."
+    },
+    {
+      "ticker": "META",
+      "sentiment": "BULLISH",
+      "convictionScore": 0.75,
+      "prosperoMetrics": {
+        "institutionalFlow": "ACCUMULATION",
+        "downsideRiskAlert": false,
+        "upsideBreakoutAlert": false
+      },
+      "keyRationale": "Steady buyer accumulation inside dark pools with stable option implied volatility, supporting conservative short-put yield premium harvesting."
+    },
+    {
+      "ticker": "SNOW",
+      "sentiment": "BEARISH",
+      "convictionScore": -0.7,
+      "prosperoMetrics": {
+        "institutionalFlow": "DISTRIBUTION",
+        "downsideRiskAlert": true,
+        "upsideBreakoutAlert": false
+      },
+      "keyRationale": "Heavy institutional distribution observed over the last two quarters. Retracing key level; option strikes should be placed at least 15% out-of-the-money."
+    }
+  ]
+}

@@ -38,6 +38,12 @@ import {
   screenTickerCanslim,
   CanslimScreenResponse,
 } from "./server/canslim";
+import {
+  loadProsperoDigests,
+  syncProsperoWithGemini,
+  ProsperoDigest,
+  ProsperoTickerSignal,
+} from "./server/prosperoService";
 
 const app = express();
 const PORT = 3000;
@@ -1797,6 +1803,45 @@ app.get("/api/universes", (req: Request, res: Response) => {
 app.get("/api/market-data-status", (req: Request, res: Response) => {
   const info = getMarketDataProviderInfo();
   res.json(info);
+});
+
+// --- PROSPERO.AI NEWSLETTER INTEGRATION ENDPOINTS ---
+
+// Get active parsed signals and macro outlook
+app.get("/api/newsletter/prospero/signals", (req: Request, res: Response) => {
+  try {
+    const digest = loadProsperoDigests();
+    res.json(digest);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to load Prospero signals" });
+  }
+});
+
+// Trigger feed poll and parsing with Gemini
+app.post("/api/newsletter/prospero/sync", async (req: Request, res: Response) => {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    const updatedDigest = await syncProsperoWithGemini(apiKey);
+    res.json({
+      success: true,
+      message: "Successfully synchronized with Prospero.ai Substack newsletter and extracted institutional signals.",
+      digest: updatedDigest
+    });
+  } catch (e: any) {
+    console.error("Error in /api/newsletter/prospero/sync:", e);
+    res.status(500).json({ error: e.message || "Synchronization and Gemini parsing failed" });
+  }
+});
+
+// Get raw/cleaned feed posts from RSS
+app.get("/api/newsletter/prospero/raw", async (req: Request, res: Response) => {
+  try {
+    const { fetchProsperoRssFeed } = require("./server/prosperoService");
+    const feed = await fetchProsperoRssFeed();
+    res.json({ feed });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to load raw feed" });
+  }
 });
 
 // --- MARKET SENTIMENT & VIX / FEAR & GREED AGGREGATOR ---
@@ -4574,7 +4619,8 @@ function computePutRecommendationScore(
   spreadPct: number,
   openInterest: number,
   earningsInfo?: EarningsTimingInfo | null,
-  secFilingImpact?: SecFilingScoreImpact | null
+  secFilingImpact?: SecFilingScoreImpact | null,
+  prosperoSignal?: ProsperoTickerSignal | null
 ): {
   score: number;
   earningsScoreAdj: number;
@@ -4582,6 +4628,9 @@ function computePutRecommendationScore(
   earningsFlag: string | null;
   secScoreAdj: number;
   secFilingNote: string;
+  prosperoScoreAdj: number;
+  prosperoNote: string;
+  prosperoFlag: string | null;
 } {
   let score = 50;
 
@@ -4706,8 +4755,39 @@ function computePutRecommendationScore(
     score += secScoreAdj;
   }
 
+  // PROSPERO NEWSLETTER SCORING INTEGRATION:
+  let prosperoScoreAdj = 0;
+  let prosperoNote = "";
+  let prosperoFlag: string | null = null;
+  if (prosperoSignal) {
+    if (prosperoSignal.sentiment === "BULLISH" && prosperoSignal.prosperoMetrics.institutionalFlow === "ACCUMULATION") {
+      prosperoScoreAdj = 10;
+      prosperoNote = "Prospero: Institutional Net Accumulation (+10)";
+      prosperoFlag = "Prospero Institutional Accumulation";
+    } else if (prosperoSignal.sentiment === "BULLISH") {
+      prosperoScoreAdj = 5;
+      prosperoNote = "Prospero: Bullish options trend (+5)";
+      prosperoFlag = "Prospero Bullish Flow";
+    } else if (prosperoSignal.sentiment === "BEARISH" || prosperoSignal.prosperoMetrics.downsideRiskAlert) {
+      prosperoScoreAdj = -15;
+      prosperoNote = "Prospero: Institutional Net Distribution / Downside Risk Alert (-15)";
+      prosperoFlag = "⚠️ Prospero Downside Risk";
+    }
+    score += prosperoScoreAdj;
+  }
+
   const finalScore = Math.max(10, Math.min(99, Math.round(score)));
-  return { score: finalScore, earningsScoreAdj, earningsNote, earningsFlag, secScoreAdj, secFilingNote };
+  return {
+    score: finalScore,
+    earningsScoreAdj,
+    earningsNote,
+    earningsFlag,
+    secScoreAdj,
+    secFilingNote,
+    prosperoScoreAdj,
+    prosperoNote,
+    prosperoFlag
+  };
 }
 
 app.post("/api/put-recommendations", async (req: Request, res: Response) => {
@@ -4765,6 +4845,14 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
     let totalContractsEvaluated = 0;
     const today = new Date();
 
+    const prosperoDigest = loadProsperoDigests();
+    const prosperoSignalMap = new Map<string, ProsperoTickerSignal>();
+    if (prosperoDigest && prosperoDigest.tickerSignals) {
+      for (const sig of prosperoDigest.tickerSignals) {
+        prosperoSignalMap.set(sig.ticker.toUpperCase(), sig);
+      }
+    }
+
     // Process tickers in parallel batches of 4
     const batchSize = 4;
     for (let b = 0; b < tickerList.length; b += batchSize) {
@@ -4773,6 +4861,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
       await Promise.all(
         batch.map(async (ticker) => {
           try {
+            const prosperoSignal = prosperoSignalMap.get(ticker.toUpperCase()) || null;
             // Concurrently fetch options chain, technicals, and SEC filing impact
             const [optData, technicals, secFilingImpact] = await Promise.all([
               fetchMarketOptions(ticker),
@@ -4808,6 +4897,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
               bollinger_zone: bollingerZone,
               dist_to_52w_high_pct: distTo52wHigh,
               sec_filing_impact: secFilingImpact || null,
+              prospero_signal: prosperoSignal || null,
             };
 
             const rawExpirations: number[] = optData.expirationDates || [];
@@ -4962,7 +5052,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   riskTierLabel = "Medium Risk (Balanced)";
                 }
 
-                const scoreResult = computePutRecommendationScore(
+                 const scoreResult = computePutRecommendationScore(
                   riskTier,
                   annualReturnCash,
                   pop,
@@ -4975,7 +5065,8 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   spreadPct,
                   oi,
                   earningsInfo,
-                  secFilingImpact
+                  secFilingImpact,
+                  prosperoSignal
                 );
 
                 if (scoreResult.earningsFlag) {
@@ -4983,6 +5074,9 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                 }
                 if (secFilingImpact?.flags && secFilingImpact.flags.length > 0) {
                   flags.push(...secFilingImpact.flags);
+                }
+                if (scoreResult.prosperoFlag) {
+                  flags.push(scoreResult.prosperoFlag);
                 }
 
                 // Algorithmic Trade Rationale with RSI & Bollinger Band details
@@ -5008,6 +5102,9 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                 }
                 if (secFilingImpact?.rationale) {
                   rationale += ` • SEC Filing Impact (${secFilingImpact.sentiment}${secFilingImpact.score_impact >= 0 ? ` +${secFilingImpact.score_impact}` : ` ${secFilingImpact.score_impact}`}): ${secFilingImpact.rationale}`;
+                }
+                if (scoreResult.prosperoNote) {
+                  rationale += ` • Prospero.ai Signal: ${scoreResult.prosperoNote}`;
                 }
 
                 const item = {
@@ -5102,6 +5199,16 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                     label: scoreResult.earningsNote,
                   } : undefined,
                   sec_filing_impact: secFilingImpact || undefined,
+                  prospero_impact: prosperoSignal ? {
+                    sentiment: prosperoSignal.sentiment,
+                    conviction: prosperoSignal.convictionScore,
+                    institutional_flow: prosperoSignal.prosperoMetrics.institutionalFlow,
+                    downside_risk_alert: prosperoSignal.prosperoMetrics.downsideRiskAlert,
+                    upside_breakout_alert: prosperoSignal.prosperoMetrics.upsideBreakoutAlert,
+                    score_impact: scoreResult.prosperoScoreAdj,
+                    label: scoreResult.prosperoNote,
+                    rationale: prosperoSignal.keyRationale
+                  } : undefined,
                   rationale,
                   strategy_flags: flags,
                 };
