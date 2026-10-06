@@ -201,7 +201,7 @@ You MUST respond strictly in valid JSON matching this schema:
 }`;
 
   const ai = new GoogleGenAI({ apiKey });
-  const modelsToTry = ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-1.5-flash"];
+  const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
   let parsedDigest: ProsperoDigest | null = null;
 
   for (const modelName of modelsToTry) {

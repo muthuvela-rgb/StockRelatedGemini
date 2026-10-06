@@ -53,7 +53,8 @@ export type ActiveTab =
   | "earnings-transcripts"
   | "watchlist"
   | "junior-academy"
-  | "access-audit";
+  | "access-audit"
+  | "gemini-copilot";
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -179,6 +180,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "earnings-transcripts" as ActiveTab, label: "Earnings Transcripts", icon: MessageSquareQuote, badge: "Alpha Vantage" },
     { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount, badge: activeWatchlistName || "3 Lists" },
     { id: "junior-academy" as ActiveTab, label: "Junior Academy", icon: GraduationCap, badge: "Age 11+" },
+    { id: "gemini-copilot" as ActiveTab, label: "Gemini Co-Pilot", icon: Sparkles, badge: "AI Grounded" },
   ];
 
   // The Access Audit tab is ONLY visible to muthu.vela@gmail.com

@@ -1312,36 +1312,82 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                   if (e && e.activePayload && e.activePayload.length > 0) {
                     const clicked = e.activePayload[0].payload as HistoricalBar & Record<string, any>;
                     if (clicked && clicked.date) {
-                      // Extract the D3 price scale to invert vertical pixel position back into standard dollar price
-                      const priceScale = e.yAxisMap?.price;
                       let clickedPrice = clicked.close;
+                      let computedPrice: number | null = null;
 
-                      let scaleFn = null;
-                      if (priceScale) {
-                        if (typeof priceScale.invert === "function") {
-                          scaleFn = priceScale;
-                        } else if (priceScale.scale && typeof priceScale.scale.invert === "function") {
-                          scaleFn = priceScale.scale;
+                      // 1. Locate the correct price scale from Recharts' internal yAxisMap
+                      let foundAxis: any = null;
+                      if (e.yAxisMap) {
+                        if (e.yAxisMap.price) {
+                          foundAxis = e.yAxisMap.price;
+                        } else if (e.yAxisMap[0]) {
+                          foundAxis = e.yAxisMap[0];
+                        } else {
+                          // Search for left axis or axis explicitly configured with 'price' ID
+                          for (const key of Object.keys(e.yAxisMap)) {
+                            if (key === "price" || e.yAxisMap[key]?.props?.yAxisId === "price") {
+                              foundAxis = e.yAxisMap[key];
+                              break;
+                            }
+                          }
                         }
                       }
 
-                      if (scaleFn && typeof e.chartY === "number") {
-                        const invertedVal = scaleFn.invert(e.chartY);
-                        if (!isNaN(invertedVal) && isFinite(invertedVal)) {
-                          clickedPrice = invertedVal;
+                      const minPrice = Array.isArray(yDomain) && typeof yDomain[0] === "number" ? yDomain[0] : null;
+                      const maxPrice = Array.isArray(yDomain) && typeof yDomain[1] === "number" ? yDomain[1] : null;
+
+                      if (foundAxis && typeof e.chartY === "number" && minPrice !== null && maxPrice !== null) {
+                        const scale = foundAxis.scale;
+                        
+                        // 1a. Try using the d3 scale's direct invert function
+                        if (scale && typeof scale.invert === "function") {
+                          const invertedVal = scale.invert(e.chartY);
+                          if (!isNaN(invertedVal) && isFinite(invertedVal)) {
+                            computedPrice = invertedVal;
+                          }
                         }
-                      } else if (Array.isArray(yDomain) && typeof yDomain[0] === "number" && typeof yDomain[1] === "number" && typeof e.chartY === "number") {
-                        // High-accuracy linear interpolation fallback
-                        // Default Recharts top/bottom margins of 10px inside h-[490px] container, accounting for brush and x-axis space
-                        const minPrice = yDomain[0];
-                        const maxPrice = yDomain[1];
-                        const plotHeight = 410; // 490px total height - 80px for margins, x-axis ticks, brush
-                        const relativeY = Math.max(0, Math.min(plotHeight, e.chartY - 10));
-                        const pct = relativeY / plotHeight;
-                        const fallbackVal = maxPrice - (pct * (maxPrice - minPrice));
-                        if (!isNaN(fallbackVal) && isFinite(fallbackVal)) {
-                          clickedPrice = fallbackVal;
+
+                        // 1b. Fallback to precise mathematical interpolation using the actual axis dimensions (y top position and height)
+                        if (computedPrice === null && typeof foundAxis.y === "number" && typeof foundAxis.height === "number" && foundAxis.height > 0) {
+                          const pct = (e.chartY - foundAxis.y) / foundAxis.height;
+                          const clampedPct = Math.max(0, Math.min(1, pct));
+                          let val;
+                          if (isLogScale) {
+                            val = Math.exp(Math.log(maxPrice) - clampedPct * (Math.log(maxPrice) - Math.log(minPrice)));
+                          } else {
+                            val = maxPrice - clampedPct * (maxPrice - minPrice);
+                          }
+                          if (!isNaN(val) && isFinite(val)) {
+                            computedPrice = val;
+                          }
                         }
+                      }
+
+                      // 2. Fallback to general viewBox bounds if axis object was not found or failed
+                      if (computedPrice === null && minPrice !== null && maxPrice !== null && typeof e.chartY === "number") {
+                        let plotTop = 10;
+                        let plotHeight = 410; // Default fallback: 490px total - 10px margin-top - 70px bottom features
+
+                        if (e.viewBox && typeof e.viewBox.y === "number" && typeof e.viewBox.height === "number" && e.viewBox.height > 0) {
+                          plotTop = e.viewBox.y;
+                          plotHeight = e.viewBox.height;
+                        }
+
+                        const pct = (e.chartY - plotTop) / plotHeight;
+                        const clampedPct = Math.max(0, Math.min(1, pct));
+                        let val;
+                        if (isLogScale) {
+                          val = Math.exp(Math.log(maxPrice) - clampedPct * (Math.log(maxPrice) - Math.log(minPrice)));
+                        } else {
+                          val = maxPrice - clampedPct * (maxPrice - minPrice);
+                        }
+                        if (!isNaN(val) && isFinite(val)) {
+                          computedPrice = val;
+                        }
+                      }
+
+                      if (computedPrice !== null) {
+                        clickedPrice = computedPrice;
                       }
 
                       setPinnedBar((prev) => {

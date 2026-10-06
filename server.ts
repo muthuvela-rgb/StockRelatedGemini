@@ -5289,6 +5289,222 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
   }
 });
 
+// --- GEMINI CO-PILOT CHAT, GOOGLE SEARCH AND GOOGLE MAPS GROUNDING ROUTES ---
+
+// Multi-turn chat interface
+app.post("/api/gemini/chat", async (req: Request, res: Response) => {
+  const { role, message, history } = req.body;
+  try {
+    const ai = getGenAI();
+    let modelName = "gemini-3.8-flash";
+    let systemInstruction = "You are a professional investment and financial market analysis co-pilot.";
+
+    if (role === "derivs_strategist") {
+      modelName = "gemini-3.1-pro-preview";
+      systemInstruction = `You are a professional quantitative portfolio manager, derivatives risk-management strategist, and expert on sell-put cash yield optimization. 
+Use your deep knowledge of options theory, Black-Scholes Greeks (Delta, Theta, Implied Volatility), Bollinger band boundaries, and asset support mechanics to construct secure, capital-protective options ideas.
+Focus strictly on options risk mitigation (e.g. rolling positions, hedging, and strike selection). Be precise, technical, and mathematically structured. Keep answers concise.`;
+    } else if (role === "quick_desk") {
+      modelName = "gemini-3.1-flash-lite";
+      systemInstruction = `You are a quick options and stocks learning desk assistant. Your goal is to explain options concepts, parameters (like Delta, Theta, open interest, cushion, and moneyness), and mechanics in very clear, friendly, and visual plain-English for junior investors. 
+Keep your answers brief, fast, scannable, and extremely accessible.`;
+    } else {
+      modelName = "gemini-3.8-flash";
+      systemInstruction = `You are StockRelated's Senior Operations Desk co-pilot and equity research analyst. Your goal is to analyze market trends, explain SEC reporting details, interpret technical levels (RSI, Bollinger Bands, Moving Averages), and help the user manage their stock watchlist efficiently. 
+Provide professional, balanced, scannable, and insight-dense analyses.`;
+    }
+
+    // Format chat history for @google/genai SDK
+    const formattedContents: any[] = [];
+    if (Array.isArray(history)) {
+      for (const item of history) {
+        if (item.role && item.parts && Array.isArray(item.parts)) {
+          formattedContents.push({
+            role: item.role === "model" ? "model" : "user",
+            parts: item.parts.map((p: any) => ({ text: typeof p === "string" ? p : (p.text || "") }))
+          });
+        }
+      }
+    }
+    
+    // Add current user message
+    formattedContents.push({
+      role: "user",
+      parts: [{ text: message }]
+    });
+
+    let response;
+    if (modelName === "gemini-3.8-flash" || modelName === "gemini-3.1-flash-lite") {
+      // Use the global robust fallback helper
+      response = await generateContentWithModelFallback({
+        contents: formattedContents,
+        config: {
+          systemInstruction,
+        }
+      });
+    } else {
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: formattedContents,
+          config: {
+            systemInstruction,
+          }
+        });
+      } catch (proErr: any) {
+        console.warn(`[Gemini Chat] Specialized model ${modelName} failed (${proErr.message || proErr}). Falling back to high-availability stack...`);
+        response = await generateContentWithModelFallback({
+          contents: formattedContents,
+          config: {
+            systemInstruction,
+          }
+        });
+      }
+    }
+
+    res.json({ text: response.text });
+  } catch (err: any) {
+    console.error("Error in /api/gemini/chat:", err);
+    res.status(500).json({ error: err.message || "Failed to communicate with Gemini" });
+  }
+});
+
+// Google Search Grounding for real-time catalysts and updates
+app.post("/api/gemini/search", async (req: Request, res: Response) => {
+  const { prompt } = req.body;
+  const ai = getGenAI();
+  
+  // High-availability search grounding model stack
+  const searchModels = [
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest"
+  ];
+
+  // 1. Try with Search Grounding tool enabled across the cascade
+  for (const model of searchModels) {
+    try {
+      console.log(`[Gemini Search] Attempting grounded search with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: "You are a professional financial analyst grounded in real-time information. Answer the question using live web search results. Cite your sources cleanly.",
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      if (response && response.text) {
+        return res.json({ text: response.text, grounded: true, modelUsed: model });
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Search] Grounded search failed on model ${model}:`, err?.message || err);
+    }
+  }
+
+  // 2. Fallback: Try answering from core pre-trained knowledge base across all models
+  console.log("[Gemini Search] All grounded search models failed or quota exhausted. Retrying without search tool...");
+  const fallbackModels = [
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest",
+    "gemini-3.8-flash",
+    "gemini-3.1-pro-preview"
+  ];
+
+  for (const model of fallbackModels) {
+    try {
+      console.log(`[Gemini Search] Attempting fallback text-only generation with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: "You are a professional financial analyst. (Note: Live Google Search grounding is currently unavailable due to API limits, so you are answering based on your core knowledge base)."
+        }
+      });
+
+      if (response && response.text) {
+        return res.json({ 
+          text: response.text + "\n\n*(⚠️ Note: Google Search grounding quota exceeded. Answer generated using backup pre-trained knowledge base).* ", 
+          grounded: false,
+          modelUsed: model
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Search] Fallback failed on model ${model}:`, err?.message || err);
+    }
+  }
+
+  res.status(500).json({ error: "All high-availability search grounding and fallback models failed due to daily API rate limits." });
+});
+
+// Google Maps Grounding for physical operations plants and geopolitical supply mapping
+app.post("/api/gemini/maps", async (req: Request, res: Response) => {
+  const { prompt } = req.body;
+  const ai = getGenAI();
+  
+  // High-availability maps grounding model stack
+  const mapsModels = [
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest"
+  ];
+
+  // 1. Try with Maps Grounding tool enabled across the cascade
+  for (const model of mapsModels) {
+    try {
+      console.log(`[Gemini Maps] Attempting grounded maps with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: "You are a corporate supply chain and physical location analyst. Your goal is to identify exact physical headquarters, foundries, manufacturing plants, laboratories, and warehouses for companies. Detail any geopolitical, weather, or supply chain bottlenecks for these map coordinates.",
+          tools: [{ googleMaps: {} }]
+        }
+      });
+
+      if (response && response.text) {
+        return res.json({ text: response.text, grounded: true, modelUsed: model });
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Maps] Grounded maps failed on model ${model}:`, err?.message || err);
+    }
+  }
+
+  // 2. Fallback: Try answering from core pre-trained knowledge base across all models
+  console.log("[Gemini Maps] All grounded maps models failed or quota exhausted. Retrying without maps tool...");
+  const fallbackModels = [
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest",
+    "gemini-3.8-flash",
+    "gemini-3.1-pro-preview"
+  ];
+
+  for (const model of fallbackModels) {
+    try {
+      console.log(`[Gemini Maps] Attempting fallback text-only generation with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction: "You are a corporate supply chain and physical location analyst. (Note: Google Maps physical grounding is currently unavailable due to API limits, so you are answering based on your core knowledge base)."
+        }
+      });
+
+      if (response && response.text) {
+        return res.json({ 
+          text: response.text + "\n\n*(⚠️ Note: Google Maps grounding quota exceeded. Answer generated using backup pre-trained knowledge base).* ", 
+          grounded: false,
+          modelUsed: model
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Maps] Fallback failed on model ${model}:`, err?.message || err);
+    }
+  }
+
+  res.status(500).json({ error: "All high-availability maps grounding and fallback models failed due to daily API rate limits." });
+});
+
 // AI Strategic Portfolio Allocation with Gemini
 app.post("/api/ai-put-strategy", async (req: Request, res: Response) => {
   const { leastRisk, mediumRisk, highRisk, tickers } = req.body || {};

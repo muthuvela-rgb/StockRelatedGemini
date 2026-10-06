@@ -123,6 +123,7 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
         { id: "earnings-transcripts", label: "Earnings Transcripts", icon: MessageSquareQuote, badge: "Alpha Vantage", badgeColor: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
         { id: "watchlist", label: "Watchlists", icon: BookmarkCheck, badge: activeWatchlistName || `${watchlistCount} Stocks`, badgeColor: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
         { id: "junior-academy", label: "Junior Academy", icon: GraduationCap, badge: "Age 11+", badgeColor: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+        { id: "gemini-copilot", label: "Gemini Co-Pilot", icon: Sparkles, badge: "AI Grounded", badgeColor: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
         ...(isSuperAdmin
           ? [
               {

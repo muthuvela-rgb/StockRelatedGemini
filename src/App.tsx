@@ -21,6 +21,7 @@ import { MarketSentiment } from "./components/MarketSentiment";
 import { NasdaqSimulator } from "./components/NasdaqSimulator";
 import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { StockChartsViewer } from "./components/StockChartsViewer";
+import { GeminiCopilot } from "./components/GeminiCopilot";
 import { TickerHudProvider } from "./context/TickerHudContext";
 import { BollingerFilterProvider } from "./context/BollingerFilterContext";
 import { SidebarNavigation } from "./components/SidebarNavigation";
@@ -234,6 +235,9 @@ const AppContent: React.FC = () => {
         </div>
         <div className={activeTab === "junior-academy" ? "" : "hidden"}>
           <JuniorInvestorAcademy />
+        </div>
+        <div className={activeTab === "gemini-copilot" ? "" : "hidden"}>
+          <GeminiCopilot />
         </div>
       </main>
     </div>
