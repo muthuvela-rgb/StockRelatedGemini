@@ -1,0 +1,41 @@
+[
+  {
+    "id": "claude-1791609568212-wt6he",
+    "title": "Test Ingestion Report",
+    "summary": "Testing inbound webhook ingestion",
+    "content": "# Test Analysis\n\nWebhook API test successful!",
+    "tickers": [
+      "TSLA",
+      "NVDA"
+    ],
+    "tags": [
+      "Test",
+      "Webhook"
+    ],
+    "source": "Claude Cowork Webhook API",
+    "author": "Claude Assistant",
+    "payload": null,
+    "createdAt": "2026-10-10T05:19:28.212Z",
+    "updatedAt": "2026-10-10T05:19:28.212Z"
+  },
+  {
+    "id": "claude-sample-1",
+    "title": "NVDA & TSLA Institutional Options Volatility & Surface Skew Analysis",
+    "summary": "Claude Cowork deep-dive into implied volatility skew for TSLA upcoming earnings and NVDA Blackwell datacenter demand signals.",
+    "content": "# NVDA & TSLA Institutional Options Volatility & Surface Skew Analysis\n\n**Agent:** Claude Cowork Market Research Assistant  \n**Target Equities:** NVDA, TSLA, QQQ  \n**Date:** 2026-10-10\n\n---\n\n### Executive Overview\nRecent options flow highlights a strong institutional bullish bias on **NVDA** with heightened call volume on 125/130 strike calls expiring next month. Simultaneously, **TSLA** option skew indicates elevated downside protection pricing ahead of delivery announcements.\n\n### Key Observations\n1. **NVIDIA (NVDA):**\n   * Delta 0.30 Put Options yield over 18% annualized return with cash-secured collateral.\n   * Institutional net flow shows steady accumulation in $120-$125 put selling for income.\n2. **Tesla (TSLA):**\n   * Implied Volatility (IV) is trading at the 82nd percentile over 52 weeks.\n   * Put options at $210 offer a 22.4% annualized return with a 15.2% downside margin of safety.\n\n### Actionable Strategy Recommendation\n* **Cash-Secured Put Strategy:** Sell TSLA $210 Puts with 30-45 DTE to lock in rich theta decay while buffer is above 15%.\n* **Overlaid Stock Chart:** Overlay NVDA and TSLA against QQQ to confirm technical momentum before entering positions.\n",
+    "tickers": [
+      "NVDA",
+      "TSLA",
+      "QQQ"
+    ],
+    "tags": [
+      "Options Flow",
+      "Implied Volatility",
+      "Institutional"
+    ],
+    "source": "Claude Cowork Webhook API",
+    "author": "Claude Assistant",
+    "createdAt": "2026-10-10T01:19:21.835Z",
+    "updatedAt": "2026-10-10T01:19:21.835Z"
+  }
+]

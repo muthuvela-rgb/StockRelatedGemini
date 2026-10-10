@@ -1134,6 +1134,9 @@ export interface UserWatchlist {
   id: string;
   name: string;
   tickers: string[];
+  isPublic?: boolean;
+  ownerId?: string;
+  ownerEmail?: string;
 }
 
 export interface UnemploymentHistoryPoint {

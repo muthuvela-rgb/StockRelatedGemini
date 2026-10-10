@@ -28,6 +28,7 @@ import {
   Calendar,
   Menu,
   LayoutGrid,
+  Bot,
 } from "lucide-react";
 
 import { UserAuthButton } from "./UserAuthButton";
@@ -54,7 +55,8 @@ export type ActiveTab =
   | "watchlist"
   | "junior-academy"
   | "access-audit"
-  | "gemini-copilot";
+  | "gemini-copilot"
+  | "claude-cowork";
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -181,6 +183,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: "watchlist" as ActiveTab, label: "Watchlist", icon: BookmarkCheck, count: watchlistCount, badge: activeWatchlistName || "3 Lists" },
     { id: "junior-academy" as ActiveTab, label: "Junior Academy", icon: GraduationCap, badge: "Age 11+" },
     { id: "gemini-copilot" as ActiveTab, label: "Gemini Co-Pilot", icon: Sparkles, badge: "AI Grounded" },
+    { id: "claude-cowork" as ActiveTab, label: "Research from Claude", icon: Bot, badge: "Webhook API" },
   ];
 
   // The Access Audit tab is ONLY visible to muthu.vela@gmail.com

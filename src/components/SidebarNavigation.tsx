@@ -23,6 +23,7 @@ import {
   X,
   ShieldAlert,
   Landmark,
+  Bot,
 } from "lucide-react";
 import { ActiveTab } from "./Header";
 import { useAuth } from "../context/AuthContext";
@@ -124,6 +125,7 @@ export const SidebarNavigation: React.FC<SidebarNavigationProps> = ({
         { id: "watchlist", label: "Watchlists", icon: BookmarkCheck, badge: activeWatchlistName || `${watchlistCount} Stocks`, badgeColor: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
         { id: "junior-academy", label: "Junior Academy", icon: GraduationCap, badge: "Age 11+", badgeColor: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
         { id: "gemini-copilot", label: "Gemini Co-Pilot", icon: Sparkles, badge: "AI Grounded", badgeColor: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+        { id: "claude-cowork", label: "Research from Claude", icon: Bot, badge: "Webhook API", badgeColor: "bg-purple-500/15 text-purple-300 border-purple-500/30" },
         ...(isSuperAdmin
           ? [
               {

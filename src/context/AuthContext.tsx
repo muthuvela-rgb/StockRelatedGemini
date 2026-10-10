@@ -32,10 +32,11 @@ interface AuthContextType {
   watchlists: UserWatchlist[];
   activeWatchlistIndex: number;
   setActiveWatchlistIndex: (index: number) => void;
-  createWatchlist: (name: string, tickers: string[], setAsActive?: boolean) => Promise<void>;
+  createWatchlist: (name: string, tickers: string[], setAsActive?: boolean, isPublic?: boolean) => Promise<void>;
   deleteWatchlistAtIndex: (index: number) => Promise<void>;
   updateWatchlistAtIndex: (index: number, newTickers: string[], newName?: string) => Promise<void>;
   renameWatchlistAtIndex: (index: number, newName: string) => Promise<void>;
+  toggleWatchlistPrivacy: (index: number) => Promise<void>;
   syncCloudWatchlists: (watchlists: UserWatchlist[], activeIndex?: number) => Promise<void>;
   loadCloudWatchlists: () => Promise<{ watchlists: UserWatchlist[]; activeIndex: number } | null>;
   // Legacy Cloud Watchlist sync
@@ -208,7 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const createWatchlist = async (name: string, tickers: string[], setAsActive: boolean = true) => {
+  const createWatchlist = async (name: string, tickers: string[], setAsActive: boolean = true, isPublic: boolean = false) => {
     const cleanName = name.trim() || `Watchlist ${watchlists.length + 1}`;
     const cleanList = Array.from(
       new Set(tickers.map((t) => String(t).trim().toUpperCase()))
@@ -219,6 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: newId,
       name: cleanName,
       tickers: cleanList,
+      isPublic: isPublic,
     };
 
     const updated = [...watchlists, newWatchlist];
@@ -309,6 +311,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const toggleWatchlistPrivacy = async (index: number) => {
+    const safeIdx = Math.min(Math.max(0, index), Math.max(0, watchlists.length - 1));
+    const updated = watchlists.map((wl, i) => {
+      if (i === safeIdx) {
+        return {
+          ...wl,
+          isPublic: !wl.isPublic,
+        };
+      }
+      return wl;
+    });
+
+    setWatchlists(updated);
+
+    if (user?.uid) {
+      try {
+        await saveUserWatchlistsToCloud(user.uid, updated, activeWatchlistIndex);
+      } catch (err) {
+        console.error("Error saving toggled watchlist privacy to cloud:", err);
+      }
+    }
+  };
+
   const syncCloudWatchlists = async (listsToSync: UserWatchlist[], activeIdx?: number) => {
     const currentUid = user?.uid || auth.currentUser?.uid;
     if (!currentUid) {
@@ -393,6 +418,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteWatchlistAtIndex,
         updateWatchlistAtIndex,
         renameWatchlistAtIndex,
+        toggleWatchlistPrivacy,
         syncCloudWatchlists,
         loadCloudWatchlists,
         syncCloudWatchlist,

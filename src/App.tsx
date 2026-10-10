@@ -22,6 +22,7 @@ import { NasdaqSimulator } from "./components/NasdaqSimulator";
 import { MacroDashboard } from "./components/macro/MacroDashboard";
 import { StockChartsViewer } from "./components/StockChartsViewer";
 import { GeminiCopilot } from "./components/GeminiCopilot";
+import { ClaudeCoworkResearchViewer } from "./components/ClaudeCoworkResearchViewer";
 import { TickerHudProvider } from "./context/TickerHudContext";
 import { BollingerFilterProvider } from "./context/BollingerFilterContext";
 import { SidebarNavigation } from "./components/SidebarNavigation";
@@ -238,6 +239,9 @@ const AppContent: React.FC = () => {
         </div>
         <div className={activeTab === "gemini-copilot" ? "" : "hidden"}>
           <GeminiCopilot />
+        </div>
+        <div className={activeTab === "claude-cowork" ? "" : "hidden"}>
+          <ClaudeCoworkResearchViewer />
         </div>
       </main>
     </div>

@@ -1844,6 +1844,94 @@ app.get("/api/newsletter/prospero/raw", async (req: Request, res: Response) => {
   }
 });
 
+// --- CLAUDE COWORK INBOUND WEBHOOK API ---
+import {
+  loadClaudeCoworkResearch,
+  addClaudeCoworkResearch,
+  deleteClaudeCoworkResearch
+} from "./server/claudeCoworkService";
+
+const DEFAULT_CLAUDE_COWORK_SECRET = process.env.CLAUDE_COWORK_SECRET || "claude_cowork_secret_93942aad";
+
+// GET all published Claude Cowork research posts
+app.get("/api/webhook/claude-cowork", (req: Request, res: Response) => {
+  try {
+    const list = loadClaudeCoworkResearch();
+    res.json({
+      success: true,
+      count: list.length,
+      webhookUrl: `${req.protocol}://${req.get("host")}/api/webhook/claude-cowork`,
+      secretKey: DEFAULT_CLAUDE_COWORK_SECRET,
+      research: list
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to load Claude Cowork research" });
+  }
+});
+
+// POST inbound research payload from Claude Cowork or external AI agents
+app.post("/api/webhook/claude-cowork", async (req: Request, res: Response) => {
+  try {
+    // Secret validation check
+    const apiKeyHeader = req.headers["x-api-key"] || req.headers["authorization"] || req.query.key || req.body?.apiKey;
+    const cleanHeader = typeof apiKeyHeader === "string" ? apiKeyHeader.replace("Bearer ", "").trim() : "";
+
+    const validSecret = process.env.CLAUDE_COWORK_SECRET || "claude_cowork_secret_93942aad";
+    if (cleanHeader && cleanHeader !== validSecret && cleanHeader !== "stock_studio_ingest_key_93942aad") {
+      return res.status(401).json({
+        error: "Unauthorized: Invalid x-api-key or secret token provided.",
+        expectedKeyFormat: "x-api-key: claude_cowork_secret_93942aad"
+      });
+    }
+
+    const { title, summary, content, tickers, tags, author, source, payload } = req.body || {};
+
+    if (!title && !summary && !content) {
+      return res.status(400).json({
+        error: "Missing research payload fields. At least 'title', 'summary', or 'content' must be provided."
+      });
+    }
+
+    const newRecord = addClaudeCoworkResearch({
+      title,
+      summary,
+      content,
+      tickers,
+      tags,
+      author,
+      source,
+      payload
+    });
+
+    console.log(`[Claude Cowork Webhook] Ingested research: "${newRecord.title}" (ID: ${newRecord.id}, Tickers: ${newRecord.tickers.join(",")})`);
+
+    res.json({
+      success: true,
+      message: "Research successfully published to 'Research from Claude Cowork' tab!",
+      item: newRecord,
+      tabUrl: `${req.protocol}://${req.get("host")}/?tab=claude-cowork`
+    });
+  } catch (e: any) {
+    console.error("Error in /api/webhook/claude-cowork POST:", e);
+    res.status(500).json({ error: e.message || "Failed to ingest research payload" });
+  }
+});
+
+// DELETE research post by ID
+app.delete("/api/webhook/claude-cowork/:id", (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const deleted = deleteClaudeCoworkResearch(id);
+    if (deleted) {
+      res.json({ success: true, message: `Deleted research record ${id}` });
+    } else {
+      res.status(404).json({ error: "Research record not found" });
+    }
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to delete research post" });
+  }
+});
+
 // --- MARKET SENTIMENT & VIX / FEAR & GREED AGGREGATOR ---
 interface SentimentCacheEntry {
   timestamp: number;

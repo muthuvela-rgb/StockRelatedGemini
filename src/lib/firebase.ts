@@ -135,6 +135,9 @@ export async function fetchUserWatchlists(
               id: item.id || `wl-${i + 1}`,
               name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : `Watchlist ${i + 1}`,
               tickers: cleanTickers,
+              isPublic: Boolean(item.isPublic),
+              ownerId: item.ownerId || effectiveUid || "",
+              ownerEmail: item.ownerEmail || "",
             });
           }
         }
@@ -148,6 +151,9 @@ export async function fetchUserWatchlists(
             id: "wl-qqq",
             name: "QQQ Components (Nasdaq-100)",
             tickers: QQQ_COMPONENTS,
+            isPublic: false,
+            ownerId: "system",
+            ownerEmail: "system@stockrelated.ai",
           });
         }
 
@@ -165,6 +171,9 @@ export async function fetchUserWatchlists(
             id: "wl-1",
             name: "Core Portfolio",
             tickers: cleanList,
+            isPublic: false,
+            ownerId: effectiveUid,
+            ownerEmail: auth.currentUser?.email || "",
           },
           DEFAULT_USER_WATCHLISTS[1],
           DEFAULT_USER_WATCHLISTS[2],
@@ -191,6 +200,8 @@ export async function saveUserWatchlistsToCloud(
 
   // Ensure all watchlists are properly sanitized
   const baseList = watchlists && watchlists.length > 0 ? watchlists : DEFAULT_USER_WATCHLISTS;
+  const currentUser = auth.currentUser;
+  
   const sanitizedWatchlists: UserWatchlist[] = baseList.map((wl, i) => {
     const cleanTickers = Array.from(
       new Set((wl.tickers || []).map((t) => String(t).trim().toUpperCase()))
@@ -199,6 +210,9 @@ export async function saveUserWatchlistsToCloud(
       id: wl.id || `wl-${i + 1}`,
       name: wl.name && wl.name.trim() ? wl.name.trim() : (DEFAULT_USER_WATCHLISTS[i]?.name || `Watchlist ${i + 1}`),
       tickers: cleanTickers,
+      isPublic: Boolean(wl.isPublic),
+      ownerId: wl.ownerId || effectiveUid || "",
+      ownerEmail: wl.ownerEmail || currentUser?.email || "",
     };
   });
 
@@ -207,7 +221,6 @@ export async function saveUserWatchlistsToCloud(
 
   try {
     const userRef = doc(db, "users", effectiveUid);
-    const currentUser = auth.currentUser;
 
     await setDoc(
       userRef,
@@ -223,11 +236,85 @@ export async function saveUserWatchlistsToCloud(
       },
       { merge: true }
     );
+    
+    // Sync individually shared public watchlists to top-level public_watchlists collection
+    for (const wl of sanitizedWatchlists) {
+      if (wl.isPublic) {
+        await publishWatchlistToPublicFeed(wl);
+      } else {
+        await unpublishWatchlistFromPublicFeed(wl.id);
+      }
+    }
+
     console.log(`[Firestore] Saved ${sanitizedWatchlists.length} watchlists for user ${effectiveUid} (active index: ${safeActiveIndex})`);
     return { watchlists: sanitizedWatchlists, activeIndex: safeActiveIndex };
   } catch (err) {
     console.error("Error saving user watchlists to Firestore:", err);
     throw err;
+  }
+}
+
+// Publish shared watchlist to top level public_watchlists collection
+export async function publishWatchlistToPublicFeed(wl: UserWatchlist): Promise<void> {
+  if (!auth.currentUser) return;
+  try {
+    const pubRef = doc(db, "public_watchlists", wl.id);
+    await setDoc(pubRef, {
+      id: wl.id,
+      name: wl.name,
+      tickers: wl.tickers,
+      ownerId: wl.ownerId || auth.currentUser.uid,
+      ownerEmail: wl.ownerEmail || auth.currentUser.email || "Public Trader",
+      isPublic: true,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    console.log(`[Firestore] Published public watchlist "${wl.name}" to global feed`);
+  } catch (err) {
+    console.error(`Error publishing public watchlist ${wl.id}:`, err);
+  }
+}
+
+// Remove shared watchlist from public_watchlists collection
+export async function unpublishWatchlistFromPublicFeed(watchlistId: string): Promise<void> {
+  try {
+    const pubRef = doc(db, "public_watchlists", watchlistId);
+    const snap = await getDoc(pubRef);
+    if (snap.exists()) {
+      // Only delete if it belongs to the current user (security rule fallback safety)
+      const data = snap.data();
+      if (data.ownerId === auth.currentUser?.uid) {
+        await deleteDoc(pubRef);
+        console.log(`[Firestore] Removed public watchlist ${watchlistId} from global feed`);
+      }
+    }
+  } catch (err) {
+    console.error(`Error removing public watchlist ${watchlistId}:`, err);
+  }
+}
+
+// Fetch all public shared watchlists across all users
+export async function fetchPublicWatchlists(): Promise<UserWatchlist[]> {
+  try {
+    const pubRef = collection(db, "public_watchlists");
+    const snap = await getDocs(pubRef);
+    const list: UserWatchlist[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data) {
+        list.push({
+          id: data.id,
+          name: data.name || "Shared Watchlist",
+          tickers: Array.isArray(data.tickers) ? data.tickers : [],
+          isPublic: true,
+          ownerId: data.ownerId || "",
+          ownerEmail: data.ownerEmail || "Trader",
+        });
+      }
+    });
+    return list;
+  } catch (err) {
+    console.error("Error fetching global public watchlists:", err);
+    return [];
   }
 }
 

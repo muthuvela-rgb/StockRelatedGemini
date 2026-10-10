@@ -16,13 +16,30 @@
             "properties": {
               "id": { "type": "string" },
               "name": { "type": "string" },
-              "tickers": { "type": "array", "items": { "type": "string" } }
+              "tickers": { "type": "array", "items": { "type": "string" } },
+              "isPublic": { "type": "boolean" },
+              "ownerId": { "type": "string" },
+              "ownerEmail": { "type": "string" }
             }
           }
         },
         "activeWatchlistIndex": { "type": "number" },
         "createdAt": { "type": "string" },
         "lastLoginAt": { "type": "string" }
+      }
+    },
+    "PublicWatchlist": {
+      "path": "public_watchlists/{watchlistId}",
+      "description": "Watchlists shared publicly with all users",
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tickers": { "type": "array", "items": { "type": "string" } },
+        "ownerId": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       }
     },
     "SavedTrade": {
@@ -57,6 +74,23 @@
         "referrer": { "type": "string" },
         "device": { "type": "string" },
         "details": { "type": "string" }
+      }
+    },
+    "ClaudeCoworkResearch": {
+      "path": "claude_cowork_research/{researchId}",
+      "description": "Inbound research analysis, options flow, and market reports posted from Claude Cowork or external AI agents",
+      "fields": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "content": { "type": "string" },
+        "tickers": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" },
+        "author": { "type": "string" },
+        "payload": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       }
     }
   }

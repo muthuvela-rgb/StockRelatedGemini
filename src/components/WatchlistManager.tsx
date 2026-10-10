@@ -29,6 +29,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { UserWatchlist } from "../types";
 import { QQQ_COMPONENTS, SP500_COMPONENTS, SMH_COMPONENTS } from "../data/universePresets";
+import { Globe, Lock, FolderDownload } from "lucide-react";
 
 interface WatchlistManagerProps {
   watchlist?: string[];
@@ -111,15 +112,58 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     deleteWatchlistAtIndex,
     updateWatchlistAtIndex,
     renameWatchlistAtIndex,
+    toggleWatchlistPrivacy,
     syncCloudWatchlists,
     loadCloudWatchlists,
     savedTrades,
   } = useAuth();
 
+  // Public watchlists sharing states
+  const [publicWatchlists, setPublicWatchlists] = useState<UserWatchlist[]>([]);
+  const [loadingPublicList, setLoadingPublicList] = useState(false);
+  const [importingWl, setImportingWl] = useState<string | null>(null);
+
   const activeWatchlist = watchlists[activeWatchlistIndex] || watchlists[0] || {
     id: "wl-1",
     name: "Watchlist 1",
     tickers: propWatchlist || [],
+  };
+
+  const handleLoadPublicWatchlists = async () => {
+    setLoadingPublicList(true);
+    try {
+      const { fetchPublicWatchlists } = await import("../lib/firebase");
+      const list = await fetchPublicWatchlists();
+      setPublicWatchlists(list);
+    } catch (err) {
+      console.error("Error loading public watchlists feed:", err);
+    } finally {
+      setLoadingPublicList(false);
+    }
+  };
+
+  React.useEffect(() => {
+    handleLoadPublicWatchlists();
+  }, [user, watchlists]);
+
+  const handleImportPublicWatchlist = async (sharedWl: UserWatchlist) => {
+    if (!user) {
+      setSaveStatus("⚠️ Please sign in with Google to import watchlists.");
+      return;
+    }
+    setImportingWl(sharedWl.id);
+    try {
+      const cleanTickers = Array.from(new Set(sharedWl.tickers.map(t => String(t).trim().toUpperCase()))).filter(Boolean);
+      await createWatchlist(`${sharedWl.name} (Imported)`, cleanTickers, true);
+      setSaveStatus(`📥 Imported "${sharedWl.name}" successfully to your slot!`);
+      // Trigger a quick local refresh
+      handleLoadPublicWatchlists();
+    } catch (err) {
+      console.error("Error importing shared watchlist:", err);
+      setSaveStatus("⚠️ Error importing shared watchlist.");
+    } finally {
+      setImportingWl(null);
+    }
   };
 
   const [newTicker, setNewTicker] = useState("");
@@ -148,6 +192,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [newWatchlistName, setNewWatchlistName] = useState("QQQ Components (Nasdaq-100)");
   const [selectedPresetType, setSelectedPresetType] = useState<string>("qqq");
   const [customTickersInput, setCustomTickersInput] = useState("");
+  const [newWatchlistIsPublic, setNewWatchlistIsPublic] = useState(false);
 
   const handleSelectTab = (idx: number) => {
     setActiveWatchlistIndex(idx);
@@ -163,14 +208,14 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     }).catch((err) => console.error("Error syncing active watchlist tab to server:", err));
   };
 
-  const handleCreateNewWatchlist = async (name: string, tickers: string[]) => {
+  const handleCreateNewWatchlist = async (name: string, tickers: string[], isPublic: boolean = false) => {
     try {
       const cleanList = Array.from(new Set(tickers.map((t) => t.trim().toUpperCase()))).filter(Boolean);
       const cleanName = name.trim() || `Watchlist ${watchlists.length + 1}`;
       if (propOnCreateWatchlist) {
-        await propOnCreateWatchlist(cleanName, cleanList);
+        await propOnCreateWatchlist(cleanName, cleanList, isPublic);
       } else {
-        await createWatchlist(cleanName, cleanList, true);
+        await createWatchlist(cleanName, cleanList, true, isPublic);
       }
 
       // Sync to backend server
@@ -180,8 +225,9 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
         body: JSON.stringify({ tickers: cleanList }),
       }).catch((err) => console.error("Error updating server watchlist:", err));
 
-      setSaveStatus(`Created new watchlist "${cleanName}" (${cleanList.length} tickers)`);
+      setSaveStatus(`Created new watchlist "${cleanName}" (${cleanList.length} tickers)${isPublic ? " and shared it globally!" : ""}`);
       setIsCreateModalOpen(false);
+      setNewWatchlistIsPublic(false);
       setTimeout(() => setSaveStatus(null), 3500);
     } catch (err: any) {
       setSaveStatus(`Create failed: ${err?.message || "Error"}`);
@@ -667,6 +713,26 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                           <span className="text-[10px] text-slate-400 font-mono">
                             Slot {idx + 1} of {watchlists.length}
                           </span>
+                          {user && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleWatchlistPrivacy(idx).then(() => {
+                                  handleLoadPublicWatchlists();
+                                });
+                              }}
+                              className={`mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold border transition duration-150 cursor-pointer w-fit ${
+                                wl.isPublic
+                                  ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/40"
+                                  : "bg-slate-900/60 border-slate-700/50 text-slate-400 hover:bg-slate-800/80 hover:text-white"
+                              }`}
+                              title={wl.isPublic ? "Shared globally. Click to make private." : "Private. Click to share publicly."}
+                            >
+                              {wl.isPublic ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
+                              <span>{wl.isPublic ? "Public" : "Private"}</span>
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1171,12 +1237,33 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                   />
                 </div>
               )}
+
+              {user && (
+                <div className="flex items-center justify-between p-3.5 bg-slate-950/40 border border-slate-800 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4.5 h-4.5 text-emerald-400" />
+                    <div>
+                      <span className="text-xs font-bold text-white block">Make Watchlist Public</span>
+                      <span className="text-[10px] text-slate-400">Share this watchlist globally with all users on the platform.</span>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newWatchlistIsPublic}
+                    onChange={(e) => setNewWatchlistIsPublic(e.target.checked)}
+                    className="h-4.5 w-4.5 rounded border-slate-700 bg-slate-950 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setIsCreateModalOpen(false)}
+                onClick={() => {
+                  setIsCreateModalOpen(false);
+                  setNewWatchlistIsPublic(false);
+                }}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer transition"
               >
                 Cancel
@@ -1197,7 +1284,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                       .map((t) => t.trim().toUpperCase())
                       .filter(Boolean);
                   }
-                  handleCreateNewWatchlist(newWatchlistName, tickers);
+                  handleCreateNewWatchlist(newWatchlistName, tickers, newWatchlistIsPublic);
                 }}
                 className="px-5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl text-xs font-bold cursor-pointer transition shadow-lg active:scale-95 flex items-center gap-1.5"
               >
