@@ -43,6 +43,7 @@ import {
 } from "recharts";
 import { PutOptionRecord } from "../types";
 import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { QQQ_COMPONENTS } from "../data/universePresets";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
 import { TableTopScrollbar } from "./TableTopScrollbar";
@@ -312,7 +313,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
     let tickersToScan: string[] = [];
     const selectedWatchlist = watchlistOptions.find((o) => o.value === universe);
     if (selectedWatchlist) tickersToScan = selectedWatchlist.tickers;
-    else if (universe === "qqq") tickersToScan = ["NVDA", "AAPL", "MSFT", "MU", "AMZN", "AMD", "GOOGL", "TSLA", "AVGO", "META", "CSCO", "COST", "PLTR", "AMAT", "LRCX", "NFLX"];
+    else if (universe === "qqq") tickersToScan = Array.from(new Set([...QQQ_COMPONENTS, "QQQ", "TQQQ"]));
     else if (universe === "spy") tickersToScan = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "BRK-B", "UNH", "JPM", "XOM", "V", "PG", "MA"];
     else tickersToScan = customTickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
 

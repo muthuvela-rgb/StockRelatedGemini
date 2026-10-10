@@ -49,7 +49,8 @@ const app = express();
 const PORT = 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --- GOOGLE GENAI CLIENT SETUP ---
 let genAIClient: GoogleGenAI | null = null;
@@ -1884,7 +1885,7 @@ app.post("/api/webhook/claude-cowork", async (req: Request, res: Response) => {
       });
     }
 
-    const { title, summary, content, tickers, tags, author, source, payload } = req.body || {};
+    const { title, summary, content, tickers, tags, author, source, format, contentType, payload } = req.body || {};
 
     if (!title && !summary && !content) {
       return res.status(400).json({
@@ -1900,6 +1901,8 @@ app.post("/api/webhook/claude-cowork", async (req: Request, res: Response) => {
       tags,
       author,
       source,
+      format,
+      contentType,
       payload
     });
 
@@ -2928,6 +2931,175 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       total_records: allRecords.length,
       records: allRecords,
       summary: summaryList,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// MKV Morning QQQ Deep-OTM Put Scan API Endpoint
+app.all("/api/scans/mkv-qqq-deep-otm", async (req: Request, res: Response) => {
+  try {
+    const minDays = Number(req.body?.minDays || req.query?.minDays) || 180;
+    const maxMoneynessPct = Number(req.body?.maxMoneynessPct || req.query?.maxMoneynessPct) || 70.0;
+    const format = (req.body?.format || req.query?.format || "json").toString().toLowerCase();
+
+    // Universe: QQQ Components + QQQ + TQQQ
+    const defaultUniverse = Array.from(new Set([
+      "AAPL", "ABNB", "ADBE", "ADI", "ADP", "ADSK", "AEP", "ALAB", "ALNY", "AMAT",
+      "AMD", "AMGN", "AMZN", "ANET", "APP", "ARM", "ASML", "AVGO", "AXON", "BIIB",
+      "BKNG", "BKR", "CCEP", "CDNS", "CEG", "CHTR", "CMCSA", "COST", "CPRT", "CRDO",
+      "CRWD", "CSCO", "CSX", "CTAS", "CTSH", "DASH", "DDOG", "DXCM", "EA", "EXC",
+      "FANG", "FAST", "FTNT", "GEHC", "GILD", "GOOG", "GOOGL", "HON", "IDXX", "INTC",
+      "INTU", "ISRG", "KDP", "KHC", "KLAC", "LIN", "LITE", "LRCX", "LULU", "MAR",
+      "MCHP", "MDB", "MDLZ", "MELI", "META", "MNST", "MPWR", "MRNA", "MRVL", "MSFT",
+      "MSTR", "MU", "NBIS", "NFLX", "NVDA", "NXPI", "ODFL", "ON", "ORLY", "PANW",
+      "PAYX", "PCAR", "PDD", "PEP", "PLTR", "PYPL", "QCOM", "REGN", "RKLB", "ROP",
+      "ROST", "SBUX", "SHOP", "SMCI", "SNPS", "STX", "TEAM", "TER", "TMUS", "TSLA",
+      "TTD", "TTWO", "TXN", "VRSK", "VRTX", "WBD", "WDC", "WDAY", "XEL", "ZS",
+      "QQQ", "TQQQ"
+    ]));
+
+    const customTickers = req.body?.tickers || (req.query?.tickers ? String(req.query.tickers).split(",") : null);
+    const universe = (Array.isArray(customTickers) && customTickers.length > 0
+      ? customTickers
+      : defaultUniverse
+    ).map((t: string) => String(t).trim().toUpperCase());
+
+    const today = new Date();
+    const candidates: any[] = [];
+    const caveats: any[] = [];
+
+    // Process universe in batches of 10
+    const batchSize = 10;
+    for (let i = 0; i < universe.length; i += batchSize) {
+      const chunk = universe.slice(i, i + batchSize);
+      await Promise.all(chunk.map(async (ticker) => {
+        try {
+          const [quote, chart, optData] = await Promise.all([
+            fetchMarketQuote(ticker).catch(() => null),
+            fetchMarketChart(ticker, "3mo", "1d").catch(() => null),
+            fetchMarketOptions(ticker).catch(() => null),
+          ]);
+
+          const spotPrice = quote?.last || optData?.quote?.regularMarketPrice || null;
+          if (!spotPrice || spotPrice <= 0) {
+            caveats.push({ ticker, reason: "Unable to verify live stock quote/spot price" });
+            return;
+          }
+
+          // Compute Bollinger Band
+          const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter(
+            (c: any) => typeof c === "number" && !isNaN(c)
+          );
+          const bollinger = computeBollinger(closes, 20, 2.0);
+          let bollingerPos = "N/A";
+          if (bollinger) {
+            if (spotPrice <= bollinger.lower_band) bollingerPos = "Below Lower Band";
+            else if (spotPrice <= bollinger.sma) bollingerPos = `Lower Half (SMA $${bollinger.sma})`;
+            else if (spotPrice <= bollinger.upper_band) bollingerPos = `Upper Half (SMA $${bollinger.sma})`;
+            else bollingerPos = "Above Upper Band";
+          }
+
+          if (!optData || !optData.options || optData.options.length === 0) {
+            caveats.push({ ticker, spot_price: spotPrice, reason: "No options chain data returned" });
+            return;
+          }
+
+          const rawExpirations: number[] = optData.expirationDates || optData.options.map((o: any) => o.expirationDate);
+          const validExpirations = rawExpirations
+            .map((expSec: number) => {
+              const expDate = new Date(expSec * 1000);
+              const dte = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              const dateStr = expDate.toISOString().split("T")[0];
+              return { expSec, dte, dateStr };
+            })
+            .filter((e) => e.dte >= minDays)
+            .sort((a, b) => a.dte - b.dte);
+
+          if (validExpirations.length === 0) {
+            caveats.push({ ticker, spot_price: spotPrice, reason: `No listed option expirations >= ${minDays} days (6+ months)` });
+            return;
+          }
+
+          let bestForTicker: any = null;
+
+          for (const expInfo of validExpirations) {
+            let chainObj = optData.options.find((o: any) => o.expirationDate === expInfo.expSec);
+            if (!chainObj || !chainObj.puts || chainObj.puts.length === 0) {
+              const detailedOpt = await fetchMarketOptions(ticker, expInfo.expSec).catch(() => null);
+              if (detailedOpt?.options?.[0]?.puts) {
+                chainObj = detailedOpt.options[0];
+              }
+            }
+
+            if (!chainObj || !chainObj.puts) continue;
+
+            const maxAllowedStrike = spotPrice * (maxMoneynessPct / 100.0);
+            const deepOtmPuts = chainObj.puts.filter(
+              (p: any) => p.strike <= maxAllowedStrike && (p.bid > 0 || p.lastPrice > 0)
+            );
+
+            for (const put of deepOtmPuts) {
+              const strike = put.strike;
+              const moneynessPct = (strike / spotPrice) * 100;
+              const bid = put.bid > 0 ? put.bid : put.lastPrice || 0;
+              if (bid <= 0) continue;
+
+              const cashSecuredReturnPct = (bid / strike) * 100;
+              const annualizedReturnPct = cashSecuredReturnPct * (365 / expInfo.dte);
+
+              const greeks = put.greeks || calculateGreeks(strike, spotPrice, put.impliedVolatility || 0.3, expInfo.dte, false);
+              const delta = greeks.delta || -0.05;
+
+              const record = {
+                ticker,
+                spot_price: Number(spotPrice.toFixed(2)),
+                bollinger_position: bollingerPos,
+                strike: Number(strike.toFixed(2)),
+                moneyness_pct: Number(moneynessPct.toFixed(2)),
+                expiration_date: expInfo.dateStr,
+                dte: expInfo.dte,
+                bid: Number(bid.toFixed(2)),
+                ask: Number((put.ask || 0).toFixed(2)),
+                volume: put.volume || 0,
+                open_interest: put.openInterest || 0,
+                implied_volatility_pct: Number(((put.impliedVolatility || 0) * 100).toFixed(1)),
+                delta: Number(Number(delta).toFixed(3)),
+                annualized_return_pct: Number(annualizedReturnPct.toFixed(2)),
+              };
+
+              if (!bestForTicker || record.annualized_return_pct > bestForTicker.annualized_return_pct) {
+                bestForTicker = record;
+              }
+            }
+          }
+
+          if (bestForTicker) {
+            candidates.push(bestForTicker);
+          } else {
+            caveats.push({ ticker, spot_price: spotPrice, reason: `No liquid put strike found with moneyness < ${maxMoneynessPct}% and visible bid` });
+          }
+        } catch (err: any) {
+          caveats.push({ ticker, reason: `Error during scan: ${err.message || err}` });
+        }
+      }));
+    }
+
+    candidates.sort((a, b) => b.annualized_return_pct - a.annualized_return_pct);
+
+    res.json({
+      scan_date: new Date().toISOString(),
+      universe_count: universe.length,
+      qualifying_count: candidates.length,
+      caveats_count: caveats.length,
+      parameters: {
+        minDays,
+        maxMoneynessPct,
+        provider: "Tradier Brokerage Market Data (Paper Account / Direct)",
+      },
+      candidates,
+      caveats,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

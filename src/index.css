@@ -42,3 +42,52 @@
 .animate-heartbeat {
   animation: heartbeat 1.4s infinite ease-in-out;
 }
+
+/* Styled HTML content inside research viewer */
+.research-html-container {
+  color: #e2e8f0;
+}
+
+.research-html-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background-color: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #334155;
+}
+
+.research-html-container th {
+  background-color: #1e293b;
+  color: #94a3b8;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 10px 12px;
+  border-bottom: 2px solid #334155;
+  text-align: left;
+}
+
+.research-html-container td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #1e293b;
+  color: #f8fafc;
+}
+
+.research-html-container tr:nth-child(even) {
+  background-color: #0f172a;
+}
+
+.research-html-container tr:nth-child(odd) {
+  background-color: #1e293b;
+}
+
+.research-html-container tr:hover {
+  background-color: #334155;
+}
+

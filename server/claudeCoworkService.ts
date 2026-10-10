@@ -10,6 +10,8 @@ export interface ClaudeCoworkResearchItem {
   tags: string[];
   source: string;
   author: string;
+  format?: "html" | "markdown" | "text" | string;
+  contentType?: string;
   payload?: any;
   createdAt: string;
   updatedAt: string;
@@ -102,6 +104,8 @@ export function addClaudeCoworkResearch(item: Omit<ClaudeCoworkResearchItem, "id
       : ["Claude Cowork"],
     source: item.source?.trim() || "Claude Cowork Webhook API",
     author: item.author?.trim() || "Claude Assistant",
+    format: item.format || (/<[a-z][\s\S]*>/i.test(item.content || "") ? "html" : "markdown"),
+    contentType: item.contentType || (/<[a-z][\s\S]*>/i.test(item.content || "") ? "text/html" : "text/markdown"),
     payload: item.payload || null,
     createdAt: now,
     updatedAt: now,

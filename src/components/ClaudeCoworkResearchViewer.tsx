@@ -38,10 +38,54 @@ export interface ResearchItem {
   tags: string[];
   source: string;
   author: string;
+  format?: "html" | "markdown" | "text" | string;
+  contentType?: string;
   payload?: any;
   createdAt: string;
   updatedAt: string;
 }
+
+export const ResearchContentRenderer: React.FC<{
+  content: string;
+  format?: string;
+  isExpanded: boolean;
+}> = ({ content, format, isExpanded }) => {
+  const isHtml =
+    format === "html" ||
+    /<[a-z][\s\S]*>/i.test(content || "") ||
+    (content || "").includes("<table") ||
+    (content || "").includes("<div") ||
+    (content || "").includes("<p") ||
+    (content || "").includes("<tr");
+
+  if (isHtml) {
+    return (
+      <div
+        className={`research-html-container overflow-x-auto text-xs text-slate-200 leading-relaxed font-sans p-4 bg-slate-950/80 border border-slate-800 rounded-xl transition-all ${
+          isExpanded ? "max-h-[850px] overflow-y-auto" : "max-h-[300px] overflow-hidden relative"
+        }`}
+      >
+        <div dangerouslySetInnerHTML={{ __html: content }} />
+        {!isExpanded && (
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent pointer-events-none" />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`p-4 bg-slate-950/80 border border-slate-800 rounded-xl font-mono text-[11px] text-slate-200 leading-relaxed whitespace-pre-line relative ${
+        isExpanded ? "max-h-[600px] overflow-y-auto" : "max-h-[160px] overflow-hidden"
+      }`}
+    >
+      {content}
+      {!isExpanded && (
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-950 to-transparent pointer-events-none" />
+      )}
+    </div>
+  );
+};
 
 export const ClaudeCoworkResearchViewer: React.FC = () => {
   const { user, createWatchlist } = useAuth();
@@ -597,17 +641,13 @@ JSON Payload:
                   </div>
                 )}
 
-                {/* Content Body (Collapsible / Formatted) */}
-                <div className="text-xs text-slate-300 leading-relaxed font-sans space-y-2 pt-1 whitespace-pre-line">
-                  {isExpanded ? (
-                    <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl font-mono text-[11px] text-slate-200 max-h-[500px] overflow-y-auto leading-relaxed">
-                      {item.content}
-                    </div>
-                  ) : (
-                    <div className="p-3.5 bg-slate-950/50 border border-slate-800/80 rounded-xl line-clamp-4 font-mono text-[11px] text-slate-300">
-                      {item.content}
-                    </div>
-                  )}
+                {/* Content Body (Collapsible / Formatted HTML or Markdown) */}
+                <div className="text-xs text-slate-300 leading-relaxed font-sans space-y-2 pt-1">
+                  <ResearchContentRenderer
+                    content={item.content}
+                    format={item.format}
+                    isExpanded={isExpanded}
+                  />
 
                   <button
                     onClick={() => setExpandedCardId(isExpanded ? null : item.id)}
