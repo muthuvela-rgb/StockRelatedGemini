@@ -11,6 +11,9 @@ interface CanslimMetricDetail {
 export interface CanslimTickerResult {
   ticker: string;
   price: number | null;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   score: number;
   evaluable: number;
   score_pct: number;
@@ -225,6 +228,10 @@ export async function screenTickerCanslim(
     fin.currentPrice?.raw ||
     priceData.regularMarketPrice?.raw ||
     (closes.length > 0 ? closes[closes.length - 1] : null);
+
+  const prevClose = priceData.regularMarketPreviousClose?.raw || (closes.length > 1 ? closes[closes.length - 2] : null);
+  const priceChange = priceData.regularMarketChange?.raw ?? (currentPrice && prevClose ? currentPrice - prevClose : null);
+  const priceChangePct = priceData.regularMarketChangePercent?.raw ? priceData.regularMarketChangePercent.raw * 100 : (prevClose && priceChange ? (priceChange / prevClose) * 100 : null);
 
   const companyName = priceData.shortName || priceData.longName || sym;
 
@@ -479,6 +486,9 @@ export async function screenTickerCanslim(
     ticker: sym,
     company_name: companyName,
     price: currentPrice ? Number(currentPrice.toFixed(2)) : null,
+    price_change: priceChange !== null ? Number(priceChange.toFixed(2)) : null,
+    price_change_pct: priceChangePct !== null ? Number(priceChangePct.toFixed(2)) : null,
+    is_up_day: priceChange !== null ? priceChange >= 0 : null,
     score: totalScore,
     evaluable: totalEvaluable,
     score_pct: scorePct,

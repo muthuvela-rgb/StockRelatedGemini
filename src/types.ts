@@ -13,6 +13,9 @@ export interface PutOptionRecord {
   days_to_expiration: number;
   strike: number;
   current_price: number;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   moneyness_pct: number;
   bid: number;
   ask: number;
@@ -58,6 +61,9 @@ export interface PutOptionRecord {
 export interface TechnicalsData {
   ticker: string;
   current_price: number | null;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   market_cap: number | null;
   fifty_two_week_high: number | null;
   fifty_two_week_low: number | null;
@@ -161,6 +167,9 @@ export interface ExpirationChainData {
 export interface OptionChainResponse {
   ticker: string;
   current_price: number;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   expirations: string[];
   selected_expiration: string;
   days_to_expiration: number;
@@ -484,6 +493,9 @@ export interface PremiumVsExpirationAnalysis {
 export interface MultiTickerCompareResult {
   ticker: string;
   current_price: number;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   fifty_two_week_high?: number | null;
   fifty_two_week_low?: number | null;
   target_strike: number;
@@ -533,6 +545,9 @@ export interface RecommendedPut {
   id: string;
   ticker: string;
   current_price: number;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   strike: number;
   expiration: string;
   dte: number;
@@ -647,6 +662,9 @@ export interface SwingLowPoint {
 export interface CspRsiDivergenceCandidate {
   ticker: string;
   current_price: number;
+  price_change?: number | null;
+  price_change_pct?: number | null;
+  is_up_day?: boolean | null;
   tier: CspDivergenceTier;
   tier_label: string;
   

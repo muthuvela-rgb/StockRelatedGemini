@@ -23,6 +23,9 @@ export interface ChartTechnicalSummary {
   companyName: string;
   currentPrice: number;
   previousClose: number;
+  dayChange?: number;
+  dayChangePct?: number;
+  isUpDay?: boolean;
   periodStartPrice: number;
   periodEndPrice: number;
   periodChange: number;
@@ -380,6 +383,9 @@ function buildSummary(
     companyName: meta?.shortName || meta?.longName || ticker,
     currentPrice: Number(currentPrice.toFixed(2)),
     previousClose: Number(previousClose.toFixed(2)),
+    dayChange: Number((currentPrice - previousClose).toFixed(2)),
+    dayChangePct: previousClose > 0 ? Number((((currentPrice - previousClose) / previousClose) * 100).toFixed(2)) : 0,
+    isUpDay: (currentPrice - previousClose) >= 0,
     periodStartPrice: Number(periodStartPrice.toFixed(2)),
     periodEndPrice: Number(periodEndPrice.toFixed(2)),
     periodChange,

@@ -111,7 +111,7 @@ export const LiveAssetCards: React.FC<LiveAssetCardsProps> = ({ quotes, usdinrRa
 
                 {/* Main USD / Native Display */}
                 <div className="mt-3">
-                  <div className="text-2xl font-bold font-mono text-white tracking-tight">
+                  <div className={`text-2xl font-bold font-mono tracking-tight ${isPos ? "text-emerald-400" : isNeg ? "text-rose-400" : "text-white"}`}>
                     {q.usdValueFormatted}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-0.5">{q.unit}</div>

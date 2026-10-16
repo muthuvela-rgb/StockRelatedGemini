@@ -37,7 +37,7 @@ import {
   Brush
 } from "recharts";
 import { PremiumCurveAnalysis, PremiumVsExpirationAnalysis } from "../types";
-import { formatCurrency, formatPct } from "../lib/utils";
+import { formatCurrency, formatPct, getStockPriceColor } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { TableTopScrollbar } from "./TableTopScrollbar";
 import {
@@ -895,7 +895,13 @@ export const PremiumCurvesViewer: React.FC = () => {
                     ? `Strike Range (${rangePreset === "custom" ? `${rangeMinPct}% - ${rangeMaxPct}%` : rangePreset}%) vs Expiration`
                     : `Premium ($) vs Expiration Date`}
                 </span>
-                <span className="text-xs px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono font-bold">
+                <span className={`text-xs px-2.5 py-0.5 rounded font-mono font-bold ${
+                  getStockPriceColor(expAnalysis).includes("emerald")
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : getStockPriceColor(expAnalysis).includes("rose")
+                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                    : "bg-blue-500/20 text-blue-400"
+                }`}>
                   Spot: ${expAnalysis.current_price.toFixed(2)}
                 </span>
                 {singleStrikeType !== "range" && (
@@ -1460,7 +1466,13 @@ export const PremiumCurvesViewer: React.FC = () => {
               <h3 className="text-base font-bold text-white font-display flex items-center gap-2">
                 <span>{analysis.ticker} {optionType.toUpperCase()} Premium vs Strike</span>
                 {analysis.current_price && (
-                  <span className="text-xs px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono font-bold">
+                  <span className={`text-xs px-2.5 py-0.5 rounded font-mono font-bold ${
+                    getStockPriceColor(analysis).includes("emerald")
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      : getStockPriceColor(analysis).includes("rose")
+                      ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                      : "bg-blue-500/20 text-blue-400"
+                  }`}>
                     Spot: ${analysis.current_price.toFixed(2)}
                   </span>
                 )}

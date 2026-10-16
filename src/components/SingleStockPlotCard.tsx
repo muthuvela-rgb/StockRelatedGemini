@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { TrendingUp, Target, Calendar, DollarSign, MousePointerClick, Percent, Award } from "lucide-react";
 import { PutOptionRecord } from "../types";
+import { getStockPriceColor } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { ChartPointInspector } from "./ChartPointInspector";
 import { STOCK_COLORS } from "./MultiPlotViewMenu";
@@ -167,7 +168,10 @@ export const SingleStockPlotCard: React.FC<SingleStockPlotCardProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: themeColor }} />
             <h4 className="text-base font-bold text-white font-display">
-              {ticker} • ${spotPrice.toFixed(2)}
+              {ticker} •{" "}
+              <span className={getStockPriceColor(stockRecords[0])}>
+                ${spotPrice.toFixed(2)}
+              </span>
             </h4>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-cyan-400 font-mono border border-slate-700">
               {isXAxisExpiration ? "Expiration Term Plot" : "Strike Curve Plot"}

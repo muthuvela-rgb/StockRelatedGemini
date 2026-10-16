@@ -42,7 +42,7 @@ import {
   Brush
 } from "recharts";
 import { PutOptionRecord } from "../types";
-import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { formatCurrency, formatPct, formatLargeNumber, getStockPriceColor } from "../lib/utils";
 import { QQQ_COMPONENTS } from "../data/universePresets";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { StatCard } from "./StatCard";
@@ -1827,7 +1827,10 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                     <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
                       <span className="text-[10px] text-slate-500 uppercase block">Underlying Spot</span>
                       <span className="font-bold text-white font-mono">
-                        {targetSingleTicker} ${singleStockFilteredRecords[0]?.current_price.toFixed(2)}
+                        {targetSingleTicker}{" "}
+                        <span className={getStockPriceColor(singleStockFilteredRecords[0])}>
+                          ${singleStockFilteredRecords[0]?.current_price.toFixed(2)}
+                        </span>
                       </span>
                       <span className="text-[10px] text-slate-400 block">
                         {isSingleStrikeSelected ? `$${singleStockFilteredRecords[0]?.strike} Strike Selected` : `${singleStockStrikes.length} Strikes`}
@@ -2380,6 +2383,9 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                         <TickerSymbolButton
                           ticker={r.ticker}
                           spotPrice={r.current_price}
+                          priceChange={r.price_change}
+                          priceChangePct={r.price_change_pct}
+                          isUpDay={r.is_up_day}
                           badge={
                             r.bid_used_fallback ? (
                               <span
@@ -2399,7 +2405,7 @@ export const PutScanner: React.FC<PutScannerProps> = ({ watchlist }) => {
                       <td className="px-3 py-3 font-semibold text-slate-200">
                         ${r.strike.toFixed(2)}
                       </td>
-                      <td className="px-3 py-3 text-slate-400">
+                      <td className={`px-3 py-3 font-mono font-medium ${getStockPriceColor(r, "text-slate-400")}`}>
                         ${r.current_price.toFixed(2)}
                       </td>
                       <td className="px-3 py-3">

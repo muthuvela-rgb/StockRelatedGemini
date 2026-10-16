@@ -14,7 +14,7 @@ import {
   ArrowDown
 } from "lucide-react";
 import { TechnicalsData } from "../types";
-import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { formatCurrency, formatPct, formatLargeNumber, getStockPriceColor } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
@@ -338,10 +338,14 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
                         <td className="px-3 py-3 font-sans font-bold text-white flex items-center gap-1.5">
                           <TickerSymbolButton
                             ticker={item.ticker}
+                            spotPrice={item.current_price}
+                            priceChange={item.price_change}
+                            priceChangePct={item.price_change_pct}
+                            isUpDay={item.is_up_day}
                             badge={isSelected ? <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> : undefined}
                           />
                         </td>
-                        <td className="px-3 py-3 text-slate-200">
+                        <td className={`px-3 py-3 font-mono font-bold ${getStockPriceColor(item)}`}>
                           {formatCurrency(item.current_price)}
                         </td>
                         <td className="px-3 py-3">
@@ -404,7 +408,7 @@ export const TechnicalsScreener: React.FC<TechnicalsScreenerProps> = ({ watchlis
                   <span className="text-xs text-blue-400 font-semibold uppercase tracking-wider">Asset Deep Dive</span>
                   <h3 className="text-2xl font-bold text-white font-display flex items-center gap-2">
                     {selectedStock.ticker}
-                    <span className="text-sm font-normal text-slate-400">
+                    <span className={`text-sm font-semibold font-mono ${getStockPriceColor(selectedStock)}`}>
                       {formatCurrency(selectedStock.current_price)}
                     </span>
                   </h3>

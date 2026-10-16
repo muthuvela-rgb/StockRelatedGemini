@@ -19,12 +19,15 @@ import {
   Info,
 } from "lucide-react";
 import { OptionGreeks, FibonacciLevels } from "../types";
-import { formatCurrency, formatPct } from "../lib/utils";
+import { formatCurrency, formatPct, getStockPriceColor } from "../lib/utils";
 import { findClosestFibonacci } from "../utils/fibonacci";
 
 interface OptionPointDetailInspectorProps {
   contract: OptionGreeks | null;
   currentPrice: number;
+  priceChange?: number | null;
+  priceChangePct?: number | null;
+  isUpDay?: boolean | null;
   ticker: string;
   tab: "puts" | "calls" | "both";
   bollinger?: {
@@ -47,6 +50,9 @@ interface OptionPointDetailInspectorProps {
 export const OptionPointDetailInspector: React.FC<OptionPointDetailInspectorProps> = ({
   contract,
   currentPrice,
+  priceChange,
+  priceChangePct,
+  isUpDay,
   ticker,
   tab,
   bollinger,
@@ -369,7 +375,12 @@ export const OptionPointDetailInspector: React.FC<OptionPointDetailInspectorProp
           </div>
           <div className="text-white font-bold text-base flex items-baseline gap-1.5">
             <span>${strike.toFixed(2)}</span>
-            <span className="text-xs text-slate-400 font-normal">/ Spot ${spot.toFixed(2)}</span>
+            <span className="text-xs text-slate-400 font-normal">
+              / Spot{" "}
+              <strong className={getStockPriceColor(priceChange, priceChangePct, isUpDay)}>
+                ${spot.toFixed(2)}
+              </strong>
+            </span>
           </div>
           <div className="text-[11px] flex flex-wrap items-center gap-1.5">
             <span className={isOtm ? "text-emerald-400 font-semibold" : isItm ? "text-rose-400 font-semibold" : "text-amber-400 font-semibold"}>
@@ -568,7 +579,10 @@ export const OptionPointDetailInspector: React.FC<OptionPointDetailInspectorProp
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Strike: ${strike.toFixed(1)}
                     </span>
                     <span className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Spot: ${spot.toFixed(1)}
+                      <span className={`w-1.5 h-1.5 rounded-full ${getStockPriceColor(priceChange, priceChangePct, isUpDay).includes("emerald") ? "bg-emerald-400" : getStockPriceColor(priceChange, priceChangePct, isUpDay).includes("rose") ? "bg-rose-400" : "bg-cyan-400"}`} /> Spot:{" "}
+                      <strong className={getStockPriceColor(priceChange, priceChangePct, isUpDay)}>
+                        ${spot.toFixed(1)}
+                      </strong>
                     </span>
                   </div>
                 </div>

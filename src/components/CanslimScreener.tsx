@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
+import { getStockPriceColor } from "../lib/utils";
 
 export interface CanslimMetricDetail {
   passed: boolean | null;
@@ -249,7 +250,12 @@ export const CanslimScreener: React.FC<CanslimScreenerProps> = ({ onNavigateTab 
               </div>
               <div className="text-xs text-slate-300 font-mono">
                 {data.market_direction.last_price > 0 && (
-                  <span>${data.market_direction.last_price} • 50d: ${data.market_direction.sma50}</span>
+                  <span>
+                    <strong className={data.market_direction.passed ? "text-emerald-400" : "text-rose-400"}>
+                      ${data.market_direction.last_price}
+                    </strong>{" "}
+                    • 50d: ${data.market_direction.sma50}
+                  </span>
                 )}
               </div>
               <p className="text-[11px] text-slate-400 mt-1 leading-snug truncate" title={data.market_direction.detail}>
@@ -515,7 +521,7 @@ export const CanslimScreener: React.FC<CanslimScreenerProps> = ({ onNavigateTab 
                         </div>
                       </td>
 
-                      <td className="py-3 px-3 text-slate-200">
+                      <td className={`py-3 px-3 font-mono font-bold ${getStockPriceColor(r)}`}>
                         {r.price ? `$${r.price.toFixed(2)}` : "—"}
                       </td>
 
@@ -603,8 +609,11 @@ export const CanslimScreener: React.FC<CanslimScreenerProps> = ({ onNavigateTab 
                   </span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1 font-mono">
-                  Price: ${inspectedTicker.price?.toFixed(2) || "N/A"} • Total Score:{" "}
-                  <strong className="text-cyan-400">{inspectedTicker.score.toFixed(2)}</strong> / {inspectedTicker.evaluable.toFixed(2)} (
+                  Price:{" "}
+                  <strong className={getStockPriceColor(inspectedTicker)}>
+                    ${inspectedTicker.price?.toFixed(2) || "N/A"}
+                  </strong>{" "}
+                  • Total Score: <strong className="text-cyan-400">{inspectedTicker.score.toFixed(2)}</strong> / {inspectedTicker.evaluable.toFixed(2)} (
                   {inspectedTicker.score_pct}%)
                 </div>
               </div>

@@ -875,7 +875,7 @@ export const NasdaqSimulator: React.FC = () => {
                       <td className="py-3 px-4 text-right text-slate-400">
                         ${stock.startPrice.toFixed(2)}
                       </td>
-                      <td className="py-3 px-4 text-right text-slate-200">
+                      <td className={`py-3 px-4 text-right font-mono font-medium ${stock.returnPct > 0 ? "text-emerald-400" : stock.returnPct < 0 ? "text-rose-400" : "text-slate-200"}`}>
                         ${stock.endPrice.toFixed(2)}
                       </td>
                       <td className="py-3 px-4 text-right font-semibold">

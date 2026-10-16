@@ -14,7 +14,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { PutOptionRecord } from "../types";
-import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { formatCurrency, formatPct, formatLargeNumber, getStockPriceColor } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
@@ -538,13 +538,18 @@ export const ShortDatedScreener: React.FC<ShortDatedScreenerProps> = ({ watchlis
                       <TickerSymbolButton
                         ticker={r.ticker}
                         spotPrice={r.current_price}
+                        priceChange={r.price_change}
+                        priceChangePct={r.price_change_pct}
+                        isUpDay={r.is_up_day}
                       />
                     </td>
                     <td className="px-3 py-3 text-slate-300">
                       {r.expiration} <span className="text-amber-400 font-bold">({r.days_to_expiration}d)</span>
                     </td>
                     <td className="px-3 py-3 font-semibold text-slate-200">${r.strike.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-slate-400">${r.current_price.toFixed(2)}</td>
+                    <td className={`px-3 py-3 font-mono font-medium ${getStockPriceColor(r, "text-slate-400")}`}>
+                      ${r.current_price.toFixed(2)}
+                    </td>
                     <td className="px-3 py-3">
                       <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold">
                         {r.moneyness_pct.toFixed(1)}%

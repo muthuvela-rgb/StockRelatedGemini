@@ -35,7 +35,7 @@ import {
   Brush
 } from "recharts";
 import { MultiTickerCompareAnalysis, MultiTickerCompareResult, PremiumVsExpirationPoint } from "../types";
-import { formatCurrency, formatPct } from "../lib/utils";
+import { formatCurrency, formatPct, getStockPriceColor } from "../lib/utils";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { ChartPointInspector } from "./ChartPointInspector";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
@@ -574,7 +574,11 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                     {highestYieldTicker.ticker} • {highestYieldTicker.avg_cash_return.toFixed(1)}% Ann.
                   </span>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Spot: ${highestYieldTicker.current_price.toFixed(2)} | Target Strike: ${highestYieldTicker.target_strike.toFixed(2)} ({highestYieldTicker.target_strike_pct}%)
+                    Spot:{" "}
+                    <strong className={getStockPriceColor(highestYieldTicker)}>
+                      ${highestYieldTicker.current_price.toFixed(2)}
+                    </strong>{" "}
+                    | Target Strike: ${highestYieldTicker.target_strike.toFixed(2)} ({highestYieldTicker.target_strike_pct}%)
                   </p>
                 </div>
               ) : (
@@ -1038,6 +1042,10 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                             />
                             <TickerSymbolButton
                               ticker={item.ticker}
+                              spotPrice={item.current_price}
+                              priceChange={item.price_change}
+                              priceChangePct={item.price_change_pct}
+                              isUpDay={item.is_up_day}
                               badge={
                                 idx === 0 ? (
                                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-sans font-bold">
@@ -1049,7 +1057,7 @@ export const MultiTickerCurveComparator: React.FC<MultiTickerCurveComparatorProp
                           </div>
                         </td>
 
-                        <td className="py-3 px-3 text-slate-200 font-bold">
+                        <td className={`py-3 px-3 font-mono font-bold ${getStockPriceColor(item)}`}>
                           ${item.current_price.toFixed(2)}
                         </td>
 

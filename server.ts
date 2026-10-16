@@ -1293,6 +1293,7 @@ async function getTechnicalsForTicker(ticker: string) {
 
   const meta = chart?.meta || {};
   const currentPrice = tradierQuote?.last || meta.regularMarketPrice || meta.chartPreviousClose || null;
+  const prevClose = tradierQuote?.prevclose || meta.chartPreviousClose || null;
   const fiftyTwoWeekHigh = tradierQuote?.week_52_high || meta.fiftyTwoWeekHigh || null;
   const fiftyTwoWeekLow = tradierQuote?.week_52_low || meta.fiftyTwoWeekLow || null;
 
@@ -1361,9 +1362,16 @@ async function getTechnicalsForTicker(ticker: string) {
     }
   } catch (e) {}
 
+  const effectivePrevClose = prevClose || (closes.length > 1 ? closes[closes.length - 2] : null);
+  const priceChange = tradierQuote?.change ?? (currentPrice && effectivePrevClose ? currentPrice - effectivePrevClose : null);
+  const priceChangePct = tradierQuote?.change_percentage ?? (effectivePrevClose && priceChange ? (priceChange / effectivePrevClose) * 100 : null);
+
   return {
     ticker,
     current_price: currentPrice ? Number(currentPrice.toFixed(2)) : null,
+    price_change: priceChange !== null && priceChange !== undefined ? Number(priceChange.toFixed(2)) : null,
+    price_change_pct: priceChangePct !== null && priceChangePct !== undefined ? Number(priceChangePct.toFixed(2)) : null,
+    is_up_day: priceChange !== null && priceChange !== undefined ? priceChange >= 0 : null,
     market_cap: marketCap,
     fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
     fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
@@ -2733,6 +2741,11 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       const rsi = computeRsi(closes, 14);
       const bollinger = computeBollinger(closes, Number(bollingerPeriod) || 20, Number(bollingerStd) || 2.0);
 
+      const prevClose = meta.chartPreviousClose || (closes.length > 1 ? closes[closes.length - 2] : null);
+      const priceChange = meta.regularMarketChange ?? (currentPrice && prevClose ? currentPrice - prevClose : null);
+      const priceChangePct = meta.regularMarketChangePercent ?? (prevClose && priceChange ? (priceChange / prevClose) * 100 : null);
+      const isUpDay = priceChange !== null && priceChange !== undefined ? priceChange >= 0 : null;
+
       const fiftyTwoWeekHigh = meta.fiftyTwoWeekHigh || (closes.length > 0 ? Math.max(...closes) : null);
       const fiftyTwoWeekLow = meta.fiftyTwoWeekLow || (closes.length > 0 ? Math.min(...closes) : null);
       let fibonacci = null;
@@ -2884,6 +2897,9 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
             days_to_expiration: dte,
             strike,
             current_price: Number(currentPrice.toFixed(2)),
+            price_change: priceChange !== null ? Number(priceChange.toFixed(2)) : null,
+            price_change_pct: priceChangePct !== null ? Number(priceChangePct.toFixed(2)) : null,
+            is_up_day: isUpDay,
             moneyness_pct: Number(moneyness.toFixed(2)),
             bid: Number(bid.toFixed(2)),
             ask: Number(ask.toFixed(2)),
@@ -2914,6 +2930,9 @@ app.post("/api/options-scan", async (req: Request, res: Response) => {
       summaryList.push({
         ticker,
         current_price: currentPrice,
+        price_change: priceChange !== null ? Number(priceChange.toFixed(2)) : null,
+        price_change_pct: priceChangePct !== null ? Number(priceChangePct.toFixed(2)) : null,
+        is_up_day: isUpDay,
         market_cap: meta.marketCap,
         fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
         fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
@@ -3288,9 +3307,17 @@ app.get("/api/option-chain", async (req: Request, res: Response) => {
       };
     }
 
+    const prevClose = optData.quote?.chartPreviousClose || (closes.length > 1 ? closes[closes.length - 2] : null);
+    const priceChange = optData.quote?.regularMarketChange ?? (currentPrice && prevClose ? currentPrice - prevClose : null);
+    const priceChangePct = optData.quote?.regularMarketChangePercent ?? (prevClose && priceChange ? (priceChange / prevClose) * 100 : null);
+    const isUpDay = priceChange !== null && priceChange !== undefined ? priceChange >= 0 : null;
+
     res.json({
       ticker,
       current_price: currentPrice,
+      price_change: priceChange !== null && priceChange !== undefined ? Number(priceChange.toFixed(2)) : null,
+      price_change_pct: priceChangePct !== null && priceChangePct !== undefined ? Number(priceChangePct.toFixed(2)) : null,
+      is_up_day: isUpDay,
       fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
       fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       expirations: expDates,
@@ -3636,9 +3663,17 @@ app.get("/api/premium-curves", async (req: Request, res: Response) => {
       }
     }
 
+    const prevClose = optData.quote?.chartPreviousClose || (closes.length > 1 ? closes[closes.length - 2] : null);
+    const priceChange = optData.quote?.regularMarketChange ?? (currentPrice && prevClose ? currentPrice - prevClose : null);
+    const priceChangePct = optData.quote?.regularMarketChangePercent ?? (prevClose && priceChange ? (priceChange / prevClose) * 100 : null);
+    const isUpDay = priceChange !== null && priceChange !== undefined ? priceChange >= 0 : null;
+
     res.json({
       ticker,
       current_price: currentPrice,
+      price_change: priceChange !== null && priceChange !== undefined ? Number(priceChange.toFixed(2)) : null,
+      price_change_pct: priceChangePct !== null && priceChangePct !== undefined ? Number(priceChangePct.toFixed(2)) : null,
+      is_up_day: isUpDay,
       fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
       fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
       expirations: chosenExpStrs,
@@ -4245,9 +4280,17 @@ app.all("/api/compare-premium-curves", async (req: Request, res: Response) => {
             ? Number((points.reduce((acc, p) => acc + p.implied_volatility, 0) / points.length).toFixed(2))
             : 0;
 
+          const prevClose = optData.quote?.chartPreviousClose || (closes.length > 1 ? closes[closes.length - 2] : null);
+          const priceChange = optData.quote?.regularMarketChange ?? (currentPrice && prevClose ? currentPrice - prevClose : null);
+          const priceChangePct = optData.quote?.regularMarketChangePercent ?? (prevClose && priceChange ? (priceChange / prevClose) * 100 : null);
+          const isUpDay = priceChange !== null && priceChange !== undefined ? priceChange >= 0 : null;
+
           resultsByTicker[t] = {
             ticker: t,
             current_price: currentPrice,
+            price_change: priceChange !== null && priceChange !== undefined ? Number(priceChange.toFixed(2)) : null,
+            price_change_pct: priceChangePct !== null && priceChangePct !== undefined ? Number(priceChangePct.toFixed(2)) : null,
+            is_up_day: isUpDay,
             fifty_two_week_high: fiftyTwoWeekHigh ? Number(fiftyTwoWeekHigh.toFixed(2)) : null,
             fifty_two_week_low: fiftyTwoWeekLow ? Number(fiftyTwoWeekLow.toFixed(2)) : null,
             target_strike: Number(targetStrike.toFixed(2)),
@@ -5061,7 +5104,9 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
       marginShockPct = 15.0,
       minAnnualReturn = 1.0,
       minAnnualMarginReturn = 1.0,
-    } = req.body;
+      limitPerTier = 150,
+      limitAll = 300,
+    } = req.body || {};
 
     let rawTickers: string[] = [];
     if (Array.isArray(tickers)) {
@@ -5146,8 +5191,15 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
             const nextEarningsDate = technicals?.next_earnings_date || null;
             const nextEarningsTimestamp = technicals?.next_earnings_timestamp || null;
 
+            const priceChange = meta.regularMarketChange ?? technicals?.price_change ?? null;
+            const priceChangePct = meta.regularMarketChangePercent ?? technicals?.price_change_pct ?? null;
+            const isUpDay = priceChange !== null && priceChange !== undefined ? priceChange >= 0 : null;
+
             marketContextMap[ticker] = {
               price: currentPrice,
+              price_change: priceChange,
+              price_change_pct: priceChangePct,
+              is_up_day: isUpDay,
               rsi,
               iv: atmIv,
               hv: histVolPct,
@@ -5371,6 +5423,9 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
                   id: `${ticker}_${exp.dateStr}_${strike}P`,
                   ticker,
                   current_price: Number(currentPrice.toFixed(2)),
+                  price_change: priceChange !== null && priceChange !== undefined ? Number(priceChange.toFixed(2)) : null,
+                  price_change_pct: priceChangePct !== null && priceChangePct !== undefined ? Number(priceChangePct.toFixed(2)) : null,
+                  is_up_day: isUpDay,
                   strike,
                   expiration: exp.dateStr,
                   dte: exp.dte,
@@ -5488,11 +5543,11 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
 
     // Default sort of put recommendations in decreasing order of score, then downside cushion buffer descending, then annualized cash return descending
     const sortFn = (a: any, b: any) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (b.cushion_to_strike_pct !== a.cushion_to_strike_pct) {
-        return b.cushion_to_strike_pct - a.cushion_to_strike_pct;
-      }
-      return b.annualized_return_cash_secured - a.annualized_return_cash_secured;
+      const scoreDiff = (Number(b?.score) || 0) - (Number(a?.score) || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      const cushionDiff = (Number(b?.cushion_to_strike_pct) || 0) - (Number(a?.cushion_to_strike_pct) || 0);
+      if (cushionDiff !== 0) return cushionDiff;
+      return (Number(b?.annualized_return_cash_secured) || 0) - (Number(a?.annualized_return_cash_secured) || 0);
     };
 
     leastRiskList.sort(sortFn);
@@ -5501,7 +5556,7 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
     allList.sort(sortFn);
 
     const computeSummary = (list: any[]) => {
-      if (list.length === 0) {
+      if (!Array.isArray(list) || list.length === 0) {
         return {
           count: 0,
           avg_pop: 0,
@@ -5512,34 +5567,68 @@ app.post("/api/put-recommendations", async (req: Request, res: Response) => {
         };
       }
       const count = list.length;
-      const avg_pop = Number((list.reduce((s, i) => s + i.probability_of_profit, 0) / count).toFixed(1));
-      const avg_margin_return = Number((list.reduce((s, i) => s + i.annualized_return_margin, 0) / count).toFixed(1));
-      const avg_cash_return = Number((list.reduce((s, i) => s + i.annualized_return_cash_secured, 0) / count).toFixed(1));
-      const avg_cushion = Number((list.reduce((s, i) => s + i.cushion_to_strike_pct, 0) / count).toFixed(1));
-      const avg_theta = Number((list.reduce((s, i) => s + i.daily_theta_decay, 0) / count).toFixed(2));
+      const avg_pop = Number(((list.reduce((s, i) => s + (Number(i?.probability_of_profit) || 0), 0)) / count).toFixed(1));
+      const avg_margin_return = Number(((list.reduce((s, i) => s + (Number(i?.annualized_return_margin) || 0), 0)) / count).toFixed(1));
+      const avg_cash_return = Number(((list.reduce((s, i) => s + (Number(i?.annualized_return_cash_secured) || 0), 0)) / count).toFixed(1));
+      const avg_cushion = Number(((list.reduce((s, i) => s + (Number(i?.cushion_to_strike_pct) || 0), 0)) / count).toFixed(1));
+      const avg_theta = Number(((list.reduce((s, i) => s + (Number(i?.daily_theta_decay) || 0), 0)) / count).toFixed(2));
       return {
         count,
-        avg_pop,
-        avg_margin_return,
-        avg_cash_return,
-        avg_cushion,
-        avg_theta,
+        avg_pop: Number.isFinite(avg_pop) ? avg_pop : 0,
+        avg_margin_return: Number.isFinite(avg_margin_return) ? avg_margin_return : 0,
+        avg_cash_return: Number.isFinite(avg_cash_return) ? avg_cash_return : 0,
+        avg_cushion: Number.isFinite(avg_cushion) ? avg_cushion : 0,
+        avg_theta: Number.isFinite(avg_theta) ? avg_theta : 0,
         top_pick: list[0] || undefined,
       };
     };
 
+    // Compute tier summaries across all qualifying contracts before capping
+    const tierSummaries = {
+      least_risk: computeSummary(leastRiskList),
+      medium_risk: computeSummary(mediumRiskList),
+      high_risk: computeSummary(highRiskList),
+    };
+
+    // Balanced selection ensuring each scanned ticker is represented with its highest-scoring setups
+    // This prevents one ticker with hundreds of strikes from crowding out other watchlist names,
+    // and keeps the JSON response payload well under Cloud Run's 32MB payload limit.
+    const pickBalancedTop = (list: any[], maxTotal: number, maxPerTicker: number = 25) => {
+      const tickerCounts = new Map<string, number>();
+      const balanced: any[] = [];
+      const remainder: any[] = [];
+
+      for (const item of list) {
+        const count = tickerCounts.get(item.ticker) || 0;
+        if (count < maxPerTicker) {
+          balanced.push(item);
+          tickerCounts.set(item.ticker, count + 1);
+        } else {
+          remainder.push(item);
+        }
+      }
+
+      if (balanced.length < maxTotal) {
+        balanced.push(...remainder.slice(0, maxTotal - balanced.length));
+      } else if (balanced.length > maxTotal) {
+        return balanced.slice(0, maxTotal);
+      }
+      return balanced;
+    };
+
+    const cappedLeastRisk = pickBalancedTop(leastRiskList, limitPerTier, 25);
+    const cappedMediumRisk = pickBalancedTop(mediumRiskList, limitPerTier, 25);
+    const cappedHighRisk = pickBalancedTop(highRiskList, limitPerTier, 25);
+    const cappedAll = pickBalancedTop(allList, limitAll, 35);
+
     res.json({
-      least_risk: leastRiskList,
-      medium_risk: mediumRiskList,
-      high_risk: highRiskList,
-      all_recommendations: allList,
+      least_risk: cappedLeastRisk,
+      medium_risk: cappedMediumRisk,
+      high_risk: cappedHighRisk,
+      all_recommendations: cappedAll,
       tickers_scanned: tickerList,
       total_contracts_evaluated: totalContractsEvaluated,
-      tier_summaries: {
-        least_risk: computeSummary(leastRiskList),
-        medium_risk: computeSummary(mediumRiskList),
-        high_risk: computeSummary(highRiskList),
-      },
+      tier_summaries: tierSummaries,
       market_context: marketContextMap,
       timestamp: new Date().toISOString(),
     });

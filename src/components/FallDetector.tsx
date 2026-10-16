@@ -15,7 +15,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { FallenStock } from "../types";
-import { formatCurrency, formatPct, formatLargeNumber } from "../lib/utils";
+import { formatCurrency, formatPct, formatLargeNumber, getStockPriceColor } from "../lib/utils";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { StatCard } from "./StatCard";
@@ -295,14 +295,21 @@ export const FallDetector: React.FC<FallDetectorProps> = ({ watchlist }) => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <TickerSymbolButton ticker={stock.ticker} className="text-lg font-bold font-display" />
+                        <TickerSymbolButton
+                          ticker={stock.ticker}
+                          className="text-lg font-bold font-display"
+                          spotPrice={stock.end_price}
+                          priceChange={stock.technicals?.price_change}
+                          priceChangePct={stock.technicals?.price_change_pct}
+                          isUpDay={stock.technicals?.is_up_day}
+                        />
                         <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400 font-bold text-xs">
                           {formatPct(stock.pct_change, 2, true)}
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
                         Pre-Drop: <span className="text-slate-200 font-mono font-medium">${stock.start_price.toFixed(2)}</span> ({stock.start_date}) → Current:{" "}
-                        <span className="text-rose-400 font-mono font-bold">${stock.end_price.toFixed(2)}</span> ({stock.end_date})
+                        <span className={`font-mono font-bold ${getStockPriceColor(stock.technicals, "text-rose-400")}`}>${stock.end_price.toFixed(2)}</span> ({stock.end_date})
                       </p>
                     </div>
                   </div>

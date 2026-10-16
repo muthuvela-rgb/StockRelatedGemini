@@ -24,6 +24,9 @@ export interface ChartTechnicalSummary {
   companyName: string;
   currentPrice: number;
   previousClose: number;
+  dayChange?: number;
+  dayChangePct?: number;
+  isUpDay?: boolean;
   periodStartPrice: number;
   periodEndPrice: number;
   periodChange: number;

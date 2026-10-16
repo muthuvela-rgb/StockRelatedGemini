@@ -29,7 +29,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { UserWatchlist } from "../types";
 import { QQQ_COMPONENTS, SP500_COMPONENTS, SMH_COMPONENTS } from "../data/universePresets";
-import { Globe, Lock, FolderDownload } from "lucide-react";
+import { Globe, Lock, FolderDown } from "lucide-react";
 
 interface WatchlistManagerProps {
   watchlist?: string[];
@@ -37,7 +37,7 @@ interface WatchlistManagerProps {
   watchlists?: UserWatchlist[];
   activeWatchlistIndex?: number;
   onSelectWatchlistIndex?: (index: number) => void;
-  onCreateWatchlist?: (name: string, tickers: string[]) => Promise<void>;
+  onCreateWatchlist?: (name: string, tickers: string[], isPublic?: boolean) => Promise<void>;
   onDeleteWatchlistAtIndex?: (index: number) => Promise<void>;
   onUpdateWatchlistAtIndex?: (index: number, newTickers: string[], newName?: string) => Promise<void>;
   onRenameWatchlistAtIndex?: (index: number, newName: string) => Promise<void>;

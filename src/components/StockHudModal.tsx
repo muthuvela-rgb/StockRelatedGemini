@@ -26,6 +26,7 @@ import {
   Tooltip,
 } from "recharts";
 import { TechnicalsData } from "../types";
+import { getStockPriceColor } from "../lib/utils";
 import { ActiveTab } from "./Header";
 
 interface StockHudData {
@@ -228,7 +229,7 @@ export const StockHudModal: React.FC<StockHudModalProps> = ({
             {currentPrice > 0 && (
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Current Spot</div>
-                <div className="text-lg font-bold text-emerald-400 font-mono">
+                <div className={`text-lg font-bold font-mono ${getStockPriceColor(t)}`}>
                   ${currentPrice.toFixed(2)}
                 </div>
               </div>

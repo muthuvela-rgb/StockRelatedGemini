@@ -625,9 +625,15 @@ export async function evaluateCspRsiDivergenceForTicker(
     ? await fetchBestCspPutOption(ticker, currentPrice, bb_lower, optionsFetcher)
     : null;
 
+  const priceChange = closeToday - prevClose;
+  const priceChangePct = prevClose > 0 ? (priceChange / prevClose) * 100 : 0;
+
   const candidate: CspRsiDivergenceCandidate = {
     ticker,
     current_price: currentPrice,
+    price_change: Number(priceChange.toFixed(2)),
+    price_change_pct: Number(priceChangePct.toFixed(2)),
+    is_up_day: priceChange >= 0,
     tier,
     tier_label: tierLabel,
     rsi_daily,

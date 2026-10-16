@@ -38,6 +38,7 @@ import { useAuth } from "../context/AuthContext";
 import { useBollingerFilter } from "../context/BollingerFilterContext";
 import { TickerSymbolButton } from "../context/TickerHudContext";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
+import { getStockPriceColor } from "../lib/utils";
 import { ActiveTab } from "./Header";
 import {
   MoneynessRangeSlider,
@@ -293,11 +294,20 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
           minAnnualReturn: 1.0,
           minAnnualMarginReturn: 1.0,
           minOpenInterest: 3,
+          limitPerTier: 150,
+          limitAll: 300,
         }),
       });
 
       if (!res.ok) {
-        throw new Error(`Server returned error ${res.status}`);
+        let errDetail = "";
+        try {
+          const errJson = await res.json();
+          errDetail = errJson.error || errJson.message || "";
+        } catch {
+          errDetail = await res.text().catch(() => "");
+        }
+        throw new Error(errDetail ? `Server error ${res.status}: ${errDetail}` : `Server returned error ${res.status}`);
       }
 
       const resData: PutRecommendationsResponse = await res.json();
@@ -1630,7 +1640,10 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                           {item.ticker}
                         </span>
                         <span className="text-xs text-slate-400 font-mono">
-                          Spot: ${item.current_price.toFixed(2)}
+                          Spot:{" "}
+                          <strong className={getStockPriceColor(item)}>
+                            ${item.current_price.toFixed(2)}
+                          </strong>
                         </span>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${tierBadgeColor}`}>
                           {item.risk_tier === "least_risk" ? "Least Risk" : item.risk_tier === "medium_risk" ? "Medium Risk" : "High Risk"}
@@ -1969,6 +1982,9 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                         <TickerSymbolButton
                           ticker={item.ticker}
                           spotPrice={item.current_price}
+                          priceChange={item.price_change}
+                          priceChangePct={item.price_change_pct}
+                          isUpDay={item.is_up_day}
                         />
                       </td>
                       <td className="py-3 px-3 font-bold text-cyan-300 text-sm">
@@ -2099,7 +2115,11 @@ export const PutRecommendationsViewer: React.FC<PutRecommendationsViewerProps> =
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Spot: ${selectedTrade.current_price.toFixed(2)} • Breakeven: ${selectedTrade.breakeven_price.toFixed(2)} ({selectedTrade.cushion_to_breakeven_pct}% safety cushion)
+                  Spot:{" "}
+                  <strong className={getStockPriceColor(selectedTrade)}>
+                    ${selectedTrade.current_price.toFixed(2)}
+                  </strong>{" "}
+                  • Breakeven: ${selectedTrade.breakeven_price.toFixed(2)} ({selectedTrade.cushion_to_breakeven_pct}% safety cushion)
                 </p>
               </div>
               <button

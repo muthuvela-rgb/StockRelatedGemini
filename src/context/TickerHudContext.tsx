@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { StockHudModal } from "../components/StockHudModal";
 import { ActiveTab } from "../components/Header";
+import { getStockPriceColor } from "../lib/utils";
 
 interface TickerHudContextType {
   openTickerHud: (ticker: string) => void;
@@ -143,6 +144,9 @@ interface TickerSymbolButtonProps {
   subtitle?: string;
   className?: string;
   spotPrice?: number | null;
+  priceChange?: number | null;
+  priceChangePct?: number | null;
+  isUpDay?: boolean | null;
   badge?: React.ReactNode;
   showHudIcon?: boolean;
 }
@@ -152,10 +156,15 @@ export const TickerSymbolButton: React.FC<TickerSymbolButtonProps> = ({
   subtitle,
   className = "",
   spotPrice,
+  priceChange,
+  priceChangePct,
+  isUpDay,
   badge,
   showHudIcon = true,
 }) => {
   const { openTickerHud } = useTickerHud();
+
+  const spotColorClass = getStockPriceColor(priceChange, priceChangePct, isUpDay, "text-slate-400");
 
   return (
     <div
@@ -185,7 +194,7 @@ export const TickerSymbolButton: React.FC<TickerSymbolButtonProps> = ({
           </div>
         )}
         {spotPrice !== undefined && spotPrice !== null && (
-          <div className="text-[10px] text-slate-400 group-hover/ticker:text-slate-300">
+          <div className={`text-[10px] font-mono font-medium ${spotColorClass} group-hover/ticker:brightness-125`}>
             ${spotPrice.toFixed(2)}
           </div>
         )}

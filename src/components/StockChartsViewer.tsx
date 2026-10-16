@@ -53,6 +53,7 @@ import {
   MultiTickerComparisonItem,
   CompanyProfile,
 } from "../types/stockChart";
+import { getStockPriceColor } from "../lib/utils";
 import { CompanyProfileCard } from "./CompanyProfileCard";
 import { TableTopScrollbar } from "./TableTopScrollbar";
 import { OptionPremiumExpirationCurve } from "./OptionPremiumExpirationCurve";
@@ -903,7 +904,7 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               {summary.ticker} Price
             </span>
-            <div className="text-xl font-black text-white font-mono mt-0.5">
+            <div className={`text-xl font-black font-mono mt-0.5 ${getStockPriceColor(summary.dayChange, summary.dayChangePct, summary.isUpDay, isPositiveReturn ? "text-emerald-400" : "text-rose-400")}`}>
               ${summary.currentPrice.toFixed(2)}
             </div>
             <div className="flex items-center gap-1 text-xs font-bold mt-1 font-mono">
@@ -1230,7 +1231,9 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <span className="text-emerald-400 font-semibold">Close:</span>
-                  <span className="text-white font-bold">${pinnedBar.close?.toFixed(2)}</span>
+                  <span className={`font-bold font-mono ${pinnedBar.close >= (pinnedBar.open ?? pinnedBar.close) ? "text-emerald-400" : "text-rose-400"}`}>
+                    ${pinnedBar.close?.toFixed(2)}
+                  </span>
                 </div>
                 {pinnedBar.open && (
                   <div className="flex justify-between items-center text-slate-400">
@@ -1652,7 +1655,9 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                         <div className="space-y-1">
                           <div className="flex justify-between items-center">
                             <span className="text-emerald-400 font-semibold">Close:</span>
-                            <span className="text-white font-bold">${data.close?.toFixed(2)}</span>
+                            <span className={`font-bold font-mono ${data.close >= (data.open ?? data.close) ? "text-emerald-400" : "text-rose-400"}`}>
+                              ${data.close?.toFixed(2)}
+                            </span>
                           </div>
                           {data.open && (
                             <div className="flex justify-between items-center text-slate-400">
@@ -2133,7 +2138,9 @@ export const StockChartsViewer: React.FC<StockChartsViewerProps> = ({ watchlist 
                       <td className="px-3 py-2">${b.open.toFixed(2)}</td>
                       <td className="px-3 py-2 text-emerald-400">${b.high.toFixed(2)}</td>
                       <td className="px-3 py-2 text-rose-400">${b.low.toFixed(2)}</td>
-                      <td className="px-3 py-2 font-bold text-white">${b.close.toFixed(2)}</td>
+                      <td className={`px-3 py-2 font-bold font-mono ${b.close >= (b.open ?? b.close) ? "text-emerald-400" : "text-rose-400"}`}>
+                        ${b.close.toFixed(2)}
+                      </td>
                       <td className="px-3 py-2 text-slate-400">{b.volume.toLocaleString()}</td>
                       <td className="px-3 py-2 text-amber-400">{b.sma20 ? `$${b.sma20.toFixed(2)}` : "—"}</td>
                       <td className="px-3 py-2 text-sky-400">

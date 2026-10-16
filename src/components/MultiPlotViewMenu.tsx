@@ -15,6 +15,7 @@ import {
   Sliders
 } from "lucide-react";
 import { PutOptionRecord } from "../types";
+import { getStockPriceColor } from "../lib/utils";
 
 export const STOCK_COLORS = [
   "#06b6d4", // cyan
@@ -128,10 +129,10 @@ export const MultiPlotViewMenu: React.FC<MultiPlotViewMenuProps> = ({
   };
 
   // Spot prices map for quick badge
-  const tickerSpotMap: Record<string, { spot: number; count: number }> = {};
+  const tickerSpotMap: Record<string, { spot: number; count: number; record?: PutOptionRecord }> = {};
   records.forEach((r) => {
     if (!tickerSpotMap[r.ticker]) {
-      tickerSpotMap[r.ticker] = { spot: r.current_price, count: 0 };
+      tickerSpotMap[r.ticker] = { spot: r.current_price, count: 0, record: r };
     }
     tickerSpotMap[r.ticker].count++;
   });
@@ -287,7 +288,7 @@ export const MultiPlotViewMenu: React.FC<MultiPlotViewMenuProps> = ({
                       <span className="font-bold text-xs tracking-wider">{t}</span>
                     </div>
 
-                    <span className="text-[11px] text-slate-400 font-mono">
+                    <span className={`text-[11px] font-mono ${getStockPriceColor(info.record, "text-slate-400")}`}>
                       ${info.spot.toFixed(2)}
                     </span>
                   </div>

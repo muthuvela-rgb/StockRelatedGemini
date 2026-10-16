@@ -13,7 +13,7 @@ import {
   Brush,
 } from "recharts";
 import { OptionGreeks, ExpirationChainData, FibonacciLevels } from "../types";
-import { formatCurrency, formatPct } from "../lib/utils";
+import { formatCurrency, formatPct, getStockPriceColor } from "../lib/utils";
 import { OptionPointDetailInspector } from "./OptionPointDetailInspector";
 import { DeltaRangeSlider } from "./DeltaRangeSlider";
 import { ExpirationDaysRangeSlider } from "./ExpirationDaysRangeSlider";
@@ -44,6 +44,9 @@ import {
 interface OptionChainPremiumStrikePlotProps {
   ticker: string;
   currentPrice: number;
+  priceChange?: number | null;
+  priceChangePct?: number | null;
+  isUpDay?: boolean | null;
   selectedExp: string; // "ALL" or specific date string
   allExpirations: string[];
   tab: "puts" | "calls" | "both";
@@ -118,6 +121,9 @@ const EXP_PALETTE = [
 export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlotProps> = ({
   ticker,
   currentPrice,
+  priceChange,
+  priceChangePct,
+  isUpDay,
   selectedExp,
   allExpirations,
   tab,
@@ -1355,8 +1361,19 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
       <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
         <div className="flex flex-wrap items-center gap-4">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-            Spot: <strong className="text-white font-mono">${currentPrice.toFixed(2)}</strong>
+            <span
+              className={`w-2 h-2 rounded-full inline-block ${
+                getStockPriceColor(priceChange, priceChangePct, isUpDay).includes("emerald")
+                  ? "bg-emerald-400"
+                  : getStockPriceColor(priceChange, priceChangePct, isUpDay).includes("rose")
+                  ? "bg-rose-400"
+                  : "bg-blue-400"
+              }`}
+            />
+            Spot:{" "}
+            <strong className={`font-mono ${getStockPriceColor(priceChange, priceChangePct, isUpDay, "text-white")}`}>
+              ${currentPrice.toFixed(2)}
+            </strong>
           </span>
           {isAllExp ? (
             <span className="text-slate-300">
@@ -1388,6 +1405,9 @@ export const OptionChainPremiumStrikePlot: React.FC<OptionChainPremiumStrikePlot
         <OptionPointDetailInspector
           contract={selectedContract}
           currentPrice={currentPrice}
+          priceChange={priceChange}
+          priceChangePct={priceChangePct}
+          isUpDay={isUpDay}
           ticker={ticker}
           tab={tab}
           bollinger={bollinger}

@@ -27,6 +27,7 @@ import {
 import type { CspRsiDivergenceCandidate, CspRsiDivergenceResponse } from "../types";
 import { SP500_COMPONENTS, SMH_COMPONENTS, QQQ_COMPONENTS } from "../data/universePresets";
 import { TickerSymbolButton } from "../context/TickerHudContext";
+import { getStockPriceColor } from "../lib/utils";
 import { useWatchlistOptions } from "../hooks/useWatchlistSelection";
 import { MoneynessRangeSlider } from "./sliders/MoneynessRangeSlider";
 import { CashReturnRangeSlider } from "./sliders/CashReturnRangeSlider";
@@ -855,8 +856,16 @@ export const CspRsiDivergenceViewer: React.FC<CspRsiDivergenceViewerProps> = ({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <TickerSymbolButton ticker={c.ticker} className="text-xl font-extrabold font-mono" />
-                      <span className="text-sm font-semibold text-slate-300">${c.current_price.toFixed(2)}</span>
+                      <TickerSymbolButton
+                        ticker={c.ticker}
+                        className="text-xl font-extrabold font-mono"
+                        priceChange={c.price_change}
+                        priceChangePct={c.price_change_pct}
+                        isUpDay={c.is_up_day}
+                      />
+                      <span className={`text-sm font-semibold font-mono ${getStockPriceColor(c)}`}>
+                        ${c.current_price.toFixed(2)}
+                      </span>
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                           isTier1

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, Check, Copy, Crosshair, TrendingUp, DollarSign, Calendar, Percent, Shield, Activity } from "lucide-react";
 import { BollingerRsiTooltipBadge } from "./BollingerRsiTooltipBadge";
 import { FibonacciLevels } from "../types";
+import { getStockPriceColor } from "../lib/utils";
 
 export interface InspectedPointData {
   ticker?: string;
@@ -192,7 +193,13 @@ export const ChartPointInspector: React.FC<ChartPointInspectorProps> = ({
             <DollarSign className="w-3 h-3 text-cyan-400" />
           </div>
           <div className="text-white font-bold text-sm">
-            ${strike.toFixed(2)} <span className="text-xs text-slate-400 font-normal">/ ${spot.toFixed(2)}</span>
+            ${strike.toFixed(2)}{" "}
+            <span className="text-xs text-slate-400 font-normal">
+              / Spot{" "}
+              <strong className={getStockPriceColor(point)}>
+                ${spot.toFixed(2)}
+              </strong>
+            </span>
           </div>
           <div className="text-[11px] flex items-center gap-1">
             <span className={isOTM ? "text-cyan-400 font-semibold" : isITM ? "text-rose-400 font-semibold" : "text-amber-400 font-semibold"}>
